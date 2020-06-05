@@ -8,9 +8,13 @@ INSTALLATION
   1. Install git on your computer. 
   2. Create a directory where you want pines_analysis_toolkit to be installed. When writing new features for the toolkit, you will    do so in this directory.
   3. Navigate a terminal to that directory, and type the following: 
-      git init
-      git remote add origin https://github.com/patricktamburo/pines_analysis_toolkit.git
-      git pull origin master
+  
+        git init
+        
+        git remote add origin https://github.com/patricktamburo/pines_analysis_toolkit.git
+        
+        git pull origin master
+        
   4. Check to make sure files have appeared in the directory.
   5. Install the package locally by typing the following:
       python setup.py install
