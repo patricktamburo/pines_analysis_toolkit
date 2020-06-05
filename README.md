@@ -22,7 +22,11 @@ INSTALLATION
   8. If it imports without throwing any errors, you're done!
 
 MODULES (all still under development)
+ 
   Data - programs to grab raw data, science data, calibrations, logs, etc. 
+  
   Reduction - programs for reducing raw data
+  
   Photometry - programs for performing photometry on reduced data
+  
   Analysis - programs for making lightcurves, analyzing variability, etc. 
