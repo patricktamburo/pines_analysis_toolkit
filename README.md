@@ -23,10 +23,10 @@ INSTALLATION
 
 MODULES (all still under development)
  
-  Data - programs to grab raw data, science data, calibrations, logs, etc. 
+    Data - programs to grab raw data, science data, calibrations, logs, etc. 
   
-  Reduction - programs for reducing raw data
+    Reduction - programs for reducing raw data
   
-  Photometry - programs for performing photometry on reduced data
+    Photometry - programs for performing photometry on reduced data
   
-  Analysis - programs for making lightcurves, analyzing variability, etc. 
+    Analysis - programs for making lightcurves, analyzing variability, etc. 
