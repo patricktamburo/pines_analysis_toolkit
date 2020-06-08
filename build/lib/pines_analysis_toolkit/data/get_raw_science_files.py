@@ -26,12 +26,11 @@ import time
         Have program automatically regenerate master_log.txt on the PINES server when run
 '''
 
-def get_raw_science_files(target_name):
-    #Prompt login: 
-    username = input('Enter username: ')
-    password = getpass.getpass('Enter password: ')
-
+def get_raw_science_files(target_name, username, password=''):
     t1 = time.time()
+    if len(password) == 0:
+        password = getpass.getpass('Enter password for '+username+'@pines.bu.edu: ')
+
     print('')
     print('Searching pines.bu.edu for raw science files for ',target_name,'.')
     #Get the user's pines_analysis_toolkit path 
@@ -51,9 +50,6 @@ def get_raw_science_files(target_name):
     ssh.connect('pines.bu.edu',username=username, password=password)
     sftp = ssh.open_sftp()
 
-    username = ''
-    password = ''
-    
     #Download the master log
     sftp.chdir('code/PINES_server_scripts/')
     sftp.get('master_log.txt',pines_path+'master_log.txt')
