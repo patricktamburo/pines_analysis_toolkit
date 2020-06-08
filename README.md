@@ -33,4 +33,6 @@ MODULES (all still under development)
   
     photometry - programs for performing photometry on reduced data
   
-    analysis - programs for making lightcurves, analyzing variability, etc. 
+    analysis - programs for making lightcurves, analyzing variability, etc.
+    
+    utils - programs for various quality-of-life things
