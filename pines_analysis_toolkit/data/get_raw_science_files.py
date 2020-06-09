@@ -5,19 +5,18 @@ import pdb
 from pines_analysis_toolkit.utils.pines_dir_check import pines_dir_check
 from pines_analysis_toolkit.utils.short_name_creator import short_name_creator
 from pines_analysis_toolkit.utils.object_directory_creator import object_directory_creator
+from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
 import getpass 
 import pandas
 import numpy as np
 import time
 
-'''Author: 
-        Patrick Tamburo, Boston University, June 8 2020
+'''Authors: 
+        Patrick Tamburo, Boston University, June 2020
    Purpose: 
         Finds raw science files on the PINES server for a specified target, and downloads them.
    Inputs:
         target_name (str): the target's full 2MASS name, i.e. '2MASS J01234567+0123456' 
-        username (str): the username for logging onto the PINES server
-        password (str, optional): if you don't want to enter a password every time (i.e. for testing), can enter it as an argument. NOTE this is not safe!
     Outputs:
         None
     TODO:
@@ -59,9 +58,7 @@ def get_raw_science_files(target_name):
     sftp.get('master_log.txt',pines_path+'master_log.txt')
 
     #Read in the master target list and find images of the requested target. 
-    df = pandas.read_csv(pines_path+'master_log.txt')
-    df.columns = df.columns.str.lstrip()
-    df.columns = df.columns.str.rstrip()
+    df = pines_log_reader(pines_path+'master_log.txt')
     targs = np.array([i.rstrip().lstrip() for i in df['Target']])
     file_locs = np.where(targs == target_name)[0]
     file_names = np.array([i.rstrip().lstrip() for i in np.array(df['Filename'][file_locs])])
