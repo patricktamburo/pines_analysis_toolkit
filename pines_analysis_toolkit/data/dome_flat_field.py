@@ -17,7 +17,7 @@ import natsort
 		Paul Dalba, Boston University, February 2017
 		Patrick Tamburo, Boston University, June 2020
 	Purpose:
-        Creates a master dome flat field image for a given run and band, and uploads to the PINES calibrations folder. 
+        Creates a master dome flat field image for a given date and band, and uploads to the PINES calibrations folder. 
         NOTE: Only admins are able to upload these files!
 	Inputs:
 		date (str): the UT date during which the dome flat field data was obtained (i.e., '20200531')
@@ -27,22 +27,23 @@ import natsort
         lights_on_end (int, optional): The file number that represents the end of the lights on dome flat sequence.
         lights_off_start (int, optional): The file number that represents the start of the lights off dome flat sequence.
         lights_off_end (int, optional): The file number that represents the end of the lights off dome flat sequence.
-        upload (bool, optional): Whether or not to upload the master dome flat to pines.bu.edu. By default, set to True (so you will attempt to upload!).
+        upload (bool, optional): Whether or not to upload the master dome flat to pines.bu.edu. By default, set to False (so you will not attempt to upload!).
         delete_raw (bool, optional): Whether or not to delete raw data from your local machine when the master flat is created. By default, set to False (won't delete raw dome flat images by default!).
     Outputs:
 		None
 	TODO:
-		Tabular printing.
-        Bad image flagging.
+		Tabular printing
+        Bad image flagging
+        Implement specified start/stop arguments
+
 '''
 
 
-def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_start=0, lights_off_stop=0, upload=True, delete_raw=False):
+def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_start=0, lights_off_stop=0, upload=False, delete_raw=False):
     clip_lvl = 3 #The value to use for sigma clipping. 
     np.seterr(invalid='ignore') #Suppress some warnings we don't care about in median combining. 
     plt.ion() #Turn on interactive plotting.
 
-    t1 = time.time()
 
     pines_path = pines_dir_check()
 
@@ -51,6 +52,8 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
     username = input('Enter username: ')
     password = getpass.getpass('Enter password: ')
 
+    t1 = time.time()
+
      #Open ssh connection and set up local/remote paths.
     ssh = paramiko.SSHClient()
     ssh.load_system_host_keys()
@@ -58,6 +61,7 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
     ssh.connect('pines.bu.edu',username=username, password=password)
     username = ''
     password = ''
+
     sftp = ssh.open_sftp()
     sftp.chdir('data/raw/mimir')
     run_list = sftp.listdir()
@@ -68,6 +72,7 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
         if date in date_list:
             data_path = sftp.getcwd()
             print('{} directory found in pines.bu.edu:{}/'.format(date,data_path))
+            print('')
             sftp.chdir(date)
             break
         sftp.chdir('..')
@@ -77,17 +82,20 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
         return
     
     else:
-        #Download the log and read it in. 
-        sftp.get(date+'_log.txt',pines_path+'Logs/'+date+'_log.txt')
+        #Check if you already have the log for this date, if not, download it. 
+        if not os.path.exists(pines_path+'Logs/'+date+'_log.txt'):
+            print('Donwloading {}_log.txt to {}'.format(date,pines_path+'Logs/'))
+            sftp.get(date+'_log.txt',pines_path+'Logs/'+date+'_log.txt')
+
         log = pines_log_reader(pines_path+'Logs/'+date+'_log.txt')
 
         #Identify flat files. 
-        flat_inds = np.where((log['Target'] == 'Flat') & (log['Filename'] != 'test.fits'))[0]
+        flat_inds = np.where((log['Target'] == 'Flat') & (log['Filename'] != 'test.fits') & (log['Filt.'] == band))[0]
         flat_files = natsort.natsorted(list(set(log['Filename'][flat_inds]))) #Set guarantees we only grab the unique files that have been identified as flats, in case the log bugged out. 
         print('Found {} flat files.'.format(len(flat_files)))
         print('')
 
-        #Downoad this data to the appropriate Calibrations/Flats/Domeflats/band/Raw/ directory. 
+        #Downoad data to the appropriate Calibrations/Flats/Domeflats/band/Raw/ directory. 
         for j in range(len(flat_files)):
             if not os.path.exists(pines_path+'Calibrations/Flats/Domeflats/'+band+'/Raw/'+flat_files[j]):
                 sftp.get(flat_files[j],pines_path+'Calibrations/Flats/Domeflats/'+band+'/Raw/'+flat_files[j])
@@ -227,7 +235,7 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
         
         #Now save to a file on your local machine. 
         print('')
-        print('Writing the file to master_flat.fits')
+        print('Writing the file to master_flat_'+band+'_'+date+'.fits')
         #Check to see if other files of this name exist
         if os.path.exists(output_filename):
             print('')
@@ -245,6 +253,7 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
         
         if upload:
             print('Beginning upload process to pines.bu.edu...')
+            print('Note, only PINES admins will be able to upload.')
             time.sleep(2)
             print('')
             sftp.chdir('..')
@@ -257,13 +266,13 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
                 print('WARNING: This will overwrite {} in pines.bu.edu:data/calibrations/Flats/Domeflats/{}/'.format(upload_name,band))
                 upload_check = input('Do you want to continue? y/n: ')
                 if upload_check == 'y':
-                    sftp.put(output_filename,'master_flat_'+band+'_'+date+'.fits')
+                    sftp.put(output_filename,upload_name)
                     print('Uploaded to pines.bu.edu:data/calibrations/Flats/Domeflats/{}/ !'.format(band))
                 else:
                     print('Skipping upload!')
             else:
-                sftp.put(output_filename,'master_flat_'+band+'_'+date+'.fits')
-                print('Uploaded {} to pines.bu.edu:data/calibrations/Flats/Domeflats/{}/'.format(upload_name, band))
+                sftp.put(output_filename,upload_name)
+                print('Uploaded {} to pines.bu.edu:data/calibrations/Flats/Domeflats/{}/!'.format(upload_name, band))
 
         print('')
         if delete_raw:
