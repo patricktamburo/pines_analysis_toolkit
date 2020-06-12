@@ -22,7 +22,7 @@ INSTALLATION
       python3 setup.py install
       ...whichever is the appropriate command for python 3 on your computer. 
   6. Check your Documents folder to see if the PINES_analysis_toolkit directory was created. All PINES data that you analyze will be placed here. 
-  7. Start python, and type import pines_analysis_package. 
+  7. Start python, and type import pines_analysis_toolkit. 
   8. If it imports without throwing any errors, you're done!
 
 MODULES (all still under development)
