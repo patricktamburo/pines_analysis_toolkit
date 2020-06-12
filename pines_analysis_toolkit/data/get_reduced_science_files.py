@@ -32,8 +32,7 @@ def get_reduced_science_files(target_name):
     print('')
     username = input('Enter username: ')
     password = getpass.getpass('Enter password: ')
-
-    t1 = time.time()
+    print('')
 
     #Get the user's pines_analysis_toolkit path 
     pines_path = pines_dir_check()
@@ -41,10 +40,10 @@ def get_reduced_science_files(target_name):
     #Get the target's short name and set up a data directory, if necessary. 
     short_name = short_name_creator(target_name)
 
-    if not os.path.exists(pines_path+'Objects/'+short_name):
+    if not os.path.exists(pines_path/('Objects/'+short_name)):
         object_directory_creator(pines_path, short_name)
 
-    reduced_data_path = pines_path+'Objects/'+short_name+'/reduced/'
+    reduced_data_path = pines_path/('Objects/'+short_name+'/reduced/')
 
     #Open ssh connection and set up local/remote paths.
     ssh = paramiko.SSHClient()
@@ -52,6 +51,7 @@ def get_reduced_science_files(target_name):
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect('pines.bu.edu',username=username, password=password)
     sftp = ssh.open_sftp()
+    t1 = time.time()
 
     username = ''
     password = ''
@@ -62,13 +62,11 @@ def get_reduced_science_files(target_name):
 
     #Grab an up-to-date copy of the master log, which will be used to find images. 
     get_master_log(ssh, sftp, pines_path)
-    pdb.set_trace()
     
     #Read in the master target list and find images of the requested target. 
-    df = pines_log_reader(pines_path+'Logs/master_log.txt')
-    targs = np.array([i.rstrip().lstrip() for i in df['Target']])
-    file_locs = np.where(targs == target_name)[0]
-    file_names = np.array([i.rstrip().lstrip() for i in np.array(df['Filename'][file_locs])])
+    df = pines_log_reader(pines_path/('Logs/master_log.txt'))
+    targ_inds = np.where(np.array(df['Target']) == target_name)[0]
+    file_names = np.array(df['Filename'])[targ_inds]
     print('')
     
     #Get list of dates that data are from, in chronological order. 
@@ -103,10 +101,10 @@ def get_reduced_science_files(target_name):
                 files_in_path = sftp.listdir()
                 for k in range(len(files)):
                     download_filename = files[k].split('.fits')[0]+'_red.fits'
-                    if not os.path.exists(reduced_data_path+download_filename):
+                    if not (reduced_data_path/download_filename).exists():
                         if download_filename in files_in_path:
-                            print('Downloading to ', reduced_data_path+download_filename, ', ', file_num, ' of ', len(file_names))
-                            sftp.get(download_filename,reduced_data_path+download_filename)
+                            print('Downloading to {}, {} of {}'.format(reduced_data_path/download_filename, file_num, len(file_names)))
+                            sftp.get(download_filename,reduced_data_path/download_filename)
                         else:
                             print('A reduced image does not yet exist for {}, ask an administrator to make one!'.format(files[k]))
                     else:
