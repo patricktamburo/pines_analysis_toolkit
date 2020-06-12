@@ -8,7 +8,7 @@ import stat
         Pulls all master dome flats from pines.bu.edu:/data/calibrations/Flats/Domeflats/
 	Inputs:
 		sftp (paramiko.sftp_client.SFTPClient): the sftp client to pines.bu.edu
-        pines_dome_flat_path (str): path to the PINES_analysis_toolkit/Calibrations/Flats/Domeflats directory
+        pines_dome_flat_path (pathlib.Path object): path to the PINES_analysis_toolkit/Calibrations/Flats/Domeflats directory
     Outputs:
 		None
 	TODO:
@@ -23,9 +23,9 @@ def get_master_dome_flats(sftp, pines_dome_flat_path):
         flats = sftp.listdir()
         for j in range(len(flats)):
             flat = flats[j]
-            if not os.path.exists(pines_dome_flat_path+band+'/Master Flats/'+flat):
-                sftp.get(flat, pines_dome_flat_path+band+'/Master Flats/'+flat)
-                print('Downloading {} to '.format(pines_dome_flat_path+band+'/Master Flats/'+flat))
+            if not (pines_dome_flat_path/(band+'/Master Flats/'+flat)).exists():
+                sftp.get(flat, pines_dome_flat_path/(band+'/Master Flats/'+flat))
+                print('Downloading to {}'.format(pines_dome_flat_path/(band+'/Master Flats/'+flat)))
         sftp.chdir('..')
     sftp.chdir('..')
     sftp.chdir('..')

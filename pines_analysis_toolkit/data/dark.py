@@ -11,6 +11,7 @@ import time
 import getpass
 import natsort
 import os
+from datetime import datetime
 
 '''Authors:
 		Paul Dalba, Boston University, February 2017
@@ -43,20 +44,21 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
     plt.ion() #Turn on interactive plotting.
     
     #Prompt login: 
+    print('')
     username = input('Enter username: ')
     password = getpass.getpass('Enter password: ')
 
     t1 = time.time()
 
-     #Open ssh connection and set up local/remote paths.
+    #Open ssh connection and set up local/remote paths.
     ssh = paramiko.SSHClient()
     ssh.load_system_host_keys()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect('pines.bu.edu',username=username, password=password)
-    username = ''
-    password = ''
-
     sftp = ssh.open_sftp()
+    password = ''
+    print('')
+
     sftp.chdir('data/raw/mimir')
     run_list = sftp.listdir()
     data_path = '' #Initialize to check that it gets filled. 
@@ -65,23 +67,24 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
         date_list = sftp.listdir()
         if date in date_list:
             data_path = sftp.getcwd()
-            print('{} directory found in pines.bu.edu:{}/'.format(date,data_path))
-            print('')
+            print('{} directory found in pines.bu.edu:{}/\n'.format(date,data_path))
             sftp.chdir(date)
             break
         sftp.chdir('..')
     
     if data_path == '':
-        print('ERROR: specified date not found in any run on pines.bu.edu:data/raw/mimir/')
+        print('ERROR: specified date not found in any run on pines.bu.edu:data/raw/mimir/\n')
         return
 
     else:
+        log_path = pines_path/'Logs'
         #Check if you already have the log for this date, if not, download it. 
-        if not os.path.exists(pines_path+'Logs/'+date+'_log.txt'):
-            sftp.get(date+'_log.txt',pines_path+'Logs/'+date+'_log.txt')
-            print('Donwloading {}_log.txt to {}'.format(date,pines_path+'Logs/'))
-
-        log = pines_log_reader(pines_path+'Logs/'+date+'_log.txt')
+        if not (log_path/(date+'_log.txt')).exists():
+            print('Donwloading {}_log.txt to {}\n'.format(date,log_path))
+            sftp.get(date+'_log.txt',log_path/(date+'_log.txt'))
+        
+        #Read in the log from this date.
+        log = pines_log_reader(log_path/(date+'_log.txt'))
 
         #Identify dark files. 
         dark_inds = np.where((log['Target'] == 'Dark') & (log['Filename'] != 'test.fits') & (log['Exptime'] == exptime))[0]
@@ -90,17 +93,16 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
         print('')
 
         #Downoad data to the Calibrations/Darks/Raw/ directory. 
+        dark_path = pines_path/('Calibrations/Darks/Raw')
         for j in range(len(dark_files)):
-            if not os.path.exists(pines_path+'Calibrations/Darks/Raw/'+dark_files[j]):
-                sftp.get(dark_files[j],pines_path+'Calibrations/Darks/Raw/'+dark_files[j])
-                print('Downloading {} to {}, {} of {}.'.format(dark_files[j],pines_path+'Calibrations/Darks/Raw/', j+1, len(dark_files)))
+            if not (dark_path/dark_files[j]).exists():
+                sftp.get(dark_files[j],os.path.join(pines_path,dark_path/dark_files[j]))
+                print('Downloading {} to {}, {} of {}.'.format(dark_files[j], dark_path, j+1, len(dark_files)))
             else:
-                print('{} already in {}, skipping download.'.format(dark_files[j],pines_path+'Calibrations/Darks/Raw/'))
+                print('{} already in {}, skipping download.'.format(dark_files[j],dark_path))
         print('')
 
-
         num_images = len(dark_files)
-    
 
         print('Reading in ', num_images,' dark images.')
         dark_cube_raw = np.zeros([len(dark_files),1024,1024]) 
@@ -110,7 +112,7 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
         print('ID   Mean               Stddev         Max    Min')
         print('-------------------------------------------------')
         for j in range(len(dark_files)):
-            image_data = fits.open(pines_path+'Calibrations/Darks/Raw/'+dark_files[j])[0].data[0:1024,:] #This line trims off the top two rows of the image, which are overscan.
+            image_data = fits.open(dark_path/dark_files[j])[0].data[0:1024,:] #This line trims off the top two rows of the image, which are overscan.
             dark_cube_raw[j,:,:] = image_data 
             print(str(j+1)+'    '+str(np.mean(image_data))+'    '+str(np.std(image_data))+'    '+ str(np.amax(image_data))+'    '+str(np.amin(image_data)))
 
@@ -139,6 +141,10 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
 
         #Combine the clipped cube
         dark_master, std_dark_master = np.nanmean(dark_cube_raw,axis=0), np.nanstd(dark_cube_raw,axis=0)
+
+        #Force to type float32 to preserve the size of raw Mimir images
+        dark_master = dark_master.astype('float32')
+               
         plt.ion()
         avg,med,std = sigma_clipped_stats(dark_master)
         plt.imshow(dark_master,origin='lower',vmin=med-3*std,vmax=med+3*std)
@@ -148,8 +154,14 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
         np.seterr(invalid='warn') #Turn invalid warnings back on, in case it would permanently turn it off otherwise.
 
 
-        output_filename = pines_path+'Calibrations/Darks/Master Darks/master_dark_'+str(exptime)+'_s_'+date+'.fits'
+        output_filename = pines_path/('Calibrations/Darks/Master Darks/master_dark_'+str(exptime)+'_s_'+date+'.fits')
         
+        #Add some header keywords detailing the master_dark creation process. 
+        hdu = fits.PrimaryHDU(dark_master)
+        hdu.header['HIERARCH MASTER_DARK CREATOR'] = username
+        hdu.header['HIERARCH DATE CREATED'] = datetime.utcnow().strftime('%Y-%m-%d')+'T'+datetime.utcnow().strftime('%H:%M:%S')
+        username = ''
+
         #Now save to a file on your local machine. 
         print('')
         print('Writing the file to master_dark_'+str(exptime)+'_s_'+date+'.fits')
@@ -160,14 +172,13 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
             print('WARNING: This will overwrite {}!'.format(output_filename))
             dark_check = input('Do you want to continue? y/n: ')
             if dark_check == 'y':
-                fits.PrimaryHDU(dark_master).writeto(output_filename,overwrite=True)
+                hdu.writeto(output_filename,overwrite=True)
                 print('Wrote to {}!'.format(output_filename))
             else:
                 print('Not overwriting!')
         else:
-            fits.PrimaryHDU(dark_master).writeto(output_filename,overwrite=True)
+            hdu.writeto(output_filename,overwrite=True)
         print('')
-
         
         if upload:
             print('Beginning upload process to pines.bu.edu...')
@@ -190,13 +201,13 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
                     print('Skipping upload!')
             else:
                 sftp.put(output_filename,upload_name)
-                print('Uploaded {} to pines.bu.edu:data/calibrations/Darks/!')
+                print('Uploaded {} to pines.bu.edu:data/calibrations/Darks/!'.format(upload_name))
 
         print('')
         if delete_raw:
-            files_to_delete = glob.glob(pines_path+'Calibrations/Darks/Raw/*.fits')
+            files_to_delete = glob.glob(os.path.join(dark_path/'*.fits'))
             for j in range(len(files_to_delete)):
                 os.remove(files_to_delete[j])
-
+        sftp.close()
         print('dark runtime: ', np.round((time.time()-t1)/60,1), ' minutes.')
         print('Done!')

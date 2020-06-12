@@ -21,16 +21,6 @@ If it installs successfully, then you're able to run this code to test out some 
 -------------------------------------------------------------------------------------------------------------
 '''
 
-#Declare a target that you want raw science data for, using its full 2MASS name.
+#Declare a target that you want reduced science data for, using its full 2MASS name.
 target = '2MASS J16291840+0335371'
-
-
-#Run get_raw_science_files(), which is located in the data module of pat. 
-#It will prompt you to enter your username and password when it is run. 
-
-# pat.data.get_raw_science_files(target)
-
-#Check your ~/Documents/pines_analysis_toolkit/Objects/ folder for 2MASS 1629+0335. In that folder, look in 'raw' to see your science files!
-
-#Now that we have the raw data, let's reduce it!
-pat.reduction.reduce(target)
+pat.data.get_reduced_science_files(target)

@@ -3,3 +3,4 @@ from pines_analysis_toolkit.photometry.deshifter import deshifter
 from pines_analysis_toolkit.photometry.display_image import display_image
 from pines_analysis_toolkit.photometry.identify_sources import identify_sources
 from pines_analysis_toolkit.photometry.photometry import photometry
+from pines_analysis_toolkit.photometry.detect_sources import detect_sources

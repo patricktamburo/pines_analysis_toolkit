@@ -28,21 +28,21 @@ import time
 
 def get_raw_science_files(target_name):
     #Prompt login: 
+    print('')
     username = input('Enter username: ')
     password = getpass.getpass('Enter password: ')
-
-    t1 = time.time()
     print('')
-    print('Searching pines.bu.edu for raw science files for {}.'.format(target_name))
+
+
     #Get the user's pines_analysis_toolkit path 
     pines_path = pines_dir_check()
 
     #Get the target's short name and set up a data directory, if necessary. 
     short_name = short_name_creator(target_name)
-    if not os.path.exists(pines_path+'Objects/'+short_name):
+    if not os.path.exists(pines_path/('Objects/'+short_name)):
         object_directory_creator(pines_path, short_name)
 
-    raw_data_path = pines_path+'Objects/'+short_name+'/raw/'
+    raw_data_path = pines_path/('Objects/'+short_name+'/raw/')
 
     #Open ssh connection and set up local/remote paths.
     ssh = paramiko.SSHClient()
@@ -51,18 +51,19 @@ def get_raw_science_files(target_name):
     ssh.connect('pines.bu.edu',username=username, password=password)
     sftp = ssh.open_sftp()
 
+    t1 = time.time()
+    print('Searching pines.bu.edu for raw science files for {}.'.format(target_name))
+
     username = ''
     password = ''
     
     #Grab an up-to-date copy of the master log, which will be used to find images. 
     get_master_log(ssh, sftp, pines_path)
 
-
     #Read in the master target list and find images of the requested target. 
-    df = pines_log_reader(pines_path+'Logs/master_log.txt')
-    targs = np.array([i.rstrip().lstrip() for i in df['Target']])
-    file_locs = np.where(targs == target_name)[0]
-    file_names = np.array([i.rstrip().lstrip() for i in np.array(df['Filename'][file_locs])])
+    df = pines_log_reader(pines_path/('Logs/master_log.txt'))
+    targ_inds = np.where(np.array(df['Target']) == target_name)
+    file_names = np.array(df['Filename'])[targ_inds]
     print('')
     
     #Get list of dates that data are from, in chronological order. 
@@ -70,7 +71,6 @@ def get_raw_science_files(target_name):
     dates = np.array(dates)[np.argsort(dates)]
     comp_dates = np.array([int(file_names[i].split('.')[0]) for i in range(len(file_names))])
     print('Found ',len(file_names),' raw files for ',target_name,' on ',len(dates),' dates.')
-
     date_holder = [[] for x in range(len(dates))]
     for i in range(len(dates)):
         date = dates[i]
@@ -94,9 +94,9 @@ def get_raw_science_files(target_name):
                 date_holder_ind = np.where(np.array(dates) == night_check)[0][0]
                 files = date_holder[date_holder_ind]
                 for k in range(len(files)):
-                    print('Downloading to ', raw_data_path+files[k], ', ', file_num, ' of ', len(file_names))
-                    if not os.path.exists(raw_data_path+files[k]):
-                        sftp.get(files[k],raw_data_path+files[k])
+                    print('Downloading to {}, {} of {}'.format(raw_data_path/files[k],file_num,len(file_names)))
+                    if not (raw_data_path/files[k]).exists():
+                        sftp.get(files[k],raw_data_path/files[k])
                     else:
                         print('{} already in {}, skipping.'.format(files[k],raw_data_path))
                     file_num += 1

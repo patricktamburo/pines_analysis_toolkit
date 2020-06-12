@@ -12,6 +12,7 @@ import getpass
 import paramiko
 import pandas
 import natsort
+from datetime import datetime
 
 '''Authors:
 		Paul Dalba, Boston University, February 2017
@@ -43,14 +44,13 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
     clip_lvl = 3 #The value to use for sigma clipping. 
     np.seterr(invalid='ignore') #Suppress some warnings we don't care about in median combining. 
     plt.ion() #Turn on interactive plotting.
-
-
     pines_path = pines_dir_check()
 
-
     #Prompt login: 
+    print('')
     username = input('Enter username: ')
     password = getpass.getpass('Enter password: ')
+    print('')
 
     t1 = time.time()
 
@@ -59,7 +59,6 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
     ssh.load_system_host_keys()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect('pines.bu.edu',username=username, password=password)
-    username = ''
     password = ''
 
     sftp = ssh.open_sftp()
@@ -82,12 +81,13 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
         return
     
     else:
+        log_path = pines_path/'Logs'
         #Check if you already have the log for this date, if not, download it. 
-        if not os.path.exists(pines_path+'Logs/'+date+'_log.txt'):
-            print('Donwloading {}_log.txt to {}'.format(date,pines_path+'Logs/'))
-            sftp.get(date+'_log.txt',pines_path+'Logs/'+date+'_log.txt')
+        if not (log_path/(date+'_log.txt')).exists():
+            print('Downloading {}_log.txt to {}'.format(date,log_path))
+            sftp.get(date+'_log.txt',log_path/(date+'_log.txt'))
 
-        log = pines_log_reader(pines_path+'Logs/'+date+'_log.txt')
+        log = pines_log_reader(log_path/(date+'_log.txt'))
 
         #Identify flat files. 
         flat_inds = np.where((log['Target'] == 'Flat') & (log['Filename'] != 'test.fits') & (log['Filt.'] == band))[0]
@@ -96,23 +96,23 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
         print('')
 
         #Downoad data to the appropriate Calibrations/Flats/Domeflats/band/Raw/ directory. 
+        dome_flat_raw_path = pines_path/('Calibrations/Flats/Domeflats/'+band+'/Raw')
         for j in range(len(flat_files)):
-            if not os.path.exists(pines_path+'Calibrations/Flats/Domeflats/'+band+'/Raw/'+flat_files[j]):
-                sftp.get(flat_files[j],pines_path+'Calibrations/Flats/Domeflats/'+band+'/Raw/'+flat_files[j])
-                print('Downloading {} to {}, {} of {}.'.format(flat_files[j],pines_path+'Calibrations/Flats/Domeflats/'+band+'/Raw/', j+1, len(flat_files)))
+            if not (dome_flat_raw_path/flat_files[j]).exists():
+                sftp.get(flat_files[j],(dome_flat_raw_path/flat_files[j]))
+                print('Downloading {} to {}, {} of {}.'.format(flat_files[j],dome_flat_raw_path, j+1, len(flat_files)))
             else:
-                print('{} already in {}, skipping download.'.format(flat_files[j],pines_path+'Calibrations/Flats/Domeflats/'+band+'/Raw/'))
+                print('{} already in {}, skipping download.'.format(flat_files[j],dome_flat_raw_path))
         print('')
 
         #Find the lights-on and lights-off flat files. 
         lights_on_files = []
         lights_off_files = []
         for j in range(len(flat_files)):
-            header = fits.open(pines_path+'Calibrations/Flats/Domeflats/'+band+'/Raw/'+flat_files[j])[0].header
+            header = fits.open(dome_flat_raw_path/flat_files[j])[0].header
             if header['FILTNME2'] != band:
                 print('ERROR: {} taken in filter other than {}. Double check your date, try specifying start/stop file numbers, etc.'.format(flat_files[j], band))
                 return
-
             if header['OBJECT'] == 'dome_lamp_on':
                 lights_on_files.append(flat_files[j])
             elif header['OBJECT'] == 'dome_lamp_off':
@@ -128,14 +128,14 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
         #Make cube of the lights-on images.
         num_images = len(lights_on_files)
         print('Reading in ', num_images,' lights-on flat images.')
-        flat_lights_on_cube_raw = np.zeros([len(lights_on_files),1024,1024]) 
+        flat_lights_on_cube_raw = np.zeros([len(lights_on_files),1024,1024]) #Declare datatype to match raw mimir data. 
         print('')
         print('Flat frame information')
         print('-------------------------------------------------')
         print('ID   Mean               Stddev         Max    Min')
         print('-------------------------------------------------')
         for j in range(len(lights_on_files)):
-            image_data = fits.open(pines_path+'Calibrations/Flats/Domeflats/'+band+'/Raw/'+lights_on_files[j])[0].data[0:1024,:]
+            image_data = fits.open(dome_flat_raw_path/lights_on_files[j])[0].data[0:1024,:]
             flat_lights_on_cube_raw[j,:,:] = image_data #This line trims off the top two rows of the image, which are overscan.
             print(str(j+1)+'    '+str(np.mean(image_data))+'    '+str(np.std(image_data))+'    '+ str(np.std(image_data))+'    '+str(np.amin(image_data)))
         time.sleep(1)
@@ -150,11 +150,10 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
         print('ID   Mean               Stddev         Max    Min')
         print('-------------------------------------------------')
         for j in range(len(lights_off_files)):
-            image_data = fits.open(pines_path+'Calibrations/Flats/Domeflats/'+band+'/Raw/'+lights_off_files[j])[0].data[0:1024,:]
+            image_data = fits.open(dome_flat_raw_path/lights_off_files[j])[0].data[0:1024,:]
             flat_lights_off_cube_raw[j,:,:] = image_data #This line trims off the top two rows of the image, which are overscan.
             print(str(j+1)+'    '+str(np.mean(image_data))+'    '+str(np.std(image_data))+'    '+ str(np.std(image_data))+'    '+str(np.amin(image_data)))
         time.sleep(1)
-
 
         #Combine flats into one master flat, which is bias-corrected, dark rate corrected, and normalized.
 
@@ -186,7 +185,7 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
 
         #Combine the clipped cube
         lights_on_flat_master, std_lights_on_flat_master = np.nanmean(flat_lights_on_cube_raw,axis=0), np.nanstd(flat_lights_on_cube_raw,axis=0)
-
+        lights_on_flat_master = lights_on_flat_master.astype('float32') #Convert to float32, preserves memory size of original image. 
 
         #Then, combine the lights-off cube
         lights_off_cube_shape = np.shape(flat_lights_off_cube_raw)
@@ -214,6 +213,7 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
                 nan_count = np.sum(np.isnan(flat_lights_off_cube_raw)*1.)
         #Combine the clipped cube
         lights_off_flat_master, std_lights_off_flat_master = np.nanmean(flat_lights_off_cube_raw,axis=0), np.nanstd(flat_lights_off_cube_raw,axis=0)
+        lights_off_flat_master = lights_off_flat_master.astype('float32')
 
         #Subtract the lights off image from the lights on image.
         flat_master = lights_on_flat_master - lights_off_flat_master
@@ -230,24 +230,29 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
 
         np.seterr(invalid='warn') #Turn invalid warnings back on, in case it would permanently turn it off otherwise.
 
-
-        output_filename = pines_path+'Calibrations/Flats/Domeflats/'+band+'/Master Flats/master_flat_'+band+'_'+date+'.fits'
+        output_filename = pines_path/('Calibrations/Flats/Domeflats/'+band+'/Master Flats/master_flat_'+band+'_'+date+'.fits')
         
+        #Add some header keywords detailing the master_dark creation process. 
+        hdu = fits.PrimaryHDU(flat_master)
+        hdu.header['HIERARCH MASTER_FLAT CREATOR'] = username
+        hdu.header['HIERARCH DATE CREATED'] = datetime.utcnow().strftime('%Y-%m-%d')+'T'+datetime.utcnow().strftime('%H:%M:%S')
+        username = ''
+
         #Now save to a file on your local machine. 
         print('')
-        print('Writing the file to master_flat_'+band+'_'+date+'.fits')
+        print('Writing the file to {}'.format(output_filename))
         #Check to see if other files of this name exist
         if os.path.exists(output_filename):
             print('')
             print('WARNING: This will overwrite {}!'.format(output_filename))
             flat_check = input('Do you want to continue? y/n: ')
             if flat_check == 'y':
-                fits.PrimaryHDU(flat_master).writeto(output_filename,overwrite=True)
+                hdu.writeto(output_filename,overwrite=True)
                 print('Wrote to {}!'.format(output_filename))
             else:
                 print('Not overwriting!')
         else:
-            fits.PrimaryHDU(flat_master).writeto(output_filename,overwrite=True)
+            hdu.writeto(output_filename,overwrite=True)
         print('')
 
         
@@ -276,9 +281,10 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
 
         print('')
         if delete_raw:
-            files_to_delete = glob.glob(pines_path+'Calibrations/Flats/Domeflats/'+band+'/Raw/*.fits')
+            files_to_delete = glob.glob(os.path.join(dome_flat_raw_path/'*.fits'))
             for j in range(len(files_to_delete)):
                 os.remove(files_to_delete[j])
 
+        sftp.close()
         print('dome_flat_field runtime: ', np.round((time.time()-t1)/60,1), ' minutes.')
         print('Done!')
