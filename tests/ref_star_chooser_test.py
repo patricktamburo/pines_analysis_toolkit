@@ -4,4 +4,4 @@ import pines_analysis_toolkit as pat
 target = '2MASS J16291840+0335371'
 
 #Detect sources in the target's field. 
-sources = pat.photometry.detect_sources(target)
+sources = pat.photometry.ref_star_chooser(target)
