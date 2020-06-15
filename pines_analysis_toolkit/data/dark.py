@@ -33,7 +33,6 @@ from datetime import datetime
 		Tabular printing
         Bad image flagging
         Implement specified start/stop arguments
-
 '''
 
 def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=False):

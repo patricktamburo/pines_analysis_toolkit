@@ -1,4 +1,5 @@
 import pines_analysis_toolkit as pat
+import pdb
 
 '''
 -------------------------------INSTRUCTIONS BEFORE YOU START------------------------------------------------
@@ -24,3 +25,8 @@ If it installs successfully, then you're able to run this code to test out some 
 #Declare a target that you want reduced science data for, using its full 2MASS name.
 target = '2MASS J16291840+0335371'
 pat.data.get_reduced_science_files(target)
+
+#Find the initial location for the target in the reduced images, and get a set of suitable reference stars. 
+#The Mimir "bars" issue is present in some of the 2M 1629+0335 data, so I turn on the lower_left flag to automatically discard references in the lower left quadrant.
+target, references = pat.photometry.ref_star_chooser(target, lower_left=True)
+pdb.set_trace()
