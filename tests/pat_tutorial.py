@@ -28,5 +28,10 @@ pat.data.get_reduced_science_files(target)
 
 #Find the initial location for the target in the reduced images, and get a set of suitable reference stars. 
 #The Mimir "bars" issue is present in some of the 2M 1629+0335 data, so I turn on the lower_left flag to automatically discard references in the lower left quadrant.
-target, references = pat.photometry.ref_star_chooser(target, lower_left=True)
+sources = pat.photometry.ref_star_chooser(target, lower_left=True)
+
+#Get positions of these sources in all of the images. 
+centroided_sources = pat.photometry.centroider(target, sources)
+
+
 pdb.set_trace()

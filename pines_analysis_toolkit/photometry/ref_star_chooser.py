@@ -137,4 +137,4 @@ def ref_star_chooser(target, source_detect_image_ind=0, radius_check=6., non_lin
     print('Saving target and references image to {}.'.format(phot_dir/(reduced_files[source_detect_image_ind].name.split('.fits')[0]+'_target_and_refs.png')))
     plt.savefig(phot_dir/(reduced_files[source_detect_image_ind].name.split('.fits')[0]+'_target_and_refs.png'))
 
-    return (target,suitable_refs)
+    return output_df
