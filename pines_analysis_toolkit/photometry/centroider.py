@@ -20,14 +20,26 @@ import pandas as pd
         target (str): The target's full 2MASS name
         sources (pandas dataframe): List of source names, x and y positions. 
         plots (bool, optional): Whether or not to plot sources and measured centroids as you go along. 
+        restore (bool, optional): Whether or not to restore centroider output that already exists. 
     Outputs:
 		x_centroids (numpy array): Array of x positions, num_targets x num_images large. 
         y_centroids (numpy array): Array of y positions, num_targets x num_images large. 
 	TODO:
         Grab logs automatically? 
+        Flag bad centroids?
 '''
 
-def centroider(target, sources, plots=False):
+def centroider(target, sources, plots=False, restore=False):
+    pines_path = pines_dir_check()
+    short_name = short_name_creator(target)
+
+    #If restore == True, read in existing output and return. 
+    if restore: 
+        sources = pd.read_csv(pines_path/('Objects/'+short_name+'/sources/target_and_references_centroids.csv'),converters={'X Centroids':eval, 'Y Centroids':eval}).drop(columns=['Unnamed: 0'])
+        print('Restoring centroider output from {}.'.format(pines_path/('Objects/'+short_name+'/sources/target_and_references_centroids.csv')))
+        print('')
+        return sources
+
     plt.ion() 
     np.seterr(divide='ignore', invalid='ignore') #Suppress some warnings we don't care about in median combining. 
 
@@ -36,8 +48,6 @@ def centroider(target, sources, plots=False):
     sources['Y Centroids'] = [[] for x in range(len(sources))]
 
     #Get list of reduced files for target. 
-    pines_path = pines_dir_check()
-    short_name = short_name_creator(target)
     reduced_path = pines_path/('Objects/'+short_name+'/reduced')
     reduced_files = np.array(natsort.natsorted([x for x in reduced_path.glob('*.fits')]))
 
@@ -105,6 +115,6 @@ def centroider(target, sources, plots=False):
             #Record the position.
             sources['X Centroids'].iloc[i].extend([centroid_x])
             sources['Y Centroids'].iloc[i].extend([centroid_y])
-
+    sources.to_csv(pines_path/('Objects/'+short_name+'/sources/target_and_references_centroids.csv'))
     np.seterr(divide='warn', invalid='warn') 
     return sources
