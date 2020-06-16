@@ -25,6 +25,7 @@ import time
         Allow user to specify run if target is observed during multiple runs 
         Have program automatically regenerate master_log.txt on the PINES server when run
         Error handling: what if target name is wrong?
+        Grab logs for each night of data, need them in centroider.py.
 '''
 
 def get_reduced_science_files(target_name):
@@ -112,7 +113,30 @@ def get_reduced_science_files(target_name):
                     file_num += 1
                 sftp.chdir('..')
         sftp.chdir('..')
-        
+
+    #Now grab the logs.
+    sftp.chdir('..')
+    sftp.chdir('..')
+    sftp.chdir('raw/mimir')
+    print('')
+    for i in range(len(run_dirs)):
+            sftp.chdir(run_dirs[i])
+            night_dirs = sftp.listdir()
+            for j in range(len(night_dirs)):
+                night_check = night_dirs[j]
+                if night_check in dates:
+                    sftp.chdir(night_check)
+                    log_name = night_check+'_log.txt'
+                    files_in_path = sftp.listdir()
+                    if log_name in files_in_path:
+                        if not (pines_path/('Logs/'+log_name)).exists():
+                            sftp.get(log_name,pines_path/('Logs/'+log_name))
+                            print('Downloading {} to {}.'.format(log_name, pines_path/('Logs/'+log_name)))
+                        else:
+                            print('{} already in {}, skipping.'.format(log_name,pines_path/'Logs/'))
+                    sftp.chdir('..')
+            sftp.chdir('..')
+
     sftp.close()
     print('')
     print('get_reduced_science_files runtime: ', np.round((time.time()-t1)/60,1), ' minutes.')

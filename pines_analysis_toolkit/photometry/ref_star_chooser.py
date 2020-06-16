@@ -24,18 +24,27 @@ from astropy.stats import sigma_clipped_stats
         closeness_tolerance (float, optional): The closest a potential reference star can be to another source before it's discarded (in pixels). 
         distance_from_target (float, optional): The furthest a potential reference star can be from the target before it's discarded (in pixels).
         lower_left (bool, optional): Whether or not to automatically discard potential references in the lower left quadrant, which is necessary if Mimir's bars problem exists in the data. 
+        restore (bool, optional): Whether or not to restore ref_star_chooser output that already exists. 
+
     Outputs:
 		ref stars...
 	TODO:
 '''
 
-def ref_star_chooser(target, source_detect_image_ind=0, radius_check=6., non_linear_limit=3300., dimness_tolerance=1.0, closeness_tolerance=12.,distance_from_target=700.,lower_left='False'):
+def ref_star_chooser(target, source_detect_image_ind=0, radius_check=6., non_linear_limit=3300., dimness_tolerance=1.0, closeness_tolerance=12., distance_from_target=700., lower_left=False, restore=False):
     
     #Get the target's 'short name'
     short_name = short_name_creator(target)
 
     #Get your local PINES directory
     pines_path = pines_dir_check()
+
+    if restore:
+        output_df = pd.read_csv(pines_path/('Objects/'+short_name+'/sources/target_and_references.csv'))
+        print('')
+        print('Restoring ref_star_chooser output from {}.'.format(pines_path/('Objects/'+short_name+'/sources/target_and_references.csv')))
+        print('')
+        return output_df
 
     #Find reduced files in the directory.
     data_dir = pines_path/('Objects/'+short_name+'/reduced/')
