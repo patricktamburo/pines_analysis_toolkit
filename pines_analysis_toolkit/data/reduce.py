@@ -39,6 +39,8 @@ import paramiko
 		target_name (str): the target's full 2MASS name, i.e. '2MASS J01234567+0123456' 
 		flat_type (str, optional): either 'dome' or 'sky'. By default, set to dome. We haven't seen better performance with sky flats. 
 		upload (bool, optional): whether or not to upload the reduced images to pines.bu.edu. By default, False (so you won't try to upload!).
+		delete_raw (bool, optional): whether or not to delete raw files from your local directory for this target when done reduction/upload process. 
+		delete_reduced (bool, optional): whether or not to delete reduced files from your local directory for this target when done reduction/upload process.
 	Outputs:
 		None
 	TODO:
@@ -47,7 +49,9 @@ import paramiko
 '''
 	
 
-def reduce(target_name, flat_type='dome', upload=False):
+def reduce(target_name, flat_type='dome', upload=False, delete_raw=False, delete_reduced=False):
+	print('')
+	print('Starting reduction script for {}.'.format(target_name))
 	pines_path = pines_dir_check()
 	short_name = short_name_creator(target_name)
 
@@ -104,9 +108,9 @@ def reduce(target_name, flat_type='dome', upload=False):
 		exptime = header['EXPTIME']
 		obs_date = datetime.strptime(header['DATE-OBS'].split('T')[0].replace('-',''),'%Y%m%d')
 
-		possible_darks = [x for x in (dark_path/'Master Darks').glob('*.fits')]
+		possible_darks = [x for x in (dark_path/'Master Darks').glob('*'+str(exptime)+'*.fits')]
 		possible_flats = [x for x in (flats_path/(band+'/Master Flats')).glob('*.fits')]
-		
+
 		if (len(possible_darks) == 0): 
 			print('ERROR: Could not find any suitable darks to reduce {}. Check exposure time of the image.'.format(raw_files[i].split('/')[-1]))
 			pdb.set_trace()
@@ -179,7 +183,16 @@ def reduce(target_name, flat_type='dome', upload=False):
 				print('{} already exists in {}, skipping.'.format(file.name,nights[ind]))
 				sftp.chdir('..')
 
-		
+	if delete_raw:
+		files_to_delete = glob.glob(os.path.join(raw_path/'*.fits'))
+		for j in range(len(files_to_delete)):
+			os.remove(files_to_delete[j])
+
+	if delete_reduced:
+		files_to_delete = glob.glob(os.path.join(reduced_path/'*.fits'))
+		for j in range(len(files_to_delete)):
+			os.remove(files_to_delete[j])
+
 	print('reduce runtime: ', round((time.time()-t1)/60,1), ' minutes.')
 	print('Reduction script has completed.')
 	print('')

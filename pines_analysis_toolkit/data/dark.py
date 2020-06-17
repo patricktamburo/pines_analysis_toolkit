@@ -76,18 +76,41 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
         return
 
     else:
-        log_path = pines_path/'Logs'
-        #Check if you already have the log for this date, if not, download it. 
-        if not (log_path/(date+'_log.txt')).exists():
-            print('Donwloading {}_log.txt to {}\n'.format(date,log_path))
-            sftp.get(date+'_log.txt',log_path/(date+'_log.txt'))
-        
-        #Read in the log from this date.
-        log = pines_log_reader(log_path/(date+'_log.txt'))
+        #If the file start/stop numbers are specfied, grab those files.
+        if (dark_stop != 0):
+            files_in_dir = sftp.listdir()
+            dark_filenums = np.arange(dark_start, dark_stop+1, step=1)
+            dark_files = []
 
-        #Identify dark files. 
-        dark_inds = np.where((log['Target'] == 'Dark') & (log['Filename'] != 'test.fits') & (log['Exptime'] == exptime))[0]
-        dark_files = natsort.natsorted(list(set(log['Filename'][dark_inds]))) #Set guarantees we only grab the unique files that have been identified as flats, in case the log bugged out. 
+            #Add the darks to the file list. 
+            for i in range(len(dark_filenums)):
+                file_num = dark_filenums[i]
+                #Generate the filename. 
+                if file_num < 10:
+                    file_name = date+'.00'+str(file_num)+'.fits'
+                elif (file_num >= 10) and (file_num < 100):
+                    file_name = date+'.0'+str(file_num)+'.fits'
+                else:
+                    file_name = date+'.'+str(file_num)+'.fits'
+                #Check if the file name is in the directory, and if so, append it to the list of flat files. 
+                if file_name in files_in_dir:
+                    dark_files.append(file_name)
+                else:
+                    print('{} not found in directory, skipping.'.format(file_name))        
+        else:
+            #Otherwise, find the files automatically using the night's log. 
+            log_path = pines_path/'Logs'
+            #Check if you already have the log for this date, if not, download it. 
+            if not (log_path/(date+'_log.txt')).exists():
+                print('Donwloading {}_log.txt to {}\n'.format(date,log_path))
+                sftp.get(date+'_log.txt',log_path/(date+'_log.txt'))
+            
+            #Read in the log from this date.
+            log = pines_log_reader(log_path/(date+'_log.txt'))
+
+            #Identify dark files. 
+            dark_inds = np.where((log['Target'] == 'Dark') & (log['Filename'] != 'test.fits') & (log['Exptime'] == exptime))[0]
+            dark_files = natsort.natsorted(list(set(log['Filename'][dark_inds]))) #Set guarantees we only grab the unique files that have been identified as flats, in case the log bugged out. 
         print('Found {} dark files.'.format(len(dark_files)))
         print('')
 
@@ -112,6 +135,10 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
         print('-------------------------------------------------')
         for j in range(len(dark_files)):
             image_data = fits.open(dark_path/dark_files[j])[0].data[0:1024,:] #This line trims off the top two rows of the image, which are overscan.
+            header = fits.open(dark_path/dark_files[j])[0].header
+            if header['EXPTIME'] != exptime:
+                print('ERROR: {} taken has exposure time different than than exptime.'.format(dark_files[j]))
+                return
             dark_cube_raw[j,:,:] = image_data 
             print(str(j+1)+'    '+str(np.mean(image_data))+'    '+str(np.std(image_data))+'    '+ str(np.amax(image_data))+'    '+str(np.amin(image_data)))
 

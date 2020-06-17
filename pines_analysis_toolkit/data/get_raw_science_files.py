@@ -24,9 +24,12 @@ import time
         Zip files for faster download
         Allow user to specify run if target is observed during multiple runs 
         Have program automatically regenerate master_log.txt on the PINES server when run
+        Grab logs automatically.
 '''
 
 def get_raw_science_files(target_name):
+    print('')
+    print('Starting get_raw_science files for {}.'.format(target_name))
     #Prompt login: 
     print('')
     username = input('Enter username: ')
@@ -94,8 +97,8 @@ def get_raw_science_files(target_name):
                 date_holder_ind = np.where(np.array(dates) == night_check)[0][0]
                 files = date_holder[date_holder_ind]
                 for k in range(len(files)):
-                    print('Downloading to {}, {} of {}'.format(raw_data_path/files[k],file_num,len(file_names)))
                     if not (raw_data_path/files[k]).exists():
+                        print('Downloading to {}, {} of {}'.format(raw_data_path/files[k],file_num,len(file_names)))
                         sftp.get(files[k],raw_data_path/files[k])
                     else:
                         print('{} already in {}, skipping.'.format(files[k],raw_data_path))
