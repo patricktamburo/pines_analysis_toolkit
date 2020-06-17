@@ -11,6 +11,21 @@ from astropy.stats import sigma_clipped_stats
 import datetime 
 import math
 
+'''Authors:
+		Patrick Tamburo, Boston University, June 2020
+	Purpose:
+        Performs aperture photometry on a set of reduced images given dataframe of source positions. 
+	Inputs:
+        target (str): The target's full 2MASS name.
+        sources (pandas dataframe): List of source names, x and y positions in every image. 
+        ap_radii (list of floats): List of aperture radii in pixels for which aperture photometry wil be performed. 
+        an_in (float, optional): The inner radius of the annulus used to estimate background, in pixels. 
+        an_out (float, optional): The outer radius of the annulus used to estimate background, in pixels. 
+    Outputs:
+        None. 
+	TODO:
+'''
+
 def aper_phot(target, sources, ap_radii, an_in=12., an_out=30.):
     def hmsm_to_days(hour=0,min=0,sec=0,micro=0):
         """
