@@ -22,7 +22,6 @@ def get_master_darks(sftp, pines_dark_path):
         if not (pines_dark_path/('Master Darks/'+dark)).exists():
             sftp.get(dark, pines_dark_path/('Master Darks/'+dark))
             print('Downloading to {} '.format(pines_dark_path/('/Master Darks/'+dark)))
-        sftp.chdir('..')
     sftp.chdir('..')
     sftp.chdir('..')
     sftp.chdir('..')

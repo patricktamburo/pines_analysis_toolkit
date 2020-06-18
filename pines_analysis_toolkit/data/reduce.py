@@ -193,6 +193,7 @@ def reduce(target_name, flat_type='dome', upload=False, delete_raw=False, delete
 		for j in range(len(files_to_delete)):
 			os.remove(files_to_delete[j])
 
+	sftp.close()
 	print('reduce runtime: ', round((time.time()-t1)/60,1), ' minutes.')
 	print('Reduction script has completed.')
 	print('')
