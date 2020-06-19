@@ -12,6 +12,7 @@ import getpass
 import natsort
 import os
 from datetime import datetime
+import pysftp
 
 '''Authors:
 		Paul Dalba, Boston University, February 2017
@@ -20,7 +21,8 @@ from datetime import datetime
         Creates a master dark image for a given date and exposure time, and uploads to the PINES calibrations folder. 
         NOTE: Only admins are able to upload these files!
 	Inputs:
-		date (str): the UT date during which the dome flat field data was obtained (i.e., '20200531')
+		sftp (pysftp.Connection): the sftp connection to the pines server. 
+        date (str): the UT date during which the dome flat field data was obtained (i.e., '20200531')
         exptime (float): the exposure time of the dark images in question, in seconds
         dark_start (int, optional): The file number that represents the start of the dark sequence for this exptime. Can use these arguments
             to specify the dark data, in case the appropriate comments weren't entered into the FITS headers when they were created.
@@ -35,28 +37,14 @@ from datetime import datetime
         Implement specified start/stop arguments
 '''
 
-def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=False):
+def dark(sftp, date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=False):
     clip_lvl = 3 #The value to use for sigma clipping. 
     pines_path = pines_dir_check()
     np.seterr(invalid='ignore') #Suppress some warnings we don't care about in median combining. 
     exptime = float(exptime)
     plt.ion() #Turn on interactive plotting.
-    
-    #Prompt login: 
-    print('')
-    username = input('Enter username: ')
-    password = getpass.getpass('Enter password: ')
 
     t1 = time.time()
-
-    #Open ssh connection and set up local/remote paths.
-    ssh = paramiko.SSHClient()
-    ssh.load_system_host_keys()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect('pines.bu.edu',username=username, password=password)
-    sftp = ssh.open_sftp()
-    password = ''
-    print('')
 
     sftp.chdir('data/raw/mimir')
     run_list = sftp.listdir()
@@ -184,7 +172,6 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
         
         #Add some header keywords detailing the master_dark creation process. 
         hdu = fits.PrimaryHDU(dark_master)
-        hdu.header['HIERARCH MASTER_DARK CREATOR'] = username
         hdu.header['HIERARCH DATE CREATED'] = datetime.utcnow().strftime('%Y-%m-%d')+'T'+datetime.utcnow().strftime('%H:%M:%S')
         username = ''
 
@@ -234,6 +221,6 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
             files_to_delete = glob.glob(os.path.join(dark_path/'*.fits'))
             for j in range(len(files_to_delete)):
                 os.remove(files_to_delete[j])
-        sftp.close()
+
         print('dark runtime: ', np.round((time.time()-t1)/60,1), ' minutes.')
         print('Done!')

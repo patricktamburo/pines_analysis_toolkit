@@ -13,6 +13,7 @@ import paramiko
 import pandas
 import natsort
 from datetime import datetime
+import pysftp
 
 '''Authors:
 		Paul Dalba, Boston University, February 2017
@@ -21,6 +22,7 @@ from datetime import datetime
         Creates a master dome flat field image for a given date and band, and uploads to the PINES calibrations folder. 
         NOTE: Only admins are able to upload these files!
 	Inputs:
+        sftp (pysftp.Connection): the sftp connection to the pines server.
 		date (str): the UT date during which the dome flat field data was obtained (i.e., '20200531')
         band (str): the band in which the flat field data was takend, 'J' or 'H'
         flat_start (int, optional): The file number that represents the start of the lights **on** dome flat sequence. Can use these arguments
@@ -37,28 +39,14 @@ from datetime import datetime
 '''
 
 
-def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_start=0, lights_off_stop=0, upload=False, delete_raw=False):
+def dome_flat_field(sftp, date, band, lights_on_start=0, lights_on_stop=0, lights_off_start=0, lights_off_stop=0, upload=False, delete_raw=False):
     clip_lvl = 3 #The value to use for sigma clipping. 
     np.seterr(invalid='ignore') #Suppress some warnings we don't care about in median combining. 
     plt.ion() #Turn on interactive plotting.
     pines_path = pines_dir_check()
 
-    #Prompt login: 
-    print('')
-    username = input('Enter username: ')
-    password = getpass.getpass('Enter password: ')
-    print('')
-
     t1 = time.time()
 
-     #Open ssh connection and set up local/remote paths.
-    ssh = paramiko.SSHClient()
-    ssh.load_system_host_keys()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect('pines.bu.edu',username=username, password=password)
-    password = ''
-
-    sftp = ssh.open_sftp()
     sftp.chdir('data/raw/mimir')
     run_list = sftp.listdir()
     data_path = '' #Initialize to check that it gets filled. 
@@ -288,7 +276,6 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
         
         #Add some header keywords detailing the master_dark creation process. 
         hdu = fits.PrimaryHDU(flat_master)
-        hdu.header['HIERARCH MASTER_FLAT CREATOR'] = username
         hdu.header['HIERARCH DATE CREATED'] = datetime.utcnow().strftime('%Y-%m-%d')+'T'+datetime.utcnow().strftime('%H:%M:%S')
         username = ''
 

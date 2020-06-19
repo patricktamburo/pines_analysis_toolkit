@@ -15,7 +15,7 @@ import stat
 		None
 '''
 def get_master_dome_flats(sftp, pines_dome_flat_path):
-    sftp.chdir('data/calibrations/Flats/Domeflats')
+    sftp.chdir('/data/calibrations/Flats/Domeflats')
     bands = sftp.listdir()
     for i in range(len(bands)):
         band = bands[i]
