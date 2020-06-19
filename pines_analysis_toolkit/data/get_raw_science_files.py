@@ -8,11 +8,15 @@ from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
 from pines_analysis_toolkit.data.get_master_log import get_master_log
 from pines_analysis_toolkit.data.get_master_dome_flats import get_master_dome_flats
 from pines_analysis_toolkit.data.get_master_darks import get_master_darks
+from pines_analysis_toolkit.data.master_dark_chooser import master_dark_chooser
+from pines_analysis_toolkit.data.master_flat_chooser import master_flat_chooser
+from datetime import datetime
 import getpass 
 import pandas
 import numpy as np
 import time
 import pysftp
+from astropy.io import fits
 
 '''Authors: 
         Patrick Tamburo, Boston University, June 2020
@@ -131,6 +135,17 @@ def get_raw_science_files(sftp, target_name):
         if not (pines_path/('Master Images/'+target_name.replace(' ','')+'_master.fits')).exists():
             sftp.get(target_name.replace(' ','')+'_master.fits', pines_path/('Master Images/'+target_name.replace(' ','')+'_master.fits'))
             print('Downloading {} to {}.'.format(target_name.replace(' ','')+'_master.fits', pines_path/('Master Images/')))
+
+            #Reduce the master image. 
+            image = fits.open(pines_path/('Master Images/'+target_name.replace(' ','')+'_master.fits'))[0].data[0:1024,:]
+            header = fits.open(pines_path/('Master Images/'+target_name.replace(' ','')+'_master.fits'))[0].header
+            master_flat, master_flat_name = master_flat_chooser(pines_path/('Calibrations/Flats/Domeflats/'),header)
+            master_dark, master_dark_name = master_dark_chooser(pines_path/('Calibrations/Darks/'),header)
+            frame_red = (image - master_dark) / master_flat
+            header['HIERARCH DATE REDUCED'] = datetime.utcnow().strftime('%Y-%m-%d')+'T'+datetime.utcnow().strftime('%H:%M:%S')
+            header['HIERARCH MASTER DARK'] = master_dark_name
+            header['HIERARCH MASTER FLAT'] = master_flat_name
+            fits.writeto(pines_path/('Master Images/'+target_name.replace(' ','')+'_master.fits'), frame_red, header, overwrite=True)
         else:
             print('{} already exists in {}, skipping download.'.format(target_name.replace(' ','')+'_master.fits', pines_path/('Master Images/')))
     else:
