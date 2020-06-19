@@ -25,6 +25,8 @@ import matplotlib.pyplot as plt
 import natsort
 from pines_analysis_toolkit.utils.pines_dir_check import pines_dir_check
 from pines_analysis_toolkit.utils.short_name_creator import short_name_creator
+from pines_analysis_toolkit.data. master_flat_chooser import master_flat_chooser
+from pines_analysis_toolkit.data. master_dark_chooser import master_dark_chooser
 import getpass
 import paramiko
 import pysftp 
@@ -79,34 +81,11 @@ def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sf
 
 		frame_raw = frame_raw[0:1024,:] #Cuts off 2 rows of overscan (?) pixels
 
-		#Get the band and exptime to load in the appropriate dark/flat files.
-		band = header['FILTNME2']
-		exptime = header['EXPTIME']
-		obs_date = datetime.strptime(header['DATE-OBS'].split('T')[0].replace('-',''),'%Y%m%d')
+		#Load in the dark/flat files that were taken as close in time as possible to the target image. 
+		master_flat, master_flat_name = master_flat_chooser(flats_path, header)
+		master_dark, master_dark_name = master_dark_chooser(dark_path, header)
 
-		possible_darks = [x for x in (dark_path/'Master Darks').glob('*'+str(exptime)+'*.fits')]
-		possible_flats = [x for x in (flats_path/(band+'/Master Flats')).glob('*.fits')]
-
-		if (len(possible_darks) == 0): 
-			print('ERROR: Could not find any suitable darks to reduce {}. Check exposure time of the image.'.format(raw_files[i].split('/')[-1]))
-			pdb.set_trace()
-		if (len(possible_flats)) == 0:
-			print('ERROR: Could not find any suitable flatsto reduce {}. Check filter of the image.'.format(raw_files[i].split('/')[-1]))
-			pdb.set_trace()
-		
-		possible_dark_dates = [datetime.strptime(i.name.split('_')[-1].split('.')[0],'%Y%m%d') for i in possible_darks]
-		possible_flat_dates = [datetime.strptime(i.name.split('_')[-1].split('.')[0],'%Y%m%d') for i in possible_flats]
-
-		dark_date_distances = [abs(possible_dark_dates[i]-obs_date) for i in range(len(possible_dark_dates))]
-		dark_ind = where(array(dark_date_distances) == min(array(dark_date_distances)))[0][0]
-		master_dark = fits.open(possible_darks[dark_ind])[0].data	
-		master_dark_name = possible_darks[dark_ind].name
-
-		flat_date_distances = [abs(possible_flat_dates[i]-obs_date) for i in range(len(possible_flat_dates))]
-		flat_ind = where(array(flat_date_distances) == min(array(flat_date_distances)))[0][0]
-		master_flat = fits.open(possible_flats[flat_ind])[0].data
-		master_flat_name = possible_flats[flat_ind].name
-		
+		#Reduce the image. 
 		frame_red = (frame_raw - master_dark)/master_flat
 		frame_red = frame_red.astype('float32')
 
@@ -118,7 +97,7 @@ def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sf
 		if not os.path.exists(target_filename):
 			fits.writeto(target_filename, frame_red, header)
 			print('')
-			print("Reducing {}: {} of {}, band = {}, exptime = {} s, dark = {}, flat = {}".format(raw_files[i].name, str(i+1), str(size(raw_files)), band, str(exptime), master_dark_name, master_flat_name))
+			print("Reducing {}: {} of {}, band = {}, exptime = {} s, dark = {}, flat = {}".format(raw_files[i].name, str(i+1), str(size(raw_files)), header['FILTNME2'], header['EXPTIME'], master_dark_name, master_flat_name))
 		else:
 			print('{} already in reduced path, skipping.'.format(raw_files[i].name))
 	
