@@ -1,4 +1,3 @@
-import paramiko
 import os
 import pathlib
 import pdb
@@ -124,6 +123,18 @@ def get_raw_science_files(sftp, target_name):
                             print('{} already in {}, skipping.'.format(log_name,pines_path/'Logs/'))
                     sftp.chdir('..')
             sftp.chdir('..')
+    
+    print('')
+    #Now grab the master image. 
+    sftp.chdir('/data/master_images/')
+    if sftp.exists(target_name.replace(' ','')+'_master.fits'):
+        if not (pines_path/('Master Images/'+target_name.replace(' ','')+'_master.fits')).exists():
+            sftp.get(target_name.replace(' ','')+'_master.fits', pines_path/('Master Images/'+target_name.replace(' ','')+'_master.fits'))
+            print('Downloading {} to {}.'.format(target_name.replace(' ','')+'_master.fits', pines_path/('Master Images/')))
+        else:
+            print('{} already exists in {}, skipping download.'.format(target_name.replace(' ','')+'_master.fits', pines_path/('Master Images/')))
+    else:
+        print('No master file found on pines.bu.edu:/data/master_images/ for {}.'.format(target_name))
 
     print('')
     print('get_raw_science_files runtime: ', np.round((time.time()-t1)/60,1), ' minutes.')
