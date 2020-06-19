@@ -43,13 +43,17 @@ def centroider(target, sources, plots=False, restore=False):
     plt.ion() 
     np.seterr(divide='ignore', invalid='ignore') #Suppress some warnings we don't care about in median combining. 
 
-    #Declare some new empty columns in the sources dataframe.
-    sources['X Centroids'] = [[] for x in range(len(sources))]
-    sources['Y Centroids'] = [[] for x in range(len(sources))]
-
     #Get list of reduced files for target. 
     reduced_path = pines_path/('Objects/'+short_name+'/reduced')
     reduced_files = np.array(natsort.natsorted([x for x in reduced_path.glob('*.fits')]))
+
+    #Declare a new dataframe to hold the centroid information for all sources we want to track. 
+    columns = []
+    for i in range(0, len(sources)):
+        columns.append(sources['Name'][i]+' X')
+        columns.append(sources['Name'][i]+' Y')
+
+    centroid_df = pd.DataFrame(index=range(len(reduced_files)), columns=columns)
 
     log_path = pines_path/('Logs/')
     log_dates = np.array(natsort.natsorted([x.name.split('_')[0] for x in log_path.glob('*.txt')]))
@@ -65,8 +69,8 @@ def centroider(target, sources, plots=False, restore=False):
     clip_val  = 4 #Sigma value below which pixels are masked. 
     for i in range(len(sources)):
         #Get the initial source position.
-        x_pos = sources['X'][i] 
-        y_pos = sources['Y'][i] 
+        x_pos = sources['Source Detect X'][i] 
+        y_pos = sources['Source Detect Y'][i] 
         print('')
         print('Getting centroids for {}, source {} of {}.'.format(sources['Name'][i],i+1,len(sources)))
         print('')
@@ -81,8 +85,8 @@ def centroider(target, sources, plots=False, restore=False):
             y_shift = float(log['Y shift'][log_ind])
 
             #Apply the shift. 
-            x_pos = sources['X'][i] - x_shift
-            y_pos = sources['Y'][i] + y_shift
+            x_pos = sources['Source Detect X'][i] - x_shift
+            y_pos = sources['Source Detect Y'][i] + y_shift
 
             #Get sigma_clipped_stats of the box around this guess position.
             stats = sigma_clipped_stats(image[int(y_pos-box_w):int(y_pos+box_w), int(x_pos-box_w):int(x_pos+box_w)])
@@ -102,6 +106,11 @@ def centroider(target, sources, plots=False, restore=False):
             #centroid_x, centroid_y = centroid_2dg(image-stats[1], error=1/(np.sqrt(image)**2) mask=mask)
             centroid_x, centroid_y = centroid_com(image-stats[1], mask=mask)
 
+            #Do a quick check to make sure the centroid ended up where we expected it to be. 
+            if (abs(centroid_x - x_pos) > 5) or (abs(centroid_y - y_pos) > 5):
+                pdb.set_trace()
+
+
             if plots: 
                 #Plot
                 plt.imshow(-1*image*(mask-1), origin='lower', vmin=stats[1], vmax=stats[1]+7*stats[2])
@@ -113,9 +122,9 @@ def centroider(target, sources, plots=False, restore=False):
                 plt.clf()
 
             #Record the position.
-            sources['X Centroids'].iloc[i].extend([centroid_x])
-            sources['Y Centroids'].iloc[i].extend([centroid_y])
-    pdb.set_trace()
-    sources.to_csv(pines_path/('Objects/'+short_name+'/sources/target_and_references_centroids.csv'))
+            centroid_df[sources['Name'][i]+' X'][j] = centroid_x
+            centroid_df[sources['Name'][i]+' Y'][j] = centroid_y
+
+    centroid_df.to_csv(pines_path/('Objects/'+short_name+'/sources/target_and_references_centroids.csv'))
     np.seterr(divide='warn', invalid='warn') 
     return sources
