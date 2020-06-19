@@ -26,7 +26,7 @@ import math
 	TODO:
 '''
 
-def aper_phot(target, sources, ap_radii, an_in=12., an_out=30.):
+def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.):
     def hmsm_to_days(hour=0,min=0,sec=0,micro=0):
         """
         Convert hours, minutes, seconds, and microseconds to fractional days.
@@ -83,15 +83,25 @@ def aper_phot(target, sources, ap_radii, an_in=12., an_out=30.):
     reduced_path = pines_path/('Objects/'+short_name+'/reduced')
     reduced_files = np.array(natsort.natsorted([x for x in reduced_path.glob('*.fits')]))
 
+    source_names = []
+    for i in centroided_sources.keys():
+        name = i.split(' ')[0]+' '+i.split(' ')[1]
+        if name not in source_names:
+            source_names.append(name)
+    
+    if len(source_names) != len(centroided_sources.keys())/2:
+        print('ERROR: something going wrong grabbing source names. ')
+        return
+        
     #Loop over all aperture radii. 
     for ap in ap_radii:
         print('Doing aperture photometry for {}, aperture radius = {} pix, inner annulus radius = {} pix, outer annulus radius = {} pix.'.format(target, ap, an_in, an_out))
 
         #Declare a new dataframe to hold the information for all targets for this aperture. 
-        columns = ['Time UT', 'Time JD', 'Airmass', sources['Name'][0]+' Aper Phot', sources['Name'][0]+' Background']
-        for i in range(1, len(sources)):
-            columns.append(sources['Name'][i]+' Aper Phot')
-            columns.append(sources['Name'][i]+' Background')
+        columns = ['Time UT', 'Time JD', 'Airmass']
+        for i in range(0, len(source_names)):
+            columns.append(source_names[i]+' Aper Phot')
+            columns.append(source_names[i]+' Background')
 
         ap_df = pd.DataFrame(index=range(len(reduced_files)), columns=columns)
         output_filename = pines_path/('Objects/'+short_name+'/aper_phot/'+short_name+'_aper_phot_'+str(float(ap))+'_pix_radius.csv')
@@ -111,9 +121,9 @@ def aper_phot(target, sources, ap_radii, an_in=12., an_out=30.):
 
             #Get the source positions in this image.
             positions = []
-            for i in range(len(sources)):
-                positions.append((sources['X Centroids'][i][j], sources['Y Centroids'][i][j]))
-            
+            for i in range(len(source_names)):
+                positions.append((centroided_sources[source_names[i]+' X'][j], centroided_sources[source_names[i]+' Y'][j]))
+
             #Create an aperture centered on this position with radius = ap. 
             apertures = CircularAperture(positions, r=ap)
 
@@ -135,8 +145,8 @@ def aper_phot(target, sources, ap_radii, an_in=12., an_out=30.):
                 stats = sigma_clipped_stats(annulus_data_1d)
                 background = stats[1] * apertures[i].area
                 ap_counts = raw_ap_flux['aperture_sum'][i] - background
-                ap_df[sources['Name'][i]+' Aper Phot'][j] = ap_counts
-                ap_df[sources['Name'][i]+' Background'][j] = stats[1]
+                ap_df[source_names[i]+' Aper Phot'][j] = ap_counts
+                ap_df[source_names[i]+' Background'][j] = stats[1]
 
         # for i in range(len(sources)):
         #     name = sources['Name'][i] + ' Aper Phot'
