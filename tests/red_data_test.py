@@ -1,5 +1,5 @@
 import pines_analysis_toolkit as pat
-
+import pdb
 '''
 -------------------------------INSTRUCTIONS BEFORE YOU START------------------------------------------------
 IF AN EARLIER VERSION OF PINES_ANALYSIS_TOOLKIT IS INSTALLED, YOU MUST REMOVE IT AND REINSTALL TO SEE UPDATES!
@@ -23,5 +23,6 @@ If it installs successfully, then you're able to run this code to test out some 
 
 #Declare a target that you want reduced science data for, using its full 2MASS name.
 target = '2MASS J16291840+0335371'
-
-pat.data.get_reduced_science_files(target)
+sftp = pat.utils.pines_login()
+pat.data.get_reduced_science_files(sftp, target)
+sftp.close()

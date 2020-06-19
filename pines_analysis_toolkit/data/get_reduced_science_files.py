@@ -28,13 +28,9 @@ import time
         Grab logs for each night of data, need them in centroider.py.
 '''
 
-def get_reduced_science_files(target_name):
-    #Prompt login: 
-    print('')
-    username = input('Enter username: ')
-    password = getpass.getpass('Enter password: ')
-    print('')
-
+def get_reduced_science_files(sftp, target_name):
+    t1 = time.time()
+    
     #Get the user's pines_analysis_toolkit path 
     pines_path = pines_dir_check()
 
@@ -46,23 +42,12 @@ def get_reduced_science_files(target_name):
 
     reduced_data_path = pines_path/('Objects/'+short_name+'/reduced/')
 
-    #Open ssh connection and set up local/remote paths.
-    ssh = paramiko.SSHClient()
-    ssh.load_system_host_keys()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect('pines.bu.edu',username=username, password=password)
-    sftp = ssh.open_sftp()
-    t1 = time.time()
-
-    username = ''
-    password = ''
-
     print('')
     print('Searching pines.bu.edu for reduced science files for {}.'.format(target_name))
     print('')
 
     #Grab an up-to-date copy of the master log, which will be used to find images. 
-    get_master_log(ssh, sftp, pines_path)
+    get_master_log(sftp, pines_path)
     
     #Read in the master target list and find images of the requested target. 
     df = pines_log_reader(pines_path/('Logs/master_log.txt'))
@@ -115,9 +100,7 @@ def get_reduced_science_files(target_name):
         sftp.chdir('..')
 
     #Now grab the logs.
-    sftp.chdir('..')
-    sftp.chdir('..')
-    sftp.chdir('raw/mimir')
+    sftp.chdir('/data/raw/mimir')
     print('')
     for i in range(len(run_dirs)):
             sftp.chdir(run_dirs[i])
@@ -137,7 +120,6 @@ def get_reduced_science_files(target_name):
                     sftp.chdir('..')
             sftp.chdir('..')
 
-    sftp.close()
     print('')
     print('get_reduced_science_files runtime: ', np.round((time.time()-t1)/60,1), ' minutes.')
     print('Done!')

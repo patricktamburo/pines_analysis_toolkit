@@ -7,16 +7,20 @@ from pines_analysis_toolkit.utils.short_name_creator import short_name_creator
 from pines_analysis_toolkit.utils.object_directory_creator import object_directory_creator
 from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
 from pines_analysis_toolkit.data.get_master_log import get_master_log
+from pines_analysis_toolkit.data.get_master_dome_flats import get_master_dome_flats
+from pines_analysis_toolkit.data.get_master_darks import get_master_darks
 import getpass 
 import pandas
 import numpy as np
 import time
+import pysftp
 
 '''Authors: 
         Patrick Tamburo, Boston University, June 2020
    Purpose: 
         Finds raw science files on the PINES server for a specified target, and downloads them.
    Inputs:
+        sftp (pysftp.Connection): the sftp connection to the pines server.
         target_name (str): the target's full 2MASS name, i.e. '2MASS J01234567+0123456' 
     Outputs:
         None
@@ -27,16 +31,11 @@ import time
         Grab logs automatically.
 '''
 
-def get_raw_science_files(target_name):
+def get_raw_science_files(sftp, target_name):
+    t1 = time.time()
     print('')
     print('Starting get_raw_science files for {}.'.format(target_name))
-    #Prompt login: 
-    print('')
-    username = input('Enter username: ')
-    password = getpass.getpass('Enter password: ')
-    print('')
-
-
+   
     #Get the user's pines_analysis_toolkit path 
     pines_path = pines_dir_check()
 
@@ -46,22 +45,21 @@ def get_raw_science_files(target_name):
         object_directory_creator(pines_path, short_name)
 
     raw_data_path = pines_path/('Objects/'+short_name+'/raw/')
-
-    #Open ssh connection and set up local/remote paths.
-    ssh = paramiko.SSHClient()
-    ssh.load_system_host_keys()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect('pines.bu.edu',username=username, password=password)
-    sftp = ssh.open_sftp()
-
-    t1 = time.time()
+    dark_path = pines_path/('Calibrations/Darks')
+    flats_path = pines_path/('Calibrations/Flats/Domeflats')
+    
     print('Searching pines.bu.edu for raw science files for {}.'.format(target_name))
-
-    username = ''
-    password = ''
     
     #Grab an up-to-date copy of the master log, which will be used to find images. 
-    get_master_log(ssh, sftp, pines_path)
+    get_master_log(sftp, pines_path)
+
+    #Let's grab all of the available calibration data on pines.bu.edu.
+    print('')
+    get_master_dome_flats(sftp, flats_path)
+    get_master_darks(sftp, dark_path)
+    print('Domeflats and darks up to date!')
+    print('')
+    time.sleep(2)
 
     #Read in the master target list and find images of the requested target. 
     df = pines_log_reader(pines_path/('Logs/master_log.txt'))
@@ -105,8 +103,28 @@ def get_raw_science_files(target_name):
                     file_num += 1
                 sftp.chdir('..')
         sftp.chdir('..')
-        
-    sftp.close()
+    
+    #Now grab the logs.
+    sftp.chdir('/data/raw/mimir')
+    print('')
+    for i in range(len(run_dirs)):
+            sftp.chdir(run_dirs[i])
+            night_dirs = sftp.listdir()
+            for j in range(len(night_dirs)):
+                night_check = night_dirs[j]
+                if night_check in dates:
+                    sftp.chdir(night_check)
+                    log_name = night_check+'_log.txt'
+                    files_in_path = sftp.listdir()
+                    if log_name in files_in_path:
+                        if not (pines_path/('Logs/'+log_name)).exists():
+                            sftp.get(log_name,pines_path/('Logs/'+log_name))
+                            print('Downloading {} to {}.'.format(log_name, pines_path/('Logs/'+log_name)))
+                        else:
+                            print('{} already in {}, skipping.'.format(log_name,pines_path/'Logs/'))
+                    sftp.chdir('..')
+            sftp.chdir('..')
+
     print('')
     print('get_raw_science_files runtime: ', np.round((time.time()-t1)/60,1), ' minutes.')
     print('Done!')

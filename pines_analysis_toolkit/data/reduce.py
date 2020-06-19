@@ -25,10 +25,9 @@ import matplotlib.pyplot as plt
 import natsort
 from pines_analysis_toolkit.utils.pines_dir_check import pines_dir_check
 from pines_analysis_toolkit.utils.short_name_creator import short_name_creator
-from pines_analysis_toolkit.data.get_master_dome_flats import get_master_dome_flats
-from pines_analysis_toolkit.data.get_master_darks import get_master_darks
 import getpass
 import paramiko
+import pysftp 
 
 '''Authors:
 		Paul Dalba, Boston University, February 2017
@@ -37,8 +36,8 @@ import paramiko
 		Reduces raw PINES science images for a specified target and saves the reduced images. 
 	Inputs:
 		target_name (str): the target's full 2MASS name, i.e. '2MASS J01234567+0123456' 
-		flat_type (str, optional): either 'dome' or 'sky'. By default, set to dome. We haven't seen better performance with sky flats. 
 		upload (bool, optional): whether or not to upload the reduced images to pines.bu.edu. By default, False (so you won't try to upload!).
+		sftp (pysftp.Connection, optional): the sftp connection to the pines server, required if you are going to upload reduced data
 		delete_raw (bool, optional): whether or not to delete raw files from your local directory for this target when done reduction/upload process. 
 		delete_reduced (bool, optional): whether or not to delete reduced files from your local directory for this target when done reduction/upload process.
 	Outputs:
@@ -49,9 +48,15 @@ import paramiko
 '''
 	
 
-def reduce(target_name, flat_type='dome', upload=False, delete_raw=False, delete_reduced=False):
+def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sftp=''):
+	t1 = time.time()
 	print('')
 	print('Starting reduction script for {}.'.format(target_name))
+
+	if (upload is True) and (sftp == ''):
+		print('ERROR: You must pass an sftp connection if you want to upload reduced files to pines.bu.edu.!')
+		return
+
 	pines_path = pines_dir_check()
 	short_name = short_name_creator(target_name)
 
@@ -59,36 +64,8 @@ def reduce(target_name, flat_type='dome', upload=False, delete_raw=False, delete
 	raw_path = pines_path/('Objects/'+short_name+'/raw')
 	raw_files = [Path(i) for i in natsort.natsorted(glob.glob(os.path.join(raw_path,'*.fits')))] #Natsort sorts things how you expect them to be sorted.
 	dark_path = pines_path/('Calibrations/Darks')
-	if flat_type == 'sky':
-		print('ERROR: skyflat reduction not yet implemented.')
-		pdb.set_trace()
-	elif flat_type == 'dome':
-		reduced_path = pines_path/('Objects/'+short_name+'/reduced')
-		flats_path = pines_path/('Calibrations/Flats/Domeflats')
-
-	#Prompt login: 
-	print('')
-	username = input('Enter username: ')
-	password = getpass.getpass('Enter password: ')
-	print('')
-
-	t1 = time.time()
-
-	#Open ssh connection and set up local/remote paths.
-	ssh = paramiko.SSHClient()
-	ssh.load_system_host_keys()
-	ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-	ssh.connect('pines.bu.edu',username=username, password=password)
-	password = ''
-	sftp = ssh.open_sftp()
-	
-	#Let's grab all of the available calibration data on pines.bu.edu.
-	print('')
-	get_master_dome_flats(sftp, flats_path)
-	get_master_darks(sftp, dark_path)
-	print('Domeflats and darks up to date!')
-	print('')
-	time.sleep(2)
+	reduced_path = pines_path/('Objects/'+short_name+'/reduced')
+	flats_path = pines_path/('Calibrations/Flats/Domeflats')
 
 	#Now begin the loop to load and reduce the raw science data
 	for i in range(size(raw_files)):
@@ -126,26 +103,19 @@ def reduce(target_name, flat_type='dome', upload=False, delete_raw=False, delete
 		master_dark = fits.open(possible_darks[dark_ind])[0].data	
 		master_dark_name = possible_darks[dark_ind].name
 
-		if flat_type == 'dome':  
-			flat_date_distances = [abs(possible_flat_dates[i]-obs_date) for i in range(len(possible_flat_dates))]
-			flat_ind = where(array(flat_date_distances) == min(array(flat_date_distances)))[0][0]
-			master_flat = fits.open(possible_flats[flat_ind])[0].data
-			master_flat_name = possible_flats[flat_ind].name
-
-		elif flat_type == 'sky':
-			print('ERROR: Still have to add skyflat functionality.')
-			pdb.set_trace()
+		flat_date_distances = [abs(possible_flat_dates[i]-obs_date) for i in range(len(possible_flat_dates))]
+		flat_ind = where(array(flat_date_distances) == min(array(flat_date_distances)))[0][0]
+		master_flat = fits.open(possible_flats[flat_ind])[0].data
+		master_flat_name = possible_flats[flat_ind].name
 		
 		frame_red = (frame_raw - master_dark)/master_flat
 		frame_red = frame_red.astype('float32')
 
 		#Store some parameters in the reduced file's header. 
 		#Naming convention follows https://docs.astropy.org/en/stable/io/fits/usage/headers.html.
-		header['HIERARCH REDUCER'] = username
 		header['HIERARCH DATE REDUCED'] = datetime.utcnow().strftime('%Y-%m-%d')+'T'+datetime.utcnow().strftime('%H:%M:%S')
 		header['HIERARCH MASTER DARK'] = master_dark_name
 		header['HIERARCH MASTER FLAT'] = master_flat_name
-		header['HIERARCH FLAT TYPE'] = flat_type
 		if not os.path.exists(target_filename):
 			fits.writeto(target_filename, frame_red, header)
 			print('')
@@ -154,13 +124,12 @@ def reduce(target_name, flat_type='dome', upload=False, delete_raw=False, delete
 			print('{} already in reduced path, skipping.'.format(raw_files[i].name))
 	
 	print('')
-	username = ''
 	if upload:
 		print('Beginning upload process to pines.bu.edu...')
 		print('Note, only PINES admins will be able to upload.')
 		print('')
 		time.sleep(2)
-		sftp.chdir('data/reduced/mimir/')
+		sftp.chdir('/data/reduced/mimir/')
 		files_to_upload = array(natsort.natsorted(array([x for x in reduced_path.glob('*.fits')])))
 		for i in range(len(files_to_upload)):
 			file = files_to_upload[i]
@@ -180,7 +149,7 @@ def reduce(target_name, flat_type='dome', upload=False, delete_raw=False, delete
 				sftp.put(file,nights[ind]+'/'+file.name)
 				sftp.chdir('..')
 			else:
-				print('{} already exists in {}, skipping.'.format(file.name,nights[ind]))
+				print('{} already exists in {}, skipping. {} of {}.'.format(file.name,nights[ind],i+1,len(files_to_upload)))
 				sftp.chdir('..')
 
 	if delete_raw:
@@ -193,7 +162,6 @@ def reduce(target_name, flat_type='dome', upload=False, delete_raw=False, delete
 		for j in range(len(files_to_delete)):
 			os.remove(files_to_delete[j])
 
-	sftp.close()
 	print('reduce runtime: ', round((time.time()-t1)/60,1), ' minutes.')
 	print('Reduction script has completed.')
 	print('')

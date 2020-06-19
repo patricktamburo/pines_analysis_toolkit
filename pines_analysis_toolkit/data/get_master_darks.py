@@ -15,7 +15,7 @@ import stat
 		None
 '''
 def get_master_darks(sftp, pines_dark_path):
-    sftp.chdir('data/calibrations/Darks')
+    sftp.chdir('/data/calibrations/Darks')
     darks = sftp.listdir()
     for i in range(len(darks)):
         dark = darks[i]
