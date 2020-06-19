@@ -9,21 +9,22 @@ from pines_analysis_toolkit.utils.pines_dir_check import pines_dir_check
 import pickle
 
 '''Authors:
-	        Patrick Tamburo, Boston University, June 2020
+        Patrick Tamburo, Boston University, June 2020
 	Purpose:
-                Finds sources in reduced Mimir image. 
+        Finds sources in reduced Mimir image. 
 	Inputs:
-                image_path(pathlib.Path): The path to the reduced image you want to detect sources in.
-                title (str, optional): The title for the plot.
-                plot (bool, optional): Whether or not to return the plot of detected sources. By defaut, False. s
+        image_path(pathlib.Path): the path to the reduced image you want to detect sources in.
+        fhwm (float): the fwhm in pixels for the source detection.
+        thresh (float): the number of sigma above background for source detection.
+        plot (bool, optional): whether or not to plot the detected sources. Will also save plot. 
     Outputs:
-	        sources (astropy table): Table of sources found in the image, containing centroids and quick photometry estimate.
+        sources (astropy table): table of sources found in the image, containing centroids and quick photometry estimate.
 	TODO:
-                Choose fwhm for source detection based on seeing measured in log. 
-                Make bpm a fits image?
+        Choose fwhm for source detection based on seeing measured in log. 
+        Make bpm a fits image?
 '''
 
-def detect_sources(image_path, title='', plot=False):
+def detect_sources(image_path, fwhm=5.0, thresh=3.0, plot=False):
     plt.ion() #Turn on interactive plotting
     ap_rad = 4 #Radius of aperture in pixels for doing quick photometry on detected sources, 4 should be fine. 
     edge_tolerance = 20 #Number of pixels from the edge where detected sources are cut from. We don't want these because they can shift off the detector.
@@ -40,6 +41,7 @@ def detect_sources(image_path, title='', plot=False):
     #Get the sigma_clipped_stats for the image.
     avg, med, std = sigma_clipped_stats(image, sigma=3, maxiters=8)
     if plot:
+        title = image_path.name
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10,9))
         ax.set_aspect('equal')
         im = ax.imshow(image, origin='lower', vmin=med, vmax=med+7*std, cmap='Greys_r')
@@ -53,12 +55,12 @@ def detect_sources(image_path, title='', plot=False):
     print('')
 
     #Detect sources using DAOStarFinder.
-    daofind = DAOStarFinder(fwhm=5.0, threshold=3.*std)  
+    daofind = DAOStarFinder(fwhm=fwhm, threshold=thresh*std)  
     initial_sources = daofind(image - med, mask=bpm)
 
     #Do a cut based on source sharpness to get rid of some false detections.
     initial_sources.sort('sharpness')        
-    bad_sharpness_locs = np.where(initial_sources['sharpness'] < 0.5)[0]
+    bad_sharpness_locs = np.where(initial_sources['sharpness'] < 0.4)[0]
     initial_sources.remove_rows(bad_sharpness_locs)
 
     #Cut sources that are found within edge_tolerance pix of the edges.
@@ -90,8 +92,5 @@ def detect_sources(image_path, title='', plot=False):
         plt.savefig(pines_path/'')
 
     sources = phot_table[::-1].to_pandas() #Resort remaining sources so that the brightest are listed firsts. 
-    if plot:
-        return (sources, ax)
-    else:
-        return sources
+    return sources
     
