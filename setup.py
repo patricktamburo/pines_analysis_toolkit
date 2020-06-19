@@ -34,6 +34,7 @@ if not os.path.exists(default_pines_dir):
     os.mkdir(default_pines_dir/'Calibrations/Bad Pixel Masks/')
     os.mkdir(default_pines_dir/'Logs/')
     os.mkdir(default_pines_dir/'Objects/')
+    os.mkdir(default_pines_dir/'Master Images/')
 else:
     print(default_pines_dir,'already exists, skipping.')
 

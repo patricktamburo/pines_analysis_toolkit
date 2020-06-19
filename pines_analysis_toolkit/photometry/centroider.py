@@ -115,6 +115,7 @@ def centroider(target, sources, plots=False, restore=False):
             #Record the position.
             sources['X Centroids'].iloc[i].extend([centroid_x])
             sources['Y Centroids'].iloc[i].extend([centroid_y])
+    pdb.set_trace()
     sources.to_csv(pines_path/('Objects/'+short_name+'/sources/target_and_references_centroids.csv'))
     np.seterr(divide='warn', invalid='warn') 
     return sources

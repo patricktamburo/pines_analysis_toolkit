@@ -43,7 +43,6 @@ import pysftp
 	Outputs:
 		None
 	TODO:
-		Change things to Path objects...current approach of splitting path names on '/' will break on Windows.
 		Protection for overwriting files?
 '''
 	

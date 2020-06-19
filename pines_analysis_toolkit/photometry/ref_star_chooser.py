@@ -121,10 +121,10 @@ def ref_star_chooser(target, source_detect_image_ind=0, radius_check=6., non_lin
     suitable_refs = sources.drop(bad_ref_ids).reset_index(drop=True).drop(columns=['id'])
     #suitable_refs.reset_index()
 
-    output_df = pd.DataFrame(columns = ['Name','X','Y'])
-    output_df = output_df.append({'Name': short_name, 'X': sources['xcenter'][target_id], 'Y': sources['ycenter'][target_id]}, ignore_index=True)
+    output_df = pd.DataFrame(columns = ['Name','Source Detect X','Source Detect Y'])
+    output_df = output_df.append({'Name': short_name, 'Source Detect X': sources['xcenter'][target_id], 'Source Detect Y': sources['ycenter'][target_id]}, ignore_index=True)
     for i in range(len(suitable_refs)):
-        output_df = output_df.append({'Name': 'Reference '+str(i+1), 'X': sources['xcenter'][suitable_ref_ids[i]], 'Y': sources['ycenter'][suitable_ref_ids[i]]}, ignore_index=True)
+        output_df = output_df.append({'Name': 'Reference '+str(i+1), 'Source Detect X': sources['xcenter'][suitable_ref_ids[i]], 'Source Detect Y': sources['ycenter'][suitable_ref_ids[i]]}, ignore_index=True)
     
     print('Saving target/reference info to {}.'.format(phot_dir/'target_and_references.csv'))
     output_df.to_csv(phot_dir/'target_and_references.csv',index=False)
@@ -136,14 +136,14 @@ def ref_star_chooser(target, source_detect_image_ind=0, radius_check=6., non_lin
     cax = fig.add_axes([0.87, 0.15, 0.035, 0.7])
     fig.colorbar(im, cax=cax, orientation='vertical', label='ADU')
     ax.set_title(reduced_files[source_detect_image_ind].name)
-    ax.plot(output_df['X'][0], output_df['Y'][0], marker='o', color='m', mew=2, ms=12, ls='', mfc='None', label='Target')
+    ax.plot(output_df['Source Detect X'][0], output_df['Source Detect Y'][0], marker='o', color='m', mew=2, ms=12, ls='', mfc='None', label='Target')
     for i in range(1,len(output_df)):
-        ax.plot(output_df['X'][i], output_df['Y'][i], marker='o', color='b', mew=2, ms=12, ls='', mfc='None', label='Reference')
+        ax.plot(output_df['Source Detect X'][i], output_df['Source Detect Y'][i], marker='o', color='b', mew=2, ms=12, ls='', mfc='None', label='Reference')
     handles, labels = ax.get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     ax.legend(by_label.values(), by_label.keys(), bbox_to_anchor=(1.1, 1.1))
     print('')
     print('Saving target and references image to {}.'.format(phot_dir/(reduced_files[source_detect_image_ind].name.split('.fits')[0]+'_target_and_refs.png')))
     plt.savefig(phot_dir/(reduced_files[source_detect_image_ind].name.split('.fits')[0]+'_target_and_refs.png'))
-
+    
     return output_df
