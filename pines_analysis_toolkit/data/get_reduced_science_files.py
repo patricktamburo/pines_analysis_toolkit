@@ -8,6 +8,8 @@ from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
 from pines_analysis_toolkit.data.get_master_log import get_master_log
 from pines_analysis_toolkit.data.master_dark_chooser import master_dark_chooser
 from pines_analysis_toolkit.data.master_flat_chooser import master_flat_chooser
+from pines_analysis_toolkit.data.get_master_darks import get_master_darks
+from pines_analysis_toolkit.data.get_master_dome_flats import get_master_dome_flats
 from datetime import datetime
 from astropy.io import fits
 import getpass 
@@ -44,13 +46,23 @@ def get_reduced_science_files(sftp, target_name):
         object_directory_creator(pines_path, short_name)
 
     reduced_data_path = pines_path/('Objects/'+short_name+'/reduced/')
-
+    dark_path = pines_path/('Calibrations/Darks')
+    flats_path = pines_path/('Calibrations/Flats/Domeflats')
+    
     print('')
     print('Searching pines.bu.edu for reduced science files for {}.'.format(target_name))
     print('')
 
     #Grab an up-to-date copy of the master log, which will be used to find images. 
     get_master_log(sftp, pines_path)
+
+    #Let's grab all of the available calibration data on pines.bu.edu.
+    print('')
+    get_master_dome_flats(sftp, flats_path)
+    get_master_darks(sftp, dark_path)
+    print('Domeflats and darks up to date!')
+    print('')
+    time.sleep(2)
     
     #Read in the master target list and find images of the requested target. 
     df = pines_log_reader(pines_path/('Logs/master_log.txt'))

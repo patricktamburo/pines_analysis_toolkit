@@ -154,6 +154,7 @@ def lightcurve(target, sources, phot_type='aper', ref_set_choice=[]):
         
         total_ref_variance = np.sum(ref_variances,axis=0)
 
+    plt.ion()
     pines_path = pines_dir_check()
     short_name = short_name_creator(target)
 
@@ -171,24 +172,16 @@ def lightcurve(target, sources, phot_type='aper', ref_set_choice=[]):
         times = np.array(phot_data['Time JD'])
 
         #Get the target's flux and background
-        targ_flux = np.array(phot_data[short_name+' Aper Phot'])
+        targ_flux = np.array(phot_data[short_name+' Aper Phot'])/np.median(phot_data[short_name+' Aper Phot'])
         targ_background = np.array(phot_data[short_name+' Background'])
 
         #Get the reference stars' fluxes and backgrounds. 
         ref_flux = np.zeros((num_refs, len(phot_data)))
         ref_background = np.zeros((num_refs, len(phot_data)))
         for i in range(0, num_refs):
-            ref_flux[i,:] = phot_data['Reference '+str(i+1)+' Aper Phot']
+            ref_flux[i,:] = phot_data['Reference '+str(i+1)+' Aper Phot']/np.median(phot_data['Reference '+str(i+1)+' Aper Phot'])
             ref_background[i,:] = phot_data['Reference '+str(i+1)+' Background']
 
-        W_var = (np.std(ref_flux, axis=1)**2) #Weight reference stars by their their average flux. 
-
-        W_var = W_var/(num_refs*np.mean(W_var)) #Normalize weights to sum to 1. 
-        alc = sum(W_var * np.transpose(ref_flux),axis=1) / sum(W_var)
-        targ_flux = targ_flux / alc
-        targ_flux = targ_flux / np.median(targ_flux)
-        plt.plot(times, targ_flux,color='k',marker='.')
-        plt.show()
         pdb.set_trace()
 
     # use_refs = '' #'all' for all refs, '' to optimize
