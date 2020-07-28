@@ -12,55 +12,34 @@ import julian
 import matplotlib
 from pylab import *
 from pines_analysis_toolkit.utils.pines_dir_check import pines_dir_check
+from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
 from pines_analysis_toolkit.utils.short_name_creator import short_name_creator
+from pines_analysis_toolkit.analysis.night_splitter import night_splitter
+from pines_analysis_toolkit.analysis.block_splitter import block_splitter
 import natsort
 import pandas as pd
+from scipy.stats import sigmaclip
+import matplotlib.dates as mdates
 
 #Input parameters
 def lightcurve(target, sources, phot_type='aper', ref_set_choice=[]):
 
-    def regression():
-        #Looks at correlations between seeing, background, and airmass with the target flux.
+    def regression(flux, seeing, airmass, corr_significance=1e-5):
+        #Looks at correlations between seeing and airmass with the target flux.
         #Takes those variables which are significantly correlated, and uses them in a linear regression to de-correlated the target flux. 
         
-
-        
-        #Calculate correlation with x and y seeing, and use the one with the higher correlation for regression. 
-
-        x_seeing_corr = pearsonr(norm_targ_flux,x_seeing)[0]
-        y_seeing_corr = pearsonr(norm_targ_flux,y_seeing)[0]
-        if max(abs(x_seeing_corr),abs(y_seeing_corr)) == abs(x_seeing_corr):
-            seeing = x_seeing
-        elif max(abs(x_seeing_corr),abs(y_seeing_corr)) == abs(y_seeing_corr):
-            seeing = y_seeing
-        #TODO: have a bug where y_seeing is like 3 times larger than x_seeing, just use x_seeing for now.
-        #seeing = x_seeing
         #Use the seeing in the regression if it's significantly correlated
-        if pearsonr(seeing,norm_targ_flux)[1] < corr_significance:
+        if pearsonr(seeing,flux)[1] < corr_significance:
             use_seeing = True
         else:
             use_seeing = False
         
-        #Same thing for background
-        if pearsonr(targ_background,norm_targ_flux)[1] < corr_significance:
-            use_background = True
-        else:
-            use_background = False
-        
         #Same thing for airmass
-        if pearsonr(airmass,norm_targ_flux)[1] < corr_significance:
+        if pearsonr(airmass,flux)[1] < corr_significance:
             use_airmass = True
         else:
             use_airmass = False   
-
-
-        #print('Correlation with x seeing: ',x_seeing_corr)
-        #print('Correlation with y seeing: ',y_seeing_corr)
-        #print('Correlation with background: ',pearsonr(norm_targ_flux,targ_background)[0])
-        #print('Correlation with airmass: ',pearsonr(norm_targ_flux,airmass)[0])
         
-        #print('Stddev. of lightcurve, pre-regression: ',np.std(norm_targ_flux))
-
         #Now set up the linear regression.
         regr = linear_model.LinearRegression()
         
@@ -71,22 +50,12 @@ def lightcurve(target, sources, phot_type='aper', ref_set_choice=[]):
             key = 'seeing'
             regress_dict[key] = seeing
         
-        if use_background:
-            key = 'background'
-            regress_dict[key] = targ_background
-        
         if use_airmass:
             key = 'airmass'
             regress_dict[key] = airmass
         
-        # if use_x_pos:
-        #     key = 'x_pos'
-        #     regress_dict[key] = x_position[0,:]
-
         #Finally, add target flux
-        regress_dict['Norm targ flux'] = norm_targ_flux
-
-        
+        regress_dict['flux'] = flux
 
         #Get list of keys
         keylist = list()
@@ -97,7 +66,7 @@ def lightcurve(target, sources, phot_type='aper', ref_set_choice=[]):
         #Create data frame of regressors.
         df = DataFrame(regress_dict,columns=keylist)
         x = df[keylist[0:len(keylist)-1]]
-        y = df['Norm targ flux']
+        y = df['flux']
 
         if np.shape(x)[1] >0:
             regr.fit(x,y)
@@ -107,30 +76,18 @@ def lightcurve(target, sources, phot_type='aper', ref_set_choice=[]):
             i = 0
 
             #Add in the other regressors, as necessary. Can't think of a way of doing this generally, just use a bunch of ifs. 
-            
-            if (use_seeing) and (use_background) and (use_airmass):
-                linear_regression_model = linear_regression_model+regr.coef_[i]*seeing+regr.coef_[i+1]*targ_background+regr.coef_[i+2]*airmass
-            if (use_seeing) and (use_background) and not (use_airmass):
-                linear_regression_model = linear_regression_model+regr.coef_[i]*seeing+regr.coef_[i+1]*targ_background
-            if (use_seeing) and (use_airmass) and not (use_background):
-                linear_regression_model = linear_regression_model+regr.coef_[i]*seeing+regr.coef_[i+1]*airmass
-            if (use_background) and (use_airmass) and not (use_seeing):
-                linear_regression_model = linear_regression_model+regr.coef_[i]*targ_background+regr.coef_[i+1]*airmass
-            if (use_seeing) and not (use_background) and not (use_airmass):
-                linear_regression_model = linear_regression_model+regr.coef_[i]*seeing
-            if (use_background) and not (use_seeing) and not (use_airmass):
-                linear_regression_model = linear_regression_model+regr.coef_[i]*targ_background
-            if (use_airmass) and not (use_seeing) and not (use_background):
-                linear_regression_model = linear_regression_model+regr.coef_[i]*airmass
-            
-
-            
+            if (use_seeing) and (use_airmass):
+                linear_regression_model = linear_regression_model + regr.coef_[0]*seeing + regr.coef_[1]*airmass
+            if (use_seeing) and not (use_airmass):
+                linear_regression_model = linear_regression_model + regr.coef_[0]*seeing
+            if not (use_seeing) and (use_airmass):
+                linear_regression_model = linear_regression_model + regr.coef_[0]*airmass
             #Divide out the fit. 
-            corrected_flux = norm_targ_flux/linear_regression_model    
+            corrected_flux = flux/linear_regression_model    
         else:
             #print('No regressors used.')
-            corrected_flux = norm_targ_flux
-        return (corrected_flux,seeing)
+            corrected_flux = flux
+        return corrected_flux
 
     def noise_estimator(r,ref_set):
         G = 8.21 #e- / DN
@@ -157,32 +114,219 @@ def lightcurve(target, sources, phot_type='aper', ref_set_choice=[]):
     plt.ion()
     pines_path = pines_dir_check()
     short_name = short_name_creator(target)
+    outlier_tolerance = 0.2 #If a reference > outlier_tolerance of its values above sigma clipping threshold, mark it as bad. 
 
     #Get list of photometry files for this target. 
     photometry_path = pines_path/('Objects/'+short_name+'/'+phot_type+'_phot/')
+    analysis_path = pines_path/('Objects/'+short_name+'/analysis')
     photometry_files = natsort.natsorted([x for x in photometry_path.glob('*.csv')])
 
     num_refs = len(sources) - 1
+
+    #Loop over all photometry files in the aper_phot directory. 
     for i in range(len(photometry_files)):
         #Load in the photometry data. 
         aperture_radius = float(str(photometry_files[i]).split('_')[-3])
-        phot_data = pd.read_csv(photometry_files[i])
+        phot_data = pines_log_reader(photometry_files[i])
 
         #Get times of exposures. 
         times = np.array(phot_data['Time JD'])
-
+        seeing = np.array(phot_data['Seeing'])
+        airmass = np.array(phot_data['Airmass'])
+        dts = np.array([julian.from_jd(times[i], fmt='jd') for i in range(len(times))])
+        
         #Get the target's flux and background
-        targ_flux = np.array(phot_data[short_name+' Aper Phot'])/np.median(phot_data[short_name+' Aper Phot'])
-        targ_background = np.array(phot_data[short_name+' Background'])
+        targ_flux = np.array(phot_data[short_name+' Flux'])
+        targ_flux_err = np.array(phot_data[short_name+' Flux Error'])
 
         #Get the reference stars' fluxes and backgrounds. 
         ref_flux = np.zeros((num_refs, len(phot_data)))
-        ref_background = np.zeros((num_refs, len(phot_data)))
-        for i in range(0, num_refs):
-            ref_flux[i,:] = phot_data['Reference '+str(i+1)+' Aper Phot']/np.median(phot_data['Reference '+str(i+1)+' Aper Phot'])
-            ref_background[i,:] = phot_data['Reference '+str(i+1)+' Background']
+        ref_flux_err = np.zeros((num_refs, len(phot_data)))
+        for j in range(0, num_refs):
+            ref_flux[j,:] = phot_data['Reference '+str(j+1)+' Flux']
+            ref_flux_err[j,:] = phot_data['Reference '+str(j+1)+' Flux Error']
+            #Discard variable stars. 
+            values, clow, chigh = sigmaclip(ref_flux[j], low=2.5, high=2.5)
+            if (len(phot_data) - len(values)) > (int(outlier_tolerance * len(phot_data))):
+                print('Have to add flagging bad refs.')
+                #pdb.set_trace()
+        
+        closest_ref = np.where(abs(np.mean(ref_flux, axis=1)-np.mean(targ_flux)) == min(abs(np.mean(ref_flux, axis=1)-np.mean(targ_flux))))[0][0] + 1
 
+        #Normalize reference lightcurves
+        for k in range(num_refs):
+            ref_flux[k] = ref_flux[k] / np.median(ref_flux[k])
+
+        #Split data up into individual nights. 
+        night_inds = night_splitter(times)
+        num_nights = len(night_inds)
+        fig = plt.figure(figsize=(16, 5))
+        fig.suptitle(short_name+', aperture radius = '+str(np.round(aperture_radius,1))+' pixels', fontsize=16)
+        colors = ['b','g','r','m','c','k']
+
+        #Get the time range of each night. Set each plot panel's xrange according to the night with the longest time. Makes seeing potential variability signals easier. 
+        night_lengths = np.zeros(num_nights)
+        for j in range(num_nights):
+            inds = night_inds[j]
+            night_lengths[j] = times[inds][-1] - times[inds][0]
+        longest_night = max(night_lengths)
+        longest_night_hours = np.ceil(longest_night*24)
+
+        for j in range(num_nights):
+            j += 1
+            ax = subplot(1, num_nights, j)
+            if j == 1:
+                ax.set_ylabel('Normalized Flux', fontsize=16)
+            #else:
+            #    ax.get_yaxis().set_visible(False)
+            ax.set_xlabel('Time (UT)', fontsize=16)
+
+            inds = night_inds[j-1]
+            alc = np.zeros(len(inds))
+            # if j == 5:
+            #        plt.figure()
+            for k in range(len(inds)):
+                #Do a sigma clip on normalized references to avoid biasing median. 
+                values, clow, chigh = sigmaclip(ref_flux[:,inds[k]][~np.isnan(ref_flux[:,inds[k]])], low=1.5, high=1.5) 
+                alc[k] = np.median(values)
+                # if j == 5:
+                #     plt.plot(np.zeros(len(ref_flux[:,inds[k]])) + times[inds[k]], ref_flux[:,inds[k]], 'k.')
+                #     plt.plot(np.zeros(len(values)) + times[inds[k]], values, '.')
+                #     plt.plot(times[inds[k]], alc[k], color='r', marker='o')
+                #     pdb.set_trace()
+
+            # if j == 5:
+            #     pdb.set_trace()
+            
+            #Correct the target lightcurve using the alc. 
+            alc = alc / np.median(alc)
+            targ_flux_norm = targ_flux[inds] / np.median(targ_flux[inds])
+            targ_corr = targ_flux_norm / alc
+            targ_corr = targ_corr / np.median(targ_corr)
+
+            
+            #Do sigma clipping on the corrected lightcurve to get rid of outliers (from clouds, bad target centroid, cosmic rays, etc.)
+            vals, lo, hi = sigmaclip(targ_corr, low=2.5, high=2.5)
+            
+            #Correct the example reference lightcurve using the alc. 
+            ref_corr_norm = ref_flux[closest_ref][inds] / np.median(ref_flux[closest_ref][inds])
+            ref_corr = ref_corr_norm / alc
+            ref_corr = ref_corr / np.median(ref_corr)
+
+
+            #if j == 5:
+            #    plt.plot(times[inds], targ_flux_norm, color='b', marker='o')
+            #    pdb.set_trace()
+
+            #Plot the target and reference lightcurves. 
+            ax.plot(dts[inds], ref_corr,'.', color='grey')
+            ax.plot(dts[inds], targ_corr, '.', color=colors[i])
+            myFmt = mdates.DateFormatter('%H:%M')
+            ax.xaxis.set_major_formatter(myFmt)
+            fig.autofmt_xdate()       
+
+            #TODO: bad_vals should be used to normalize the lightcurves.
+            bad_vals = np.array([])
+            if len(vals) != len(targ_corr):
+                bad_vals = np.where((targ_corr > hi) | (targ_corr < lo))[0]
+                good_vals = np.where((targ_corr < hi) | (targ_corr > lo))[0]
+                plt.plot(dts[inds][bad_vals], targ_corr[bad_vals], marker='x',color='r', mew=1.8, ms=7, zorder=0, ls='')
+
+            blocks = block_splitter(times[inds], bad_vals)
+            bin_times = np.zeros(len(blocks))
+            bin_fluxes = np.zeros(len(blocks))
+            bin_errs = np.zeros(len(blocks))
+            bin_dts = []
+            for k in range(len(blocks)):
+                bin_times[k] = np.mean(times[inds][blocks[k]])
+                vals, hi, lo = sigmaclip(targ_corr[blocks[k]],high=3,low=3) #Exclude outliers. 
+                bin_fluxes[k] = np.mean(vals)
+                bin_errs[k] = np.std(vals)
+                bin_dts.append(julian.from_jd(bin_times[k], fmt='jd'))
+            bin_dts = np.array(bin_dts)
+            ax.errorbar(bin_dts, bin_fluxes, yerr=bin_errs, marker='o', color='k',zorder=3)
+
+            #Draw the y=1 and 5-sigma detection threshold lines. 
+            ax.axhline(y=1, color='r', lw=2, zorder=0)
+            ax.axhline(1-5*np.median(bin_errs), zorder=0, lw=2, color='k', ls='--', alpha=0.4)
+
+            #Set the y-range so you can see the 5-sigma detection line. 
+            ax.set_ylim(1-6*np.median(bin_errs), 1+5*np.median(bin_errs))
+
+            #Set the x-range to be the same for all nights. 
+            ax.set_xlim(julian.from_jd(times[inds][0]-0.025, fmt='jd'), julian.from_jd(times[inds][0]+longest_night+0.025, fmt='jd'))
+            
+            ax.grid(alpha=0.2)
+            ax.set_title(phot_data['Time UT'][inds[0]].split('T')[0], fontsize=14)
+            ax.tick_params(labelsize=12)
+            print('average seeing, night {}: {}'.format(j, np.mean(seeing[inds])))
+            print('pearson correlation between target and closest ref: {}'.format(pearsonr(targ_corr[good_vals], ref_corr[good_vals])))
+        print(np.mean(bin_errs))
+        print('')
+        fig.tight_layout(rect=[0, 0.03, 1, 0.93])
+        plt.savefig(analysis_path/(short_name+'_simple_lc_'+str(np.round(aperture_radius,1))+'.png'))
         pdb.set_trace()
+        # #Weight reference stars, following Murray et al. (2020): https://ui.adsabs.harvard.edu/abs/2020MNRAS.495.2446M/abstract
+        # #Weights based on distance from target. 
+        # targ_loc = [sources['Source Detect X'][0], sources['Source Detect Y'][0]]
+        # distances = np.array((sources[['Source Detect X', 'Source Detect Y']] - np.array(targ_loc)).pow(2).sum(1).pow(0.5))[1:] #Distances between references and targets, in pixels. 
+        # s_max = max(distances)
+        # a = 1 #A "parameter optimized each night" to minimize the average spread of the target's lightcurve... not sure what to use. 
+        # W_dist = 1/(1+(a*distances/s_max)**2)
+        # W_dist = W_dist / W_dist.sum() #Normalize to sum to 1.
+
+        # #Loop over each night
+        # for j in range(num_nights):
+        #     inds = night_inds[j]
+        #     #Weights based on photon noise.
+        #     W_var = 1/(np.mean(ref_flux_err[:,inds], axis=1))**2
+        #     W_var = W_var / W_var.sum() #Normalize to sum to 1. 
+
+        #     max_difference = 9999. #Initialize. 
+
+        #     while max_difference > 0.0000001:
+        #         #Get total weights
+        #         W = W_var * W_dist #The total weight given to each reference is just the product of its photon noise weight and its distance weight. 
+        #         W = W / W.sum() #Normalize to sum to 1. 
+        #         print(W)
+        #         #time.sleep(2)
+        #         print('')
+        #         #Make the artifical light curve (alc).
+        #         alc = np.zeros(len(inds))
+        #         for k in range(len(inds)):
+        #             alc[k] = sum(W * ref_flux[:,inds[k]]) / sum(W)
+                
+        #         #for k in range(num_refs):
+        #         #   plt.plot(times[inds], ref_flux[k, inds]/np.median(ref_flux[k,inds]),marker='.')
+        #         #plt.plot(times[inds], alc/np.median(alc), marker='o',color='k')
+        #         #plt.plot(times[inds], targ_flux[inds]/np.median(targ_flux[inds]), marker='o',color='r')
+        #         #pdb.set_trace()
+        #         #plt.pause(0.5)
+        #         #plt.clf()
+
+        #         #REF FLUX NEEDS TO BE ABSOLUTE
+        #         #Divide every reference's absolute lightcurve by this alc to produce a differential lightcurve. 
+        #         ref_flux_diff = np.zeros((num_refs, len(inds)))
+        #         W_var_new = np.zeros(num_refs)
+                
+        #         for k in range(num_refs):
+        #             ref_flux_diff[k] = ref_flux[k,inds] / alc
+        #             W_var_new[k] = 1/(np.std(ref_flux_diff[k])**2)
+                   
+        #         W_var_new = W_var_new / W_var_new.sum()
+                
+        #         max_difference = max(abs(W_var - W_var_new))
+        #         print(max_difference)
+        #         W_var = W_var_new
+        #     plt.plot(times[inds],(targ_flux[inds]/alc)/np.median(targ_flux[inds]/alc),'.')
+            
+            # plt.figure()
+            # for k in range(num_refs):
+            #     plt.plot(times[inds], ref_flux[k, inds]/np.median(ref_flux[k,inds]),marker='.')
+            # plt.plot(times[inds], alc/np.median(alc), marker='o',color='k')
+            # plt.plot(times[inds], targ_flux[inds]/np.median(targ_flux[inds]), marker='o',color='r')
+            #pdb.set_trace()
+        
 
     # use_refs = '' #'all' for all refs, '' to optimize
     # bin_lc = 1

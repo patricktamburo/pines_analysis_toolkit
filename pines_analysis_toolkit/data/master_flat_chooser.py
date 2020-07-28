@@ -22,7 +22,6 @@ def master_flat_chooser(flats_path, header):
 
     band = header['FILTNME2']
     obs_date = datetime.strptime(header['DATE-OBS'].split('T')[0].replace('-',''),'%Y%m%d')
-    pdb.set_trace()
     possible_flats = [x for x in (flats_path/(band+'/Master Flats')).glob('*.fits')]
     if (len(possible_flats)) == 0:
         print('ERROR: Could not find any suitable flats to reduce {}.'.format(header['FILENAME']))

@@ -2,13 +2,15 @@ from pines_analysis_toolkit.utils.short_name_creator import short_name_creator
 from pines_analysis_toolkit.utils.pines_dir_check import pines_dir_check
 from pines_analysis_toolkit.photometry.detect_sources import detect_sources
 from pines_analysis_toolkit.photometry.target_finder import target_finder
+from pines_analysis_toolkit.utils.quick_plot import quick_plot
 import pdb
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from photutils import CircularAperture, aperture_photometry
+from photutils import CircularAperture, aperture_photometry, CircularAnnulus
 from astropy.io import fits
 from astropy.stats import sigma_clipped_stats
+from scipy.stats import sigmaclip
 
 '''Authors:
 		Patrick Tamburo, Boston University, June 2020
@@ -66,7 +68,7 @@ def ref_star_chooser(target, source_detect_image='', radius_check=6., non_linear
         source_detect_image_path = data_dir/(source_detect_image)
 
     #Detect sources in the image. 
-    sources = detect_sources(source_detect_image_path, fwhm=6., thresh=2.5, plot=False)
+    sources = detect_sources(source_detect_image_path, fwhm=6., thresh=2., plot=True)
 
     target_id = target_finder(sources)
     #ax.plot(sources['xcenter'][target_id], sources['ycenter'][target_id], 'mx')
@@ -77,12 +79,26 @@ def ref_star_chooser(target, source_detect_image='', radius_check=6., non_linear
     bad_ref_ids = [target_id]
     #Get a value for the brightness of the target with a radius_check aperture. We don't want reference stars dimmer than dimness_tolerance * targ_flux_estimates. 
     target_ap = CircularAperture((sources['xcenter'][target_id], sources['ycenter'][target_id]), r=radius_check)
-    targ_flux_estimate = aperture_photometry(image, target_ap)['aperture_sum']
+    target_an = CircularAnnulus((sources['xcenter'][target_id], sources['ycenter'][target_id]), r_in=12, r_out=30)
+    mask = target_an.to_mask(method='center')
+    an_data = mask.multiply(image)
+    an_data_1d = an_data[an_data != 0]
+    vals, lower, upper = sigmaclip(an_data_1d)
+    bg_estimate = np.median(vals)
+    targ_flux_estimate = aperture_photometry(image, target_ap)['aperture_sum'] - bg_estimate * target_ap.area
+    
     for i in range(len(sources)):
         if i != target_id:
             potential_ref_loc = (sources['xcenter'][i], sources['ycenter'][i])
             #Identify brightnesses of pixels surrounding the potential reference within a 10 pixel radius. 
             ap = CircularAperture(potential_ref_loc, r=radius_check)
+            an = CircularAnnulus(potential_ref_loc, r_in=12, r_out=30)
+            mask = an.to_mask(method='center')
+            an_data = mask.multiply(image)
+            an_data_1d = an_data[an_data != 0]
+            vals, lower, upper = sigmaclip(an_data_1d)
+            bg_estimate = np.median(vals)
+
             pixels = ap.to_mask()
             sub_image = pixels.cutout(image)
 
@@ -92,7 +108,7 @@ def ref_star_chooser(target, source_detect_image='', radius_check=6., non_linear
             dists = np.array(dists)
             
             non_linear_flag = len(np.where(sub_image > non_linear_limit)[0]) == 0 #Check if potential ref is near non-linear regime.
-            dimness_flag = (aperture_photometry(image, ap)['aperture_sum'] > dimness_tolerance*targ_flux_estimate)[0] #Check if potential ref is bright enough. 
+            dimness_flag = ((aperture_photometry(image, ap)['aperture_sum'] - bg_estimate * ap.area) > dimness_tolerance*targ_flux_estimate)[0] #Check if potential ref is bright enough. 
             closeness_flag = (len(np.where(dists[np.where(dists != 0)] < closeness_tolerance)[0]) == 0)
             proximity_flag = (np.sqrt((sources['xcenter'][target_id]-sources['xcenter'][i])**2+(sources['ycenter'][target_id]-sources['ycenter'][i])**2) < distance_from_target)
             if lower_left:
@@ -135,9 +151,44 @@ def ref_star_chooser(target, source_detect_image='', radius_check=6., non_linear
     ax.plot(output_df['Source Detect X'][0], output_df['Source Detect Y'][0], marker='o', color='m', mew=2, ms=12, ls='', mfc='None', label='Target')
     for i in range(1,len(output_df)):
         ax.plot(output_df['Source Detect X'][i], output_df['Source Detect Y'][i], marker='o', color='b', mew=2, ms=12, ls='', mfc='None', label='Reference')
+        ax.text(output_df['Source Detect X'][i]+5, output_df['Source Detect Y'][i]+5, str(i), fontsize=14)
     handles, labels = ax.get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     ax.legend(by_label.values(), by_label.keys(), bbox_to_anchor=(1.1, 1.1))
+
+    #Sometimes, the source detection returns things that are clearly not reference stars. 
+    #Allow the user to remove them here. 
+    ans = input('Enter IDs of references to remove, separated by commas (e.g.: 1,4,8,14).\nIf none to remove, hit enter:  ')
+    if ans != '':
+        ans = ans.split(',')
+        ref_ids_to_remove = []
+        for i in range(len(ans)):
+            ref_ids_to_remove.append(int(ans[i]))
+
+        ref_ids_to_remove = np.sort(ref_ids_to_remove)[::-1] #Reverse sort the list. 
+        #Drop those references from output_df
+        for i in ref_ids_to_remove:
+            output_df = output_df.drop(index=i)
+        output_df = output_df.reset_index(drop=True)
+        #Rename the remaining references. 
+        for i in range(1,len(output_df)):
+            name = output_df['Name'][i]
+            if int(name.split(' ')[1]) != i:
+                name = 'Reference '+str(i)
+                output_df['Name'][i] = name
+        #Replot everything. 
+        ax.cla()
+        im = ax.imshow(image, origin='lower', vmin=stats[1], vmax=stats[1]+7*stats[2], cmap='Greys')
+        cax = fig.add_axes([0.87, 0.15, 0.035, 0.7])
+        fig.colorbar(im, cax=cax, orientation='vertical', label='ADU')
+        ax.set_title(source_detect_image_path.name)
+        ax.plot(output_df['Source Detect X'][0], output_df['Source Detect Y'][0], marker='o', color='m', mew=2, ms=12, ls='', mfc='None', label='Target')
+        for i in range(1,len(output_df)):
+            ax.plot(output_df['Source Detect X'][i], output_df['Source Detect Y'][i], marker='o', color='b', mew=2, ms=12, ls='', mfc='None', label='Reference')
+            ax.text(output_df['Source Detect X'][i]+5, output_df['Source Detect Y'][i]+5, str(i), fontsize=14)
+        handles, labels = ax.get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        ax.legend(by_label.values(), by_label.keys(), bbox_to_anchor=(1.1, 1.1))
 
     ans = input('Happy with reference star selection? y/n: ')
     if ans == 'y':
@@ -147,9 +198,9 @@ def ref_star_chooser(target, source_detect_image='', radius_check=6., non_linear
         print('')
         print('Saving target and references image to {}.'.format(phot_dir/(source_detect_image_path.name.split('.fits')[0]+'_target_and_refs.png')))
         plt.savefig(phot_dir/(source_detect_image_path.name.split('.fits')[0]+'_target_and_refs.png'))
+        plt.close('all')
         return output_df
     elif ans =='n':
-        print('Try changing arguments of ref_star_chooser or detect_sources.')
-        return
+        raise ValueError('Try changing arguments of ref_star_chooser or detect_sources and try again.')
     else:
         return

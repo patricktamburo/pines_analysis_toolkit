@@ -26,8 +26,8 @@ import pickle
 
 def detect_sources(image_path, fwhm=5.0, thresh=3.0, plot=False):
     plt.ion() #Turn on interactive plotting
-    ap_rad = 4 #Radius of aperture in pixels for doing quick photometry on detected sources, 4 should be fine. 
-    edge_tolerance = 20 #Number of pixels from the edge where detected sources are cut from. We don't want these because they can shift off the detector.
+    ap_rad = 5 #Radius of aperture in pixels for doing quick photometry on detected sources.
+    edge_tolerance = 15 #Number of pixels from the edge where detected sources are cut from. We don't want these because they can shift off the detector.
     
     #Read in the image. 
     image = fits.open(image_path)[0].data
@@ -60,7 +60,7 @@ def detect_sources(image_path, fwhm=5.0, thresh=3.0, plot=False):
 
     #Do a cut based on source sharpness to get rid of some false detections.
     initial_sources.sort('sharpness')        
-    bad_sharpness_locs = np.where(initial_sources['sharpness'] < 0.4)[0]
+    bad_sharpness_locs = np.where(initial_sources['sharpness'] < 0.3)[0]
     initial_sources.remove_rows(bad_sharpness_locs)
 
     #Cut sources that are found within edge_tolerance pix of the edges.
@@ -88,9 +88,9 @@ def detect_sources(image_path, fwhm=5.0, thresh=3.0, plot=False):
     if plot:
         #Plot detected sources. 
         ax.plot(phot_table['xcenter'],phot_table['ycenter'],'rx')
-        print('Found {} sources.'.format(len(phot_table)))
         plt.savefig(pines_path/'')
-
+    
+    print('Found {} sources.'.format(len(phot_table)))
     sources = phot_table[::-1].to_pandas() #Resort remaining sources so that the brightest are listed firsts. 
     return sources
     
