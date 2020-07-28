@@ -2,6 +2,7 @@ from datetime import datetime
 import numpy as np
 from astropy.io import fits
 import pathlib
+import pdb
 
 '''Authors: 
         Patrick Tamburo, Boston University, June 2020
