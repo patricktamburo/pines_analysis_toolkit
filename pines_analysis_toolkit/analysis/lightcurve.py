@@ -151,7 +151,7 @@ def lightcurve(target, sources, phot_type='aper', ref_set_choice=[]):
                 print('Have to add flagging bad refs.')
                 #pdb.set_trace()
         
-        closest_ref = np.where(abs(np.mean(ref_flux, axis=1)-np.mean(targ_flux)) == min(abs(np.mean(ref_flux, axis=1)-np.mean(targ_flux))))[0][0] + 1
+        closest_ref = np.where(abs(np.mean(ref_flux, axis=1)-np.mean(targ_flux)) == min(abs(np.mean(ref_flux, axis=1)-np.mean(targ_flux))))[0][0]
 
         #Normalize reference lightcurves
         for k in range(num_refs):
@@ -162,7 +162,7 @@ def lightcurve(target, sources, phot_type='aper', ref_set_choice=[]):
         num_nights = len(night_inds)
         fig = plt.figure(figsize=(16, 5))
         fig.suptitle(short_name+', aperture radius = '+str(np.round(aperture_radius,1))+' pixels', fontsize=16)
-        colors = ['b','g','r','m','c','k']
+        colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan']
 
         #Get the time range of each night. Set each plot panel's xrange according to the night with the longest time. Makes seeing potential variability signals easier. 
         night_lengths = np.zeros(num_nights)
@@ -171,10 +171,14 @@ def lightcurve(target, sources, phot_type='aper', ref_set_choice=[]):
             night_lengths[j] = times[inds][-1] - times[inds][0]
         longest_night = max(night_lengths)
         longest_night_hours = np.ceil(longest_night*24)
-
+        global ax_list, line_list, filename_list
+        ax_list = []
+        line_list = []
+        filename_list = []
         for j in range(num_nights):
             j += 1
             ax = subplot(1, num_nights, j)
+            ax_list.append(ax)
             if j == 1:
                 ax.set_ylabel('Normalized Flux', fontsize=16)
             #else:
@@ -182,13 +186,17 @@ def lightcurve(target, sources, phot_type='aper', ref_set_choice=[]):
             ax.set_xlabel('Time (UT)', fontsize=16)
 
             inds = night_inds[j-1]
+            filename_list.append(np.array([phot_data['Filename'][z] for z in inds]))
             alc = np.zeros(len(inds))
             # if j == 5:
             #        plt.figure()
             for k in range(len(inds)):
                 #Do a sigma clip on normalized references to avoid biasing median. 
-                values, clow, chigh = sigmaclip(ref_flux[:,inds[k]][~np.isnan(ref_flux[:,inds[k]])], low=1.5, high=1.5) 
-                alc[k] = np.median(values)
+                ###values, clow, chigh = sigmaclip(ref_flux[:,inds[k]][~np.isnan(ref_flux[:,inds[k]])], low=1.5, high=1.5) 
+                ###alc[k] = np.median(values)
+                avg, med, std = sigma_clipped_stats(ref_flux[:,inds[k]][~np.isnan(ref_flux[:,inds[k]])], sigma=1.5)
+                alc[k] = med
+
                 # if j == 5:
                 #     plt.plot(np.zeros(len(ref_flux[:,inds[k]])) + times[inds[k]], ref_flux[:,inds[k]], 'k.')
                 #     plt.plot(np.zeros(len(values)) + times[inds[k]], values, '.')
@@ -205,9 +213,7 @@ def lightcurve(target, sources, phot_type='aper', ref_set_choice=[]):
             targ_corr = targ_corr / np.median(targ_corr)
 
             
-            #Do sigma clipping on the corrected lightcurve to get rid of outliers (from clouds, bad target centroid, cosmic rays, etc.)
-            vals, lo, hi = sigmaclip(targ_corr, low=2.5, high=2.5)
-            
+          
             #Correct the example reference lightcurve using the alc. 
             ref_corr_norm = ref_flux[closest_ref][inds] / np.median(ref_flux[closest_ref][inds])
             ref_corr = ref_corr_norm / alc
@@ -219,39 +225,44 @@ def lightcurve(target, sources, phot_type='aper', ref_set_choice=[]):
             #    pdb.set_trace()
 
             #Plot the target and reference lightcurves. 
-            ax.plot(dts[inds], ref_corr,'.', color='grey')
-            ax.plot(dts[inds], targ_corr, '.', color=colors[i])
+            ax.plot(dts[inds], ref_corr,'.', color='tab:grey')
+            t_plot, = ax.plot(dts[inds], targ_corr, '.', color=colors[i])
+            line_list.append(t_plot)
             myFmt = mdates.DateFormatter('%H:%M')
             ax.xaxis.set_major_formatter(myFmt)
             fig.autofmt_xdate()       
 
-            #TODO: bad_vals should be used to normalize the lightcurves.
-            bad_vals = np.array([])
-            if len(vals) != len(targ_corr):
-                bad_vals = np.where((targ_corr > hi) | (targ_corr < lo))[0]
-                good_vals = np.where((targ_corr < hi) | (targ_corr > lo))[0]
+            #Do sigma clipping on the corrected lightcurve to get rid of outliers (from clouds, bad target centroid, cosmic rays, etc.)
+            ###vals, lo, hi = sigmaclip(targ_corr, low=2.5, high=2.5)
+            avg, med, std = sigma_clipped_stats(targ_corr, sigma=3)      
+            bad_vals = np.where((targ_corr > med + 3*std) | (targ_corr < med - 3*std))[0]
+            good_vals = np.where((targ_corr < med + 3*std) & (targ_corr > med - 3*std))[0]      
+            vals = targ_corr[good_vals]
+            if len(bad_vals) != 0:
                 plt.plot(dts[inds][bad_vals], targ_corr[bad_vals], marker='x',color='r', mew=1.8, ms=7, zorder=0, ls='')
-
+            
             blocks = block_splitter(times[inds], bad_vals)
             bin_times = np.zeros(len(blocks))
             bin_fluxes = np.zeros(len(blocks))
             bin_errs = np.zeros(len(blocks))
             bin_dts = []
             for k in range(len(blocks)):
-                bin_times[k] = np.mean(times[inds][blocks[k]])
-                vals, hi, lo = sigmaclip(targ_corr[blocks[k]],high=3,low=3) #Exclude outliers. 
-                bin_fluxes[k] = np.mean(vals)
-                bin_errs[k] = np.std(vals)
-                bin_dts.append(julian.from_jd(bin_times[k], fmt='jd'))
+                try: 
+                    bin_times[k] = np.mean(times[inds][blocks[k]])
+                    #vals, hi, lo = sigmaclip(targ_corr[blocks[k]],high=3,low=3) #Exclude outliers. 
+                    bin_fluxes[k] = np.mean(targ_corr[blocks[k]])
+                    bin_errs[k] = np.std(targ_corr[blocks[k]]) / np.sqrt(len(targ_corr[blocks[k]]))
+                    bin_dts.append(julian.from_jd(bin_times[k], fmt='jd'))
+                except:
+                    pdb.set_trace()
             bin_dts = np.array(bin_dts)
-            ax.errorbar(bin_dts, bin_fluxes, yerr=bin_errs, marker='o', color='k',zorder=3)
-
+            ax.errorbar(bin_dts, bin_fluxes, yerr=bin_errs, marker='o', color='k',zorder=3, ls='')
             #Draw the y=1 and 5-sigma detection threshold lines. 
             ax.axhline(y=1, color='r', lw=2, zorder=0)
             ax.axhline(1-5*np.median(bin_errs), zorder=0, lw=2, color='k', ls='--', alpha=0.4)
 
             #Set the y-range so you can see the 5-sigma detection line. 
-            ax.set_ylim(1-6*np.median(bin_errs), 1+5*np.median(bin_errs))
+            ax.set_ylim(0.9, 1.1)
 
             #Set the x-range to be the same for all nights. 
             ax.set_xlim(julian.from_jd(times[inds][0]-0.025, fmt='jd'), julian.from_jd(times[inds][0]+longest_night+0.025, fmt='jd'))
@@ -260,7 +271,8 @@ def lightcurve(target, sources, phot_type='aper', ref_set_choice=[]):
             ax.set_title(phot_data['Time UT'][inds[0]].split('T')[0], fontsize=14)
             ax.tick_params(labelsize=12)
             print('average seeing, night {}: {}'.format(j, np.mean(seeing[inds])))
-            print('pearson correlation between target and closest ref: {}'.format(pearsonr(targ_corr[good_vals], ref_corr[good_vals])))
+            #print('pearson correlation between target and closest ref: {}'.format(pearsonr(targ_corr[good_vals], ref_corr[good_vals])))
+            
         print(np.mean(bin_errs))
         print('')
         fig.tight_layout(rect=[0, 0.03, 1, 0.93])

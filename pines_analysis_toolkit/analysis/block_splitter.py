@@ -18,7 +18,7 @@ def block_splitter(times, bad_vals):
 
     #Staring observations. TODO: This will not work if there is a mix of staring/hopping observations on a single night!
     if len(block_boundaries) == 0:
-        time_bin = 15 #Minutes over which to bin. 
+        time_bin = 10 #Minutes over which to bin. 
         block_boundaries = np.where(np.gradient(((times - times[0]) * (24*60)) % time_bin) < 0.2)[0]
     
     num_blocks = int(1 + len(block_boundaries) / 2)

@@ -25,7 +25,7 @@ from scipy.stats import sigmaclip
         dimness_tolerance (float, optional): The minimum fraction of the target's brightness that a reference star may have. 
         closeness_tolerance (float, optional): The closest a potential reference star can be to another source before it's discarded (in pixels). 
         distance_from_target (float, optional): The furthest a potential reference star can be from the target before it's discarded (in pixels).
-        lower_left (bool, optional): Whether or not to automatically discard potential references in the lower left quadrant, which is necessary if Mimir's bars problem exists in the data. 
+        exclude_lower_left (bool, optional): Whether or not to automatically discard potential references in the lower left quadrant, which is necessary if Mimir's bars problem exists in the data. 
         restore (bool, optional): Whether or not to restore ref_star_chooser output that already exists. 
 
     Outputs:
@@ -33,7 +33,7 @@ from scipy.stats import sigmaclip
 	TODO:
 '''
 
-def ref_star_chooser(target, source_detect_image='', radius_check=6., non_linear_limit=3300., dimness_tolerance=1.0, closeness_tolerance=12., distance_from_target=700., lower_left=False, restore=False):
+def ref_star_chooser(target, source_detect_image='', radius_check=6., non_linear_limit=3300., dimness_tolerance=1.0, closeness_tolerance=12., distance_from_target=700., exclude_lower_left=False, restore=False):
     
     #Get the target's 'short name'
     short_name = short_name_creator(target)
@@ -68,7 +68,7 @@ def ref_star_chooser(target, source_detect_image='', radius_check=6., non_linear
         source_detect_image_path = data_dir/(source_detect_image)
 
     #Detect sources in the image. 
-    sources = detect_sources(source_detect_image_path, fwhm=6., thresh=2., plot=True)
+    sources = detect_sources(source_detect_image_path, fwhm=6., thresh=2., plot=False)
 
     target_id = target_finder(sources)
     #ax.plot(sources['xcenter'][target_id], sources['ycenter'][target_id], 'mx')
@@ -111,7 +111,7 @@ def ref_star_chooser(target, source_detect_image='', radius_check=6., non_linear
             dimness_flag = ((aperture_photometry(image, ap)['aperture_sum'] - bg_estimate * ap.area) > dimness_tolerance*targ_flux_estimate)[0] #Check if potential ref is bright enough. 
             closeness_flag = (len(np.where(dists[np.where(dists != 0)] < closeness_tolerance)[0]) == 0)
             proximity_flag = (np.sqrt((sources['xcenter'][target_id]-sources['xcenter'][i])**2+(sources['ycenter'][target_id]-sources['ycenter'][i])**2) < distance_from_target)
-            if lower_left:
+            if exclude_lower_left:
                 if (sources['xcenter'][i] < 512) & (sources['ycenter'][i] < 512):
                     lower_left_flag = False
                 else:
