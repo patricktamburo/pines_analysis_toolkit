@@ -88,7 +88,7 @@ def detect_sources(image_path, fwhm=5.0, thresh=3.0, plot=False):
     if plot:
         #Plot detected sources. 
         ax.plot(phot_table['xcenter'],phot_table['ycenter'],'rx')
-        plt.savefig(pines_path/'')
+        # plt.savefig(pines_path/'')
     
     print('Found {} sources.'.format(len(phot_table)))
     sources = phot_table[::-1].to_pandas() #Resort remaining sources so that the brightest are listed firsts. 
