@@ -257,6 +257,7 @@ def lightcurve(target, sources, phot_type='aper', ref_set_choice=[]):
                     pdb.set_trace()
             bin_dts = np.array(bin_dts)
             ax.errorbar(bin_dts, bin_fluxes, yerr=bin_errs, marker='o', color='k',zorder=3, ls='')
+            
             #Draw the y=1 and 5-sigma detection threshold lines. 
             ax.axhline(y=1, color='r', lw=2, zorder=0)
             ax.axhline(1-5*np.median(bin_errs), zorder=0, lw=2, color='k', ls='--', alpha=0.4)
