@@ -6,13 +6,17 @@ This is a package for working with PINES data.
 
 INSTALLATION FOR GENERAL USE. 
   1. Uninstall the current version of pines_analysis_toolkit on your computer, if you have one installed: 
+  
         pip (or pip3) uninstall pines_analysis_toolkit
+        
      Type 'y' when prompted to complete the uninstall. 
      
   2. Install the new version of the pipeline from github, using: 
+  
         pip (or pip3) install --upgrade git+git://github.com/patricktamburo/pines_analysis_toolkit.git
   
   3. Launch python, and see if you can import pines_analysis_toolkit: 
+  
         python (or python3)
         
         import pines_analysis_toolkit as pat
@@ -43,11 +47,13 @@ INSTRUCTIONS FOR CONTRIBUTING TO CODEBASE.
   5. Write/test your new feature.
   
   6. When the feature is performing to your liking, make a new commit of your changes: 
+  
       git add . 
       
       git commit -m "added new feature, fixed bug, etc."
       
   7. Push your edited branch to github: 
+  
       git push remote new-branch
       
   8. Once your changes are merged into the master branch, you can follow the INSTALLATION FOR GENERAL USE instructions to reinstall the package with the updated feature. In your ~/Documents/python_programs/pines_analysis_toolkit_package/ directory, you can git pull origin master to make sure everything is up to date, then repeat steps 3-8 until we discover some Earth-analogs around brown dwarfs. 
