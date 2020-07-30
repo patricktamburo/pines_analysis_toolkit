@@ -14,7 +14,9 @@ INSTALLATION FOR GENERAL USE.
   
   3. Launch python, and see if you can import pines_analysis_toolkit: 
         python (or python3)
+        
         import pines_analysis_toolkit as pat
+        
      If the import works without throwing any errors, the pipeline has installed successfully!
    
    4. Check your ~/Documents/ folder for a new directory called PINES_analysis_toolkit/. All PINES data products will be placed in this directory. 
@@ -25,7 +27,9 @@ INSTRUCTIONS FOR CONTRIBUTING TO CODEBASE.
   2. Navigate a terminal to that directory, and type the following: 
   
         git init
+        
         git remote add origin https://github.com/patricktamburo/pines_analysis_toolkit.git
+        
         git pull origin master
         
       Check to make sure files have appeared in the directory.
@@ -40,6 +44,7 @@ INSTRUCTIONS FOR CONTRIBUTING TO CODEBASE.
   
   6. When the feature is performing to your liking, make a new commit of your changes: 
       git add . 
+      
       git commit -m "added new feature, fixed bug, etc."
       
   7. Push your edited branch to github: 
