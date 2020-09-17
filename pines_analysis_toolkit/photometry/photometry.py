@@ -155,6 +155,8 @@ def photometry(target_name,all_apertures,an_in=12.,an_out=30.):
                     position = (x_positions[j,i],y_positions[j,i])
                     (save_flux[j,i], save_bkg[j,i]) = phot(position)
 
+                    pdb.set_trace()
+
                 #End loop over targets.
             else:
                 #If the photometry was done previously, just read in the old values. 

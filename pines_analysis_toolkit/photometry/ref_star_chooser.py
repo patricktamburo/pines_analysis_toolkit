@@ -151,7 +151,7 @@ def ref_star_chooser(target, source_detect_image='', radius_check=6., non_linear
     ax.plot(output_df['Source Detect X'][0], output_df['Source Detect Y'][0], marker='o', color='m', mew=2, ms=12, ls='', mfc='None', label='Target')
     for i in range(1,len(output_df)):
         ax.plot(output_df['Source Detect X'][i], output_df['Source Detect Y'][i], marker='o', color='b', mew=2, ms=12, ls='', mfc='None', label='Reference')
-        ax.text(output_df['Source Detect X'][i]+5, output_df['Source Detect Y'][i]+5, str(i), fontsize=14)
+        ax.text(output_df['Source Detect X'][i]+5, output_df['Source Detect Y'][i]+5, str(i), fontsize=14, color='r')
     handles, labels = ax.get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     ax.legend(by_label.values(), by_label.keys(), bbox_to_anchor=(1.1, 1.1))

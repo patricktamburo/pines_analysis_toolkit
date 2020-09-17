@@ -7,4 +7,6 @@ def object_directory_creator(pines_path, short_name):
     os.mkdir(pines_path/('Objects/'+short_name+'/sources'))
     os.mkdir(pines_path/('Objects/'+short_name+'/raw'))
     os.mkdir(pines_path/('Objects/'+short_name+'/reduced'))
+    os.mkdir(pines_path/('Objects/'+short_name+'/bp_reduced'))
+
     return

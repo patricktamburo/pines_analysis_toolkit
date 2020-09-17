@@ -15,7 +15,10 @@ import math
 from photutils.utils import calc_total_error
 from astropy.table import Table
 from scipy.stats import sigmaclip
-# from .background_median import aperture_stats_tbl
+import shutil
+import os
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib import cm
 
 '''Authors:
 		Patrick Tamburo, Boston University, June 2020
@@ -29,13 +32,15 @@ from scipy.stats import sigmaclip
         ap_radii (list of floats): List of aperture radii in pixels for which aperture photometry wil be performed. 
         an_in (float, optional): The inner radius of the annulus used to estimate background, in pixels. 
         an_out (float, optional): The outer radius of the annulus used to estimate background, in pixels. 
+        plots (bool, optional): Whether or not to output surface plots. Images output to aper_phot directory within the object directory.
     Outputs:
         Saves aperture photometry csv to PINES_analysis_toolkit/Objects/short_name/aper_phot/ for each aperture.
 	TODO:
         Make sure Varun's routines are working properly. Why is photometric uncertainty < sqrt(flux)? 
 '''
 
-def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.):
+def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots=False):
+
     def hmsm_to_days(hour=0,min=0,sec=0,micro=0):
         """
         Convert hours, minutes, seconds, and microseconds to fractional days.
@@ -243,13 +248,21 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.):
     reduced_files = np.array(natsort.natsorted([x for x in reduced_path.glob('*.fits')]))
 
     source_names = natsort.natsorted(list(set([i[0:-2].replace('X','').replace('Y','').rstrip().lstrip() for i in centroided_sources.keys()])))
-    #Old way of doing the above line. 
-    # for i in centroided_sources.keys():
-    #     name = i.split(' ')[0]+' '+i.split(' ')[1]
-    #     pdb.set_trace()
-    #     if name not in source_names:
-    #         source_names.append(name)
-    
+
+    #Create output plot directories for each source.
+    if plots:
+        #Camera angles for surface plots
+        azim_angles = np.linspace(0, 360*1.5, len(reduced_files)) % 360
+        elev_angles = np.zeros(len(azim_angles)) + 25
+        for name in source_names:
+            #If the folders are already there, delete them. 
+            source_path = (pines_path/('Objects/'+short_name+'/aper_phot/'+name+'/'))
+            if source_path.exists():
+                shutil.rmtree(source_path)
+            #Create folders.
+            os.mkdir(source_path)
+
+        
     if len(source_names) != len(centroided_sources.keys())/2:
         print('ERROR: something going wrong grabbing source names. ')
         return
@@ -280,6 +293,8 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.):
             if len(date_obs.split(':')[-1].split('.')[0]) == 3:
                 date_obs = date_obs.split(':')[0] + ':' + date_obs.split(':')[1] + ':' + date_obs.split(':')[-1][1:]
             
+            if date_obs.split(':')[-1] == '60.00':
+                date_obs = date_obs.split(':')[0]+':'+str(int(date_obs.split(':')[1])+1)+':00.00'
             #Keep a try/except clause here in case other unknown DATE-OBS formats pop up. 
             try:
                 date = datetime.datetime.strptime(date_obs, '%Y-%m-%dT%H:%M:%S.%f')
@@ -310,7 +325,37 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.):
             for i in range(len(photometry_tbl)):
                 ap_df[source_names[i]+' Flux'][j] = photometry_tbl['flux'][i] 
                 ap_df[source_names[i]+' Flux Error'][j] = photometry_tbl['flux_error'][i]
-           
+
+            #Make surface plots.
+            if plots:
+                for i in range(len(photometry_tbl)):
+                    x_p = photometry_tbl['X'][i]
+                    y_p = photometry_tbl['Y'][i]
+
+                    fig = plt.figure()
+                    ax = fig.add_subplot(111, projection='3d')
+                    xx, yy = np.meshgrid(np.arange(int(x_p)-10, int(x_p)+10+1), np.arange(int(y_p)-10, int(y_p)+10+1))
+                    theta = np.linspace(0, 2 * np.pi, 201)
+                    y_circ = ap*np.cos(theta)+y_p
+                    x_circ = ap*np.sin(theta)+x_p
+                    vmin = np.nanmedian(data[yy,xx])
+                    vmax = vmin + 2.5*np.nanstd(data[yy,xx])
+                    ax.plot_surface(xx, yy, data[yy,xx], cmap=cm.viridis, alpha=0.8, rstride=1, cstride=1, edgecolor='k', lw=0.2, vmin=vmin, vmax=vmax)
+                    current_z = ax.get_zlim()
+                    ax.set_zlim(current_z[0]-150, current_z[1])
+                    current_z = ax.get_zlim()
+                    cset = ax.contourf(xx, yy, data[yy,xx], zdir='z', offset=current_z[0], cmap=cm.viridis)
+                    ax.plot(x_circ, y_circ, np.zeros(len(x_circ))+current_z[0], color='r', lw=2, zorder=100)
+                    ax.set_xlabel('X')
+                    ax.set_ylabel('Y')
+                    ax.set_zlabel('Counts')
+
+                    ax.set_title('SURFACE DIAGNOSTIC PLOT, '+', Ap. = '+str(ap)+'\n'+source_names[i]+', '+reduced_files[j].name+' (image '+str(j+1)+' of '+str(len(reduced_files))+')')
+                    ax.view_init(elev=elev_angles[j], azim=azim_angles[j])
+                    plot_output_path = (pines_path/('Objects/'+short_name+'/aper_phot/'+source_names[i]+'/'+str(j).zfill(4)+'.jpg'))
+                    plt.tight_layout()
+                    plt.savefig(plot_output_path)
+                    plt.close()
            
             # #Get the raw flux in the aperture and annulus. 
             # raw_ap_flux = aperture_photometry(data, apertures)
