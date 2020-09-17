@@ -9,3 +9,5 @@ from pines_analysis_toolkit.data.get_master_log import get_master_log
 from pines_analysis_toolkit.data.reduce import reduce
 from pines_analysis_toolkit.data.master_flat_chooser import master_flat_chooser
 from pines_analysis_toolkit.data.master_dark_chooser import master_dark_chooser
+from pines_analysis_toolkit.data.bg_2d import bg_2d
+from pines_analysis_toolkit.data.image_cleaner import image_cleaner

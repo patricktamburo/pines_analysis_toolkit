@@ -14,6 +14,9 @@ import pdb
 import pandas as pd
 from scipy.stats import sigmaclip
 import time 
+import shutil
+import os
+
 '''Authors:
 		Patrick Tamburo, Boston University, June 2020
 	Purpose:
@@ -21,7 +24,7 @@ import time
 	Inputs:
         target (str): The target's full 2MASS name
         sources (pandas dataframe): List of source names, x and y positions. 
-        plots (bool, optional): Whether or not to plot sources and measured centroids as you go along. 
+        plots (bool, optional): Whether or not to output plots showing centroid positions. Images output to sources directory within the object directory. 
         restore (bool, optional): Whether or not to restore centroider output that already exists. 
     Outputs:
 		centroid_df (pandas DataFrame): X and Y centroid positions for each source. 
@@ -42,7 +45,16 @@ def centroider(target, sources, plots=False, restore=False):
         print('')
         return centroid_df
 
-    plt.ion() 
+    #Create subdirectories in sources folder to contain output plots. 
+    if plots:
+        for name in sources['Name']:
+            #If the folders are already there, delete them. 
+            source_path = (pines_path/('Objects/'+short_name+'/sources/'+name+'/'))
+            if source_path.exists():
+                shutil.rmtree(source_path)
+            #Create folders.
+            os.mkdir(source_path)
+
     np.seterr(divide='ignore', invalid='ignore') #Suppress some warnings we don't care about in median combining. 
 
     #Get list of reduced files for target. 
@@ -134,6 +146,7 @@ def centroider(target, sources, plots=False, restore=False):
             #    print('centroid_com returned large centroid deviation, trying centroid_1dg')
             
             centroid_x, centroid_y = centroid_1dg(image-med, error=1/(np.sqrt(image)**2), mask=mask)
+
             #If that fails, try a 2d Gaussian detection. 
             if (abs(centroid_x - x_pos) > shift_tolerance) or (abs(centroid_y - y_pos) > shift_tolerance):
                 #Try without error weighting. 
@@ -168,11 +181,13 @@ def centroider(target, sources, plots=False, restore=False):
                 #Plot
                 plt.imshow(-1*image*(mask-1), origin='lower', vmin=med, vmax=med+5*std)
                 plt.plot(centroid_x, centroid_y, 'rx')
-                plt.ylim(y_pos-box_w,y_pos+box_w)
-                plt.xlim(x_pos-box_w,x_pos+box_w)
-                plt.title(sources['Name'][i]+', image '+str(j+1)+' of '+str(len(reduced_files)))
-                plt.pause(0.01)
-                plt.clf()
+                plt.ylim(y_pos-box_w,y_pos+box_w-1)
+                plt.xlim(x_pos-box_w,x_pos+box_w-1)
+                plt.title('CENTROID DIAGNOSTIC PLOT\n'+sources['Name'][i]+', '+reduced_files[j].name+' (image '+str(j+1)+' of '+str(len(reduced_files))+')')
+                plt.text(centroid_x, centroid_y+0.5, '('+str(np.round(centroid_x,1))+', '+str(np.round(centroid_y,1))+')', color='r', ha='center')
+                plot_output_path = (pines_path/('Objects/'+short_name+'/sources/'+sources['Name'][i]+'/'+str(j).zfill(4)+'.jpg'))
+                plt.savefig(plot_output_path)
+                plt.close()
 
             #Record the position.
             centroid_df[sources['Name'][i]+' X'][j] = centroid_x
