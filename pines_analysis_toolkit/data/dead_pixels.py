@@ -11,6 +11,22 @@ import os
 from pines_analysis_toolkit.utils.quick_plot import quick_plot as qp
 import matplotlib.pyplot as plt
 
+'''Authors:
+		Patrick Tamburo, Boston University, September 2020
+	Purpose:
+		Creates a dead pixel mask from master flat. 
+	Inputs:
+		date (str): the date calibration data was taken 
+        band (str): the band of the flats
+        clip_lvl (float, optional): the sigma level below which to flag dead pixels. 
+		upload (bool, optional): whether or not to upload the dead pixel mask to pines.bu.edu. By default, False (so you won't try to upload!).
+		sftp (pysftp.Connection, optional): the sftp connection to the pines server, required if you are going to upload dead pixel mask.
+	Outputs:
+		Writes dpm_band_date.fits to Calibrations/Dead Pixel Masks/
+	TODO:
+		None
+'''
+
 def dead_pixels(date, band, clip_lvl=3, upload=False, sftp=''):
     pines_path = pines_dir_check()
     flat_path = pines_path/('Calibrations/Flats/Domeflats/'+band+'/Master Flats/')

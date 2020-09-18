@@ -45,7 +45,7 @@ import pysftp
 	Outputs:
 		None
 	TODO:
-		Protection for overwriting files?
+		None
 '''
 	
 
