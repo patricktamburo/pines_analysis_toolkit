@@ -48,6 +48,11 @@ def bpm_maker(date, exptime, band, upload=False, sftp=''):
     bpm[np.where(variable_mask == 1)] = 1
     bpm[np.where(hot_mask == 1)] = 1
     bpm[np.where(dead_mask) == 1] = 1
+
+    num_bad = len(np.where(bpm ==1)[0])
+    frac_bad = num_bad / 1024**2
+
+    print('{} percent of the detector flagged as bad.'.format(np.round(frac_bad*100,1)))
     plt.ion()
     plt.imshow(bpm, origin='lower')
 
@@ -96,7 +101,4 @@ def bpm_maker(date, exptime, band, upload=False, sftp=''):
         else:
             sftp.put(output_path,upload_name)
             print('Uploaded {} to pines.bu.edu:data/calibrations/Bad Pixel Masks/!'.format(upload_name))
-
-    pdb.set_trace()
-
    

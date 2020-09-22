@@ -7,7 +7,7 @@ import pdb
 '''Authors: 
         Patrick Tamburo, Boston University, June 2020
    Purpose: 
-        Idenfities the closest dark in time to the image you want reduce, that has the correct exposure time.
+        Identifies the closest dark in time to the image you want reduce, that has the correct exposure time.
    Inputs:
         dark_path (pathlib.Path): path to the local calibrations/darks directory. 
         header (astropy.io.fits.header.Header): the header of the image you want to reduce. 

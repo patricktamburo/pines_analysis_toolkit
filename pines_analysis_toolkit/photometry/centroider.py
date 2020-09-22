@@ -16,6 +16,12 @@ from scipy.stats import sigmaclip
 import time 
 import shutil
 import os
+import warnings
+from astropy.convolution import interpolate_replace_nans
+from astropy.utils.exceptions import AstropyUserWarning
+from astropy.convolution import Gaussian2DKernel
+#Turn off warnings from Astropy because they're incredibly annoying. 
+warnings.simplefilter("ignore", category=AstropyUserWarning)
 
 '''Authors:
 		Patrick Tamburo, Boston University, June 2020
@@ -37,6 +43,9 @@ def centroider(target, sources, plots=False, restore=False):
     t1 = time.time()
     pines_path = pines_dir_check()
     short_name = short_name_creator(target)
+    plt.ion()
+
+    kernel = Gaussian2DKernel(x_stddev=1) #For fixing nans in cutouts.
 
     #If restore == True, read in existing output and return. 
     if restore: 
@@ -79,8 +88,8 @@ def centroider(target, sources, plots=False, restore=False):
             print('ERROR: {} not in {}. Download it from the PINES server.'.format(i+'_log.txt',log_path))
             pdb.set_trace()
 
-    box_w = 10 #1/2 wdth of the box to cut out around the target position. 
-    shift_tolerance = 5 #Number of pixels that the measured centroid can be away from the expected position before trying other centroiding algorithms. 
+    box_w = 15 #1/2 wdth of the box to cut out around the target position. 
+    shift_tolerance = 3 #Number of pixels that the measured centroid can be away from the expected position before trying other centroiding algorithms. 
     for i in range(len(sources)):
         #Get the initial source position.
         x_pos = sources['Source Detect X'][i] 
@@ -119,25 +128,26 @@ def centroider(target, sources, plots=False, restore=False):
 
             #Get sigma_clipped_stats of the box around this guess position.
             #stats = sigma_clipped_stats(image[int(y_pos-box_w):int(y_pos+box_w), int(x_pos-box_w):int(x_pos+box_w)])
-            cutout = image[int(y_pos-box_w):int(y_pos+box_w), int(x_pos-box_w):int(x_pos+box_w)]
-            
+            cutout = interpolate_replace_nans(image[int(y_pos-box_w):int(y_pos+box_w), int(x_pos-box_w):int(x_pos+box_w)], kernel)
+
             vals, lower, upper = sigmaclip(cutout, low=1.5, high=2.5) #~3x faster than astropy's sigma_clipped_stats
-            med = np.median(vals)
-            std = np.std(vals)
+            med = np.nanmedian(vals)
+            std = np.nanstd(vals)
 
-            #Mask out the image except for around the source position. 
-            mask = np.ones(image.shape, dtype=bool)
-            mask[int(y_pos-box_w):int(y_pos+box_w), int(x_pos-box_w):int(x_pos+box_w)] = False
+            # #Mask out the image except for around the source position. 
+            # mask = np.ones(image.shape, dtype=bool)
+            # mask[int(y_pos-box_w):int(y_pos+box_w), int(x_pos-box_w):int(x_pos+box_w)] = False
 
-            #Do a sigma clipping elimination of pixels around the target, and mask them out. 
-            other_bad_y = np.where(cutout < lower)[0] + int(y_pos) - box_w
-            other_bad_x = np.where(cutout < lower)[1] + int(x_pos) - box_w
-            for k in range(len(other_bad_x)):
-                mask[other_bad_y[k],[other_bad_x[k]]] = True
-            if len(other_bad_x) == (2*box_w)**2:
-                plt.imshow(mask, origin='lower')
-                pdb.set_trace()
-
+            # #Do a sigma clipping elimination of pixels around the target, and mask them out. 
+            # other_bad_y = np.where(cutout < lower)[1] + int(y_pos) - box_w
+            # other_bad_x = np.where(cutout < lower)[0] + int(x_pos) - box_w
+            # for k in range(len(other_bad_x)):
+            #     mask[other_bad_y[k],[other_bad_x[k]]] = True
+            # if len(other_bad_x) == (2*box_w)**2:
+            #     plt.imshow(mask, origin='lower')
+            #     pdb.set_trace()
+            
+            
             #Get the centroid. Default to centroid_com, it's the fastest.
             #centroid_x, centroid_y = centroid_com(image-med, mask=mask)
 
@@ -145,20 +155,32 @@ def centroider(target, sources, plots=False, restore=False):
             #if (abs(centroid_x - x_pos) > 5) or (abs(centroid_y - y_pos) > 5):
             #    print('centroid_com returned large centroid deviation, trying centroid_1dg')
             
-            centroid_x, centroid_y = centroid_1dg(image-med, error=1/(np.sqrt(image)**2), mask=mask)
+            centroid_x, centroid_y = centroid_2dg(cutout - med, error=1/(np.sqrt(cutout)**2))
+            centroid_x += int(x_pos) - box_w
+            centroid_y += int(y_pos) - box_w
+
+            # fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(10,5), sharex=True, sharey=True)
+            # ax[0].imshow(mask, origin='lower')
+            # ax[0].set_xlim(int(x_pos-box_w), int(x_pos+box_w))
+            # ax[0].set_ylim(int(y_pos-box_w), int(y_pos+box_w))
+            # ax[1].imshow(image, origin='lower', vmin=lower, vmax=upper)
+            # ax[1].plot(centroid_x, centroid_y, 'rx')
+
+            # pdb.set_trace()
+            # plt.close()
 
             #If that fails, try a 2d Gaussian detection. 
             if (abs(centroid_x - x_pos) > shift_tolerance) or (abs(centroid_y - y_pos) > shift_tolerance):
                 #Try without error weighting. 
-                centroid_x, centroid_y = centroid_1dg(image, mask=mask)
+                centroid_x, centroid_y = centroid_1dg(image)
                 if (abs(centroid_x - x_pos) > shift_tolerance) or (abs(centroid_y - y_pos) > shift_tolerance):
-                    centroid_x, centroid_y = centroid_2dg(image-med, error=1/(np.sqrt(image)**2), mask=mask)
+                    centroid_x, centroid_y = centroid_2dg(image-med, error=1/(np.sqrt(image)**2))
                     if (abs(centroid_x - x_pos) > shift_tolerance) or (abs(centroid_y - y_pos) > shift_tolerance):
-                        centroid_x, centroid_y = centroid_2dg(image, mask=mask)
+                        centroid_x, centroid_y = centroid_2dg(image)
                         if (abs(centroid_x - x_pos) > shift_tolerance) or (abs(centroid_y - y_pos) > shift_tolerance):
-                            centroid_x, centroid_y = centroid_com(image - med, mask=mask)
+                            centroid_x, centroid_y = centroid_com(image - med)
                             if (abs(centroid_x - x_pos) > shift_tolerance) or (abs(centroid_y - y_pos) > shift_tolerance):
-                                centroid_x, centroid_y = centroid_com(image, mask=mask)
+                                centroid_x, centroid_y = centroid_com(image)
                                 if (abs(centroid_x - x_pos) > shift_tolerance) or (abs(centroid_y - y_pos) > shift_tolerance):
                                     print('WARNING: large centroid deviation measured, returning predicted position')
                                     print('')
@@ -177,21 +199,25 @@ def centroider(target, sources, plots=False, restore=False):
                 print('NaN returned from centroid algorithm, defaulting to target position in source_detct_image.')
             
 
+            
+
+            #Record the position.
+            centroid_df[sources['Name'][i]+' X'][j] = centroid_x
+            centroid_df[sources['Name'][i]+' Y'][j] = centroid_y
+
             if plots: 
                 #Plot
-                plt.imshow(-1*image*(mask-1), origin='lower', vmin=med, vmax=med+5*std)
+                lock_x = int(centroid_df[sources['Name'][i]+' X'][0])
+                lock_y = int(centroid_df[sources['Name'][i]+' Y'][0])
+                plt.imshow(image, origin='lower', vmin=med, vmax=med+5*std)
                 plt.plot(centroid_x, centroid_y, 'rx')
-                plt.ylim(y_pos-box_w,y_pos+box_w-1)
-                plt.xlim(x_pos-box_w,x_pos+box_w-1)
+                plt.ylim(lock_y-box_w,lock_y+box_w-1)
+                plt.xlim(lock_x-box_w,lock_x+box_w-1)
                 plt.title('CENTROID DIAGNOSTIC PLOT\n'+sources['Name'][i]+', '+reduced_files[j].name+' (image '+str(j+1)+' of '+str(len(reduced_files))+')')
                 plt.text(centroid_x, centroid_y+0.5, '('+str(np.round(centroid_x,1))+', '+str(np.round(centroid_y,1))+')', color='r', ha='center')
                 plot_output_path = (pines_path/('Objects/'+short_name+'/sources/'+sources['Name'][i]+'/'+str(j).zfill(4)+'.jpg'))
                 plt.savefig(plot_output_path)
                 plt.close()
-
-            #Record the position.
-            centroid_df[sources['Name'][i]+' X'][j] = centroid_x
-            centroid_df[sources['Name'][i]+' Y'][j] = centroid_y
 
     output_filename = pines_path/('Objects/'+short_name+'/sources/target_and_references_centroids.csv')
     #centroid_df.to_csv(pines_path/('Objects/'+short_name+'/sources/target_and_references_centroids.csv'))

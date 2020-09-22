@@ -13,3 +13,4 @@ from pines_analysis_toolkit.data.bg_2d import bg_2d
 from pines_analysis_toolkit.data.hot_pixels import hot_pixels
 from pines_analysis_toolkit.data.variable_pixels import variable_pixels
 from pines_analysis_toolkit.data.dead_pixels import dead_pixels
+from pines_analysis_toolkit.data.bpm_chooser import bpm_chooser
