@@ -50,6 +50,7 @@ def variable_pixels(date, exptime, clip_lvl=3, upload=False, sftp=''):
     #Add some header keywords detailing the master_dark creation process. 
     hdu = fits.PrimaryHDU(variable_mask)
     hdu.header['HIERARCH DATE CREATED'] = datetime.utcnow().strftime('%Y-%m-%d')+'T'+datetime.utcnow().strftime('%H:%M:%S')
+    hdu.header['HIERARCH SIGMA CLIP LVL'] = clip_lvl
 
     #Now save to a file on your local machine. 
     print('')

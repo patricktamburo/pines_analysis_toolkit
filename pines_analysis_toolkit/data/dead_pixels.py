@@ -38,12 +38,12 @@ def dead_pixels(date, band, clip_lvl=3, upload=False, sftp=''):
     print('Flagging dead pixels')
     print('......')
     #Find hot pixels in the master dark. This uses the 8 pixels surrounding each pixel, ignoring the pixels on the edges of the detector.
+    #This will iterate until no new dead pixels are found. 
     dead_pixel_mask = np.zeros((shape[0], shape[1]), dtype='int')
     num_flagged = 999 #Initialize
     total_flagged = 0
     iteration = 1
-    max_iters = 5
-    while (num_flagged != 0) or (iteration == max_iters): 
+    while (num_flagged != 0): 
         num_flagged = 0
         pbar = ProgressBar()
         for xx in pbar(range(1, shape[0]-1)):
@@ -53,6 +53,7 @@ def dead_pixels(date, band, clip_lvl=3, upload=False, sftp=''):
                     neighbor_vals = np.delete(master_flat[yy-1:yy+2,xx-1:xx+2].ravel(),4) #This grabs the 8 surrounding pixels, ignoring the target pixel. 
                     if pixel_val < np.nanmean(neighbor_vals) - clip_lvl*np.nanstd(neighbor_vals): #Flag pixel as hot if it is more than clip_lvl sigma higher than the mean of its neighbors. 
                         dead_pixel_mask[yy,xx] = 1
+                        master_flat[yy,xx] = np.nan #Set this pixel to a NaN so that it's ignored on subsequent iterations. 
                         num_flagged += 1
         print('Iteration {}: {} new dead pixels identified.'.format(iteration, num_flagged))
         iteration += 1
@@ -66,6 +67,7 @@ def dead_pixels(date, band, clip_lvl=3, upload=False, sftp=''):
 
     hdu = fits.PrimaryHDU(dead_pixel_mask)
     hdu.header['HIERARCH DATE CREATED'] = datetime.utcnow().strftime('%Y-%m-%d')+'T'+datetime.utcnow().strftime('%H:%M:%S')
+    hdu.header['HIERARCH SIGMA CLIP LVL'] = clip_lvl
 
     #Now save to a file on your local machine. 
     print('')
