@@ -7,13 +7,18 @@ import pdb
 from photutils import DAOStarFinder, aperture_photometry, CircularAperture
 from pines_analysis_toolkit.utils.pines_dir_check import pines_dir_check
 import pickle
+from astropy.convolution import Gaussian2DKernel, interpolate_replace_nans
+from pines_analysis_toolkit.data.bpm_chooser import bpm_chooser
+from astropy.visualization import ImageNormalize, ZScaleInterval, SquaredStretch, SqrtStretch, LinearStretch
+from pines_analysis_toolkit.data.bg_2d import bg_2d
 
 '''Authors:
         Patrick Tamburo, Boston University, June 2020
 	Purpose:
         Finds sources in reduced Mimir image. 
 	Inputs:
-        image_path(pathlib.Path): the path to the reduced image you want to detect sources in.
+        image_path (pathlib.Path): the path to the reduced image you want to detect sources in.
+        source_dir (pathlib.Path): path to the source directory for this object for saving source detection image. 
         fhwm (float): the fwhm in pixels for the source detection.
         thresh (float): the number of sigma above background for source detection.
         plot (bool, optional): whether or not to plot the detected sources. Will also save plot. 
@@ -24,27 +29,36 @@ import pickle
         Make bpm a fits image?
 '''
 
-def detect_sources(image_path, fwhm=5.0, thresh=3.0, plot=False):
-    plt.ion() #Turn on interactive plotting
+def detect_sources(image_path, source_dir, fwhm=5.0, thresh=2.0, plot=False):
     ap_rad = 5 #Radius of aperture in pixels for doing quick photometry on detected sources.
-    edge_tolerance = 15 #Number of pixels from the edge where detected sources are cut from. We don't want these because they can shift off the detector.
+    edge_tolerance = 25 #Number of pixels from the edge where detected sources are cut from. We don't want these because they can shift off the detector.
     
     #Read in the image. 
     image = fits.open(image_path)[0].data
+    header = fits.open(image_path)[0].header
+    
+    #Interpolate nans if any in image. 
+    kernel = Gaussian2DKernel(x_stddev=1)
+    image = interpolate_replace_nans(image, kernel)
+    
+    #Do a quick background model subtraction (makes source detection easier).
+    image = bg_2d(image, box_size=64)
 
     #Get a bad pixel mask to help in source detection.
     pines_path = pines_dir_check()
-    bpm_path = pines_path/('Calibrations/Bad Pixel Masks/bpm.p')
-    bpm = (1-pickle.load(open(bpm_path,'rb'))).astype('bool')
-
+    bpm_path = pines_path/('Calibrations/Bad Pixel Masks')            
+    bpm, bad_pixel_mask_name = bpm_chooser(bpm_path, header)
 
     #Get the sigma_clipped_stats for the image.
-    avg, med, std = sigma_clipped_stats(image, sigma=3, maxiters=8)
+    avg, med, std = sigma_clipped_stats(image)
+
+    norm = ImageNormalize(data=image, interval=ZScaleInterval(), stretch=LinearStretch())
+
     if plot:
         title = image_path.name
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10,9))
         ax.set_aspect('equal')
-        im = ax.imshow(image, origin='lower', vmin=med, vmax=med+7*std, cmap='Greys_r')
+        im = ax.imshow(image, origin='lower', norm=norm, cmap='Greys_r')
         cax = fig.add_axes([0.87, 0.15, 0.035, 0.7])
         fig.colorbar(im, cax=cax, orientation='vertical', label='ADU')
         ax.set_title(title)
@@ -88,8 +102,9 @@ def detect_sources(image_path, fwhm=5.0, thresh=3.0, plot=False):
     if plot:
         #Plot detected sources. 
         ax.plot(phot_table['xcenter'],phot_table['ycenter'],'rx')
-        # plt.savefig(pines_path/'')
-    
+        plt.tight_layout()
+        plt.savefig(source_dir/('source_detection.png'))
+
     print('Found {} sources.'.format(len(phot_table)))
     sources = phot_table[::-1].to_pandas() #Resort remaining sources so that the brightest are listed firsts. 
     return sources

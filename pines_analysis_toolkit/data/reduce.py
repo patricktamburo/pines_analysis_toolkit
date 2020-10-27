@@ -32,6 +32,7 @@ import getpass
 import paramiko
 import pysftp 
 from pines_analysis_toolkit.utils.quick_plot import quick_plot as qp
+from pines_analysis_toolkit.data.bg_2d import bg_2d
 
 '''Authors:
 		Paul Dalba, Boston University, February 2017
@@ -95,6 +96,9 @@ def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sf
 		#Set bad pixels to NaNs. 
 		frame_red[np.where(bad_pixel_mask == 1)] = np.nan
 		#qp(frame_red)
+
+		# #Do a background model subtraction
+		# frame_red = bg_2d(frame_red)
 
 		#Store some parameters in the reduced file's header. 
 		#Naming convention follows https://docs.astropy.org/en/stable/io/fits/usage/headers.html.

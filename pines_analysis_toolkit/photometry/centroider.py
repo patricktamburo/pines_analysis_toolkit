@@ -5,6 +5,7 @@ from pines_analysis_toolkit.utils.pines_dir_check import pines_dir_check
 from pines_analysis_toolkit.utils.short_name_creator import short_name_creator
 from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
 from pines_analysis_toolkit.utils.quick_plot import quick_plot
+from pines_analysis_toolkit.utils.gif_utils import gif_maker
 import natsort
 from astropy.stats import sigma_clipped_stats
 import numpy as np
@@ -17,9 +18,12 @@ import time
 import shutil
 import os
 import warnings
-from astropy.convolution import interpolate_replace_nans
 from astropy.utils.exceptions import AstropyUserWarning
-from astropy.convolution import Gaussian2DKernel
+from astropy.convolution import Gaussian2DKernel, interpolate_replace_nans
+from astropy.visualization import ZScaleInterval, ImageNormalize, SquaredStretch
+from progressbar import ProgressBar
+from glob import glob 
+
 #Turn off warnings from Astropy because they're incredibly annoying. 
 warnings.simplefilter("ignore", category=AstropyUserWarning)
 
@@ -39,11 +43,10 @@ warnings.simplefilter("ignore", category=AstropyUserWarning)
         Flag bad centroids?
 '''
 
-def centroider(target, sources, plots=False, restore=False):
+def centroider(target, sources, plots=False, gif=False, restore=False, box_w=8):
     t1 = time.time()
     pines_path = pines_dir_check()
     short_name = short_name_creator(target)
-    plt.ion()
 
     kernel = Gaussian2DKernel(x_stddev=1) #For fixing nans in cutouts.
 
@@ -54,22 +57,32 @@ def centroider(target, sources, plots=False, restore=False):
         print('')
         return centroid_df
 
+    plt.ion()
     #Create subdirectories in sources folder to contain output plots. 
     if plots:
+        subdirs = glob(str(pines_path/('Objects/'+short_name+'/sources'))+'/*/')
+        #Delete any source directories that are already there. 
+        for name in subdirs:
+            shutil.rmtree(name)
+
+        #Create new source directories.
         for name in sources['Name']:
-            #If the folders are already there, delete them. 
             source_path = (pines_path/('Objects/'+short_name+'/sources/'+name+'/'))
-            if source_path.exists():
-                shutil.rmtree(source_path)
-            #Create folders.
             os.mkdir(source_path)
+
+    #Read in extra shifts, in case the master image wasn't used for source detection.
+    extra_shift_path = pines_path/('Objects/'+short_name+'/sources/extra_shifts.txt')
+    extra_shifts = pd.read_csv(extra_shift_path, delimiter=' ', names=['Extra X shift', 'Extra Y shift'])
+    extra_x_shift = extra_shifts['Extra X shift'][0]
+    extra_y_shift = extra_shifts['Extra Y shift'][0]
 
     np.seterr(divide='ignore', invalid='ignore') #Suppress some warnings we don't care about in median combining. 
 
     #Get list of reduced files for target. 
     reduced_path = pines_path/('Objects/'+short_name+'/reduced')
-    reduced_files = np.array(natsort.natsorted([x for x in reduced_path.glob('*.fits')]))
-
+    reduced_filenames = natsort.natsorted([x.name for x in reduced_path.glob('*.fits')])
+    reduced_files = np.array([reduced_path/i for i in reduced_filenames])
+    
     #Declare a new dataframe to hold the centroid information for all sources we want to track. 
     columns = []
     for i in range(0, len(sources)):
@@ -88,24 +101,21 @@ def centroider(target, sources, plots=False, restore=False):
             print('ERROR: {} not in {}. Download it from the PINES server.'.format(i+'_log.txt',log_path))
             pdb.set_trace()
 
-    box_w = 15 #1/2 wdth of the box to cut out around the target position. 
-    shift_tolerance = 3 #Number of pixels that the measured centroid can be away from the expected position before trying other centroiding algorithms. 
+    shift_tolerance = 5 #Number of pixels that the measured centroid can be away from the expected position before trying other centroiding algorithms. 
     for i in range(len(sources)):
         #Get the initial source position.
         x_pos = sources['Source Detect X'][i] 
         y_pos = sources['Source Detect Y'][i] 
         print('')
         print('Getting centroids for {}, source {} of {}.'.format(sources['Name'][i],i+1,len(sources)))
+        if plots:
+            print('Saving centroid plots to {}.'.format(pines_path/('Objects/'+short_name+'/sources/'+sources['Name'][i]+'/')))
         print('')
-        for j in range(len(reduced_files)):
+        pbar = ProgressBar()
+        for j in pbar(range(len(reduced_files))):
             file = reduced_files[j]
-            if i == 0:
-                print('{}, {}, image {} of {}.'.format(sources['Name'][i], file.name, j+1, len(reduced_files)))
-            else:
-                print('{} of {}, {}, image {} of {}.'.format(sources['Name'][i], len(sources)-1, file.name, j+1, len(reduced_files)))
 
             image = fits.open(file)[0].data
-
             #Get the measured image shift for this image. 
             log = pines_log_reader(log_path/(file.name.split('.')[0]+'_log.txt'))
             log_ind = np.where(log['Filename'] == file.name.split('_')[0]+'.fits' )[0][0]
@@ -123,12 +133,12 @@ def centroider(target, sources, plots=False, restore=False):
                 y_shift = 0
 
             #Apply the shift. 
-            x_pos = sources['Source Detect X'][i] - x_shift
-            y_pos = sources['Source Detect Y'][i] + y_shift
+            x_pos = sources['Source Detect X'][i] - x_shift - extra_x_shift
+            y_pos = sources['Source Detect Y'][i] + y_shift + extra_y_shift
 
             #Get sigma_clipped_stats of the box around this guess position.
             #stats = sigma_clipped_stats(image[int(y_pos-box_w):int(y_pos+box_w), int(x_pos-box_w):int(x_pos+box_w)])
-            cutout = interpolate_replace_nans(image[int(y_pos-box_w):int(y_pos+box_w), int(x_pos-box_w):int(x_pos+box_w)], kernel)
+            cutout = interpolate_replace_nans(image[int(y_pos-box_w):int(y_pos+box_w)+1, int(x_pos-box_w):int(x_pos+box_w)+1], kernel)            
 
             vals, lower, upper = sigmaclip(cutout, low=1.5, high=2.5) #~3x faster than astropy's sigma_clipped_stats
             med = np.nanmedian(vals)
@@ -155,9 +165,13 @@ def centroider(target, sources, plots=False, restore=False):
             #if (abs(centroid_x - x_pos) > 5) or (abs(centroid_y - y_pos) > 5):
             #    print('centroid_com returned large centroid deviation, trying centroid_1dg')
             
-            centroid_x, centroid_y = centroid_2dg(cutout - med, error=1/(np.sqrt(cutout)**2))
+
+            centroid_x, centroid_y = centroid_1dg(cutout - med)
+
             centroid_x += int(x_pos) - box_w
             centroid_y += int(y_pos) - box_w
+
+
 
             # fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(10,5), sharex=True, sharey=True)
             # ax[0].imshow(mask, origin='lower')
@@ -209,15 +223,26 @@ def centroider(target, sources, plots=False, restore=False):
                 #Plot
                 lock_x = int(centroid_df[sources['Name'][i]+' X'][0])
                 lock_y = int(centroid_df[sources['Name'][i]+' Y'][0])
-                plt.imshow(image, origin='lower', vmin=med, vmax=med+5*std)
+                norm = ImageNormalize(data=image, interval=ZScaleInterval(), stretch=SquaredStretch())
+                plt.imshow(image, origin='lower', norm=norm)
                 plt.plot(centroid_x, centroid_y, 'rx')
-                plt.ylim(lock_y-box_w,lock_y+box_w-1)
-                plt.xlim(lock_x-box_w,lock_x+box_w-1)
-                plt.title('CENTROID DIAGNOSTIC PLOT\n'+sources['Name'][i]+', '+reduced_files[j].name+' (image '+str(j+1)+' of '+str(len(reduced_files))+')')
+                plt.ylim(lock_y-30,lock_y+30-1)
+                plt.xlim(lock_x-30,lock_x+30-1)
+                plt.title('CENTROID DIAGNOSTIC PLOT\n'+sources['Name'][i]+', '+reduced_files[j].name+' (image '+str(j+1)+' of '+str(len(reduced_files))+')', fontsize=10)
                 plt.text(centroid_x, centroid_y+0.5, '('+str(np.round(centroid_x,1))+', '+str(np.round(centroid_y,1))+')', color='r', ha='center')
                 plot_output_path = (pines_path/('Objects/'+short_name+'/sources/'+sources['Name'][i]+'/'+str(j).zfill(4)+'.jpg'))
-                plt.savefig(plot_output_path)
+                plt.gca().set_axis_off()
+                plt.subplots_adjust(top = 1, bottom = 0, right = 1, left = 0, hspace = 0, wspace = 0)
+                plt.margins(0,0)
+                plt.gca().xaxis.set_major_locator(plt.NullLocator())
+                plt.gca().yaxis.set_major_locator(plt.NullLocator())
+                plt.savefig(plot_output_path, bbox_inches='tight', pad_inches=0)
+                
                 plt.close()
+
+        if gif:
+            gif_path = (pines_path/('Objects/'+short_name+'/sources/'+sources['Name'][i]+'/'))
+            gif_maker(path=gif_path, fps=20)
 
     output_filename = pines_path/('Objects/'+short_name+'/sources/target_and_references_centroids.csv')
     #centroid_df.to_csv(pines_path/('Objects/'+short_name+'/sources/target_and_references_centroids.csv'))

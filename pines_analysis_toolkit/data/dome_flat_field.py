@@ -51,6 +51,7 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
     t1 = time.time()
     #If an sftp connection to the PINES server was passed, download the flat data. 
     if type(sftp) == pysftp.Connection:
+        sftp.chdir('/')
         sftp.chdir('data/raw/mimir')
         run_list = sftp.listdir()
         data_path = '' #Initialize to check that it gets filled. 
@@ -369,6 +370,5 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
         for j in range(len(files_to_delete)):
             os.remove(files_to_delete[j])
 
-    sftp.close()
     print('dome_flat_field runtime: ', np.round((time.time()-t1)/60,1), ' minutes.')
     print('Done!')
