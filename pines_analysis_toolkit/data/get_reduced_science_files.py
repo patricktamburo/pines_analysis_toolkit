@@ -8,8 +8,7 @@ from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
 from pines_analysis_toolkit.data.get_master_log import get_master_log
 from pines_analysis_toolkit.data.master_dark_chooser import master_dark_chooser
 from pines_analysis_toolkit.data.master_flat_chooser import master_flat_chooser
-from pines_analysis_toolkit.data.get_master_darks import get_master_darks
-from pines_analysis_toolkit.data.get_master_dome_flats import get_master_dome_flats
+from pines_analysis_toolkit.data.get_calibrations import get_calibrations
 from datetime import datetime
 from astropy.io import fits
 import getpass 
@@ -58,9 +57,8 @@ def get_reduced_science_files(sftp, target_name):
 
     #Let's grab all of the available calibration data on pines.bu.edu.
     print('')
-    get_master_dome_flats(sftp, flats_path)
-    get_master_darks(sftp, dark_path)
-    print('Domeflats and darks up to date!')
+    get_calibrations(sftp, pines_path)
+    print('Calibrations up to date!')
     print('')
     time.sleep(2)
     

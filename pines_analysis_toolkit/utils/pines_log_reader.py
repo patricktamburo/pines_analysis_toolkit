@@ -29,5 +29,5 @@ def pines_log_reader(path):
             df[key] = df[key].str.strip()
         except:
             continue
-        
+
     return df

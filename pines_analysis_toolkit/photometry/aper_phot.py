@@ -5,7 +5,7 @@ from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
 from pines_analysis_toolkit.utils.quick_plot import quick_plot
 import numpy as np
 import natsort
-from photutils import CircularAperture, CircularAnnulus, aperture_photometry
+from photutils import CircularAperture, CircularAnnulus, aperture_photometry, make_source_mask
 import pandas as pd
 from astropy.io import fits
 import matplotlib.pyplot as plt
@@ -13,12 +13,16 @@ from astropy.stats import sigma_clipped_stats
 import datetime 
 import math
 from photutils.utils import calc_total_error
-from astropy.table import Table
+from astropy.table import Table, QTable
+import astropy.units as u
 from scipy.stats import sigmaclip
 import shutil
 import os
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import cm
+from astropy.convolution import Gaussian2DKernel, interpolate_replace_nans
+from progressbar import ProgressBar
+from astropy.visualization import ZScaleInterval, ImageNormalize, SquaredStretch
 
 '''Authors:
 		Patrick Tamburo, Boston University, June 2020
@@ -39,7 +43,7 @@ from matplotlib import cm
         Make sure Varun's routines are working properly. Why is photometric uncertainty < sqrt(flux)? 
 '''
 
-def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots=False):
+def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots=False, gain=8.21):
 
     def hmsm_to_days(hour=0,min=0,sec=0,micro=0):
         """
@@ -89,7 +93,7 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
         
         return jd
     
-    def iraf_style_photometry(phot_apertures, bg_apertures, data, error_array=None, bg_method='mode', epadu=1.0):
+    def iraf_style_photometry(phot_apertures, bg_apertures, data, error_array=None, bg_method='median', epadu=1.0):
         """Computes photometry with PhotUtils apertures, with IRAF formulae
         Parameters
         ----------
@@ -123,12 +127,43 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
         if bg_method not in ['mean', 'median', 'mode']:
             raise ValueError('Invalid background method, choose either mean, median, or mode')
         
-        phot = aperture_photometry(data, phot_apertures, error=error_array)
-        bg_phot = aperture_stats_tbl(data, bg_apertures, sigma_clip=True)
-        ap_area = phot_apertures.area
-        bg_method_name = 'aperture_{}'.format(bg_method)
+        #phot_all = aperture_photometry(data, phot_apertures, error=error_array)
 
-        flux = phot['aperture_sum'] - bg_phot[bg_method_name] * ap_area
+        #Create a list to hold the flux for each source.
+        aperture_sum = []
+
+        for pos in phot_apertures.positions:
+            #Cutout around the source position
+            cutout_w = 15
+            x_pos = pos[0]
+            y_pos = pos[1]
+            cutout = data[int((y_pos-cutout_w)):int(y_pos+cutout_w)+1, int(x_pos-cutout_w):int(x_pos+cutout_w)+1]
+            x_cutout = x_pos - np.floor(x_pos - cutout_w)
+            y_cutout = y_pos - np.floor(y_pos - cutout_w) 
+            ap = CircularAperture((x_cutout, y_cutout), r=phot_apertures.r)
+
+            #Cut out the pixels JUST inside the aperture, and check if there are NaNs there. If so, interpolate over NaNs in the cutout. 
+            ap_mask = ap.to_mask(method='exact')
+            ap_cut = ap_mask.cutout(cutout)
+            if np.sum(np.isnan(ap_cut)) > 0:
+                cutout = interpolate_replace_nans(cutout, kernel=Gaussian2DKernel(x_stddev=0.5))
+
+            phot_source = aperture_photometry(cutout, ap, error=error_array)
+            aperture_sum.append(phot_source['aperture_sum'][0])
+
+        #Add positions/fluxes to a table
+        xcenter = phot_apertures.positions[:,0]*u.pix
+        ycenter = phot_apertures.positions[:,1]*u.pix
+        phot = QTable([xcenter, ycenter, aperture_sum], names=('xcenter', 'ycenter', 'aperture_sum'))
+
+        #Now measure the background around each source. 
+        mask = make_source_mask(data, nsigma=3, npixels=5, dilate_size=7) #Make a mask to block out any sources that might show up in the annuli and bias them.
+        bg_phot = aperture_stats_tbl(~mask*data, bg_apertures, sigma_clip=True) #Pass the data with sources masked out to the bg calculator. 
+        ap_area = phot_apertures.area
+        
+        bg_method_name = 'aperture_{}'.format(bg_method)
+        background = bg_phot[bg_method_name]
+        flux = phot['aperture_sum'] - background * ap_area
 
         # Need to use variance of the sources for Poisson noise term in error computation.
         #This means error needs to be squared. If no error_array error = flux ** .5
@@ -142,18 +177,14 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
 
         # Make the final table
         X, Y = phot_apertures.positions.T
-        stacked = np.stack([X, Y, flux, flux_error, mag, mag_err], axis=1)
-        names = ['X', 'Y', 'flux', 'flux_error', 'mag', 'mag_error']
+        stacked = np.stack([X, Y, flux, flux_error, mag, mag_err, background], axis=1)
+        names = ['X', 'Y', 'flux', 'flux_error', 'mag', 'mag_error', 'background']
 
         final_tbl = Table(data=stacked, names=names)
 
         #Check for nans
         if sum(np.isnan(final_tbl['flux'])) > 0:
             bad_locs = np.where(np.isnan(final_tbl['flux']))[0]
-            quick_plot(data)
-            plt.plot(final_tbl['X'][bad_locs], final_tbl['Y'][bad_locs], 'rx')
-
-            pdb.set_trace()
 
         return final_tbl
         
@@ -225,12 +256,13 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
             return (np.nan, np.nan, np.nan, np.nan, np.nan)
         else:
             values = cutout[cutout != 0]
+            values = values[~np.isnan(values)]
+
             if sigma_clip:
                 values, clow, chigh = sigmaclip(values, low=3, high=3)
-            mean = np.mean(values)
-            median = np.median(values)
-            std = np.std(values)
-
+            mean = np.nanmean(values)
+            median = np.nanmedian(values)
+            std = np.nanstd(values)
             mode = 3 * median - 2 * mean
             actual_area = (~np.isnan(values)).sum()
             return (mean, median, mode, std, actual_area)
@@ -245,8 +277,9 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
 
     #Get list of reduced files for target. 
     reduced_path = pines_path/('Objects/'+short_name+'/reduced')
-    reduced_files = np.array(natsort.natsorted([x for x in reduced_path.glob('*.fits')]))
-
+    reduced_filenames = natsort.natsorted([x.name for x in reduced_path.glob('*.fits')])
+    reduced_files = np.array([reduced_path/i for i in reduced_filenames])
+    
     source_names = natsort.natsorted(list(set([i[0:-2].replace('X','').replace('Y','').rstrip().lstrip() for i in centroided_sources.keys()])))
 
     #Create output plot directories for each source.
@@ -270,20 +303,27 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
     #Loop over all aperture radii. 
     for ap in ap_radii:
         print('Doing aperture photometry for {}, aperture radius = {} pix, inner annulus radius = {} pix, outer annulus radius = {} pix.'.format(target, ap, an_in, an_out))
+        print('')
 
         #Declare a new dataframe to hold the information for all targets for this aperture. 
         columns = ['Filename', 'Time UT', 'Time JD', 'Airmass', 'Seeing']
         for i in range(0, len(source_names)):
             columns.append(source_names[i]+' Flux')
             columns.append(source_names[i]+' Flux Error')
+            columns.append(source_names[i]+' Background')
 
         ap_df = pd.DataFrame(index=range(len(reduced_files)), columns=columns)
         output_filename = pines_path/('Objects/'+short_name+'/aper_phot/'+short_name+'_aper_phot_'+str(float(ap))+'_pix_radius.csv')
 
         #Loop over all images.
-        for j in range(len(reduced_files)):
+        pbar = ProgressBar()
+        for j in pbar(range(len(reduced_files))):
             data = fits.open(reduced_files[j])[0].data
-            
+
+            #Replace nans in data using Gaussian. 
+            ### kernel = Gaussian2DKernel(x_stddev=1)
+            ### data = interpolate_replace_nans(data, kernel)
+
             #Read in some supporting information.
             log_path = pines_path/('Logs/'+reduced_files[j].name.split('.')[0]+'_log.txt')
             log = pines_log_reader(log_path)
@@ -320,11 +360,12 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
             #Create an annulus centered on this position. 
             annuli = CircularAnnulus(positions, r_in=an_in, r_out=an_out)
 
-            photometry_tbl = iraf_style_photometry(apertures, annuli, (data*8.21))
+            photometry_tbl = iraf_style_photometry(apertures, annuli, data*gain)
 
             for i in range(len(photometry_tbl)):
                 ap_df[source_names[i]+' Flux'][j] = photometry_tbl['flux'][i] 
                 ap_df[source_names[i]+' Flux Error'][j] = photometry_tbl['flux_error'][i]
+                ap_df[source_names[i]+' Background'][j] = photometry_tbl['background'][i]
 
             #Make surface plots.
             if plots:
@@ -357,37 +398,23 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
                     plt.savefig(plot_output_path)
                     plt.close()
            
-            # #Get the raw flux in the aperture and annulus. 
-            # raw_ap_flux = aperture_photometry(data, apertures)
-
-            #stats = sigma_clipped_stats(data)
-            #plt.imshow(8.21*(data - stats[1])/60, origin='lower', vmin=0, vmax=7*8.21*stats[2]/60)
-
-            # annuli_masks = annuli.to_mask(method='center')
-            # for i in range(len(annuli_masks)):
-            #     annulus_data = annuli_masks[i].multiply(data)
-            #     mask = annuli_masks[i].data
-            #     annulus_data_1d = annulus_data[mask > 0]
-            #     stats = sigma_clipped_stats(annulus_data_1d)
-            #     background = stats[1] * apertures[i].area
-            #     ap_counts = raw_ap_flux['aperture_sum'][i] - background
-            #     ap_df[source_names[i]+' Aper Phot'][j] = ap_counts
-            #     ap_df[source_names[i]+' Background'][j] = stats[1]
-
-        #plt.errorbar(ap_df['Time JD'],ap_df[source_names[0]+' Flux']/np.median(ap_df[source_names[0]+' Flux']),yerr=ap_df[source_names[0]+' Flux Error']/np.median(ap_df[source_names[i]+' Flux']), marker='.')
+        #Write output to file. 
         print('Saving ap = {} aperture photometry output to {}.'.format(ap,output_filename))
+        print('')
         with open(output_filename, 'w') as f:
             for j in range(len(ap_df)):
+                #Write in the header. 
                 if j == 0:
                     f.write('{:>21s}, {:>22s}, {:>17s}, {:>7s}, {:>7s}, '.format('Filename', 'Time UT', 'Time JD', 'Airmass', 'Seeing'))
                     for i in range(len(source_names)):
                         if i != len(source_names) - 1:
-                            f.write('{:>20s}, {:>26s}, '.format(source_names[i]+' Flux', source_names[i]+' Flux Error'))
+                            f.write('{:>22s}, {:>28s}, {:>28s}, '.format(source_names[i]+' Flux', source_names[i]+' Flux Error', source_names[i]+' Background'))
                         else:
-                            f.write('{:>20s}, {:>26s}\n'.format(source_names[i]+' Flux', source_names[i]+' Flux Error'))
+                            f.write('{:>22s}, {:>28s}, {:>28s}\n'.format(source_names[i]+' Flux', source_names[i]+' Flux Error', source_names[i]+' Background'))
 
+
+                #Write in Filename, Time UT, Time JD, Airmass, Seeing values.
                 format_string = '{:21s}, {:22s}, {:17.9f}, {:7.2f}, {:7.1f}, '
-
                 #If the seeing value for this image is 'nan' (a string), convert it to a float. 
                 #TODO: Not sure why it's being read in as a string, fix that. 
                 if type(ap_df['Seeing'][j]) == str:
@@ -399,12 +426,13 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
                 except:
                     print('Writeout failed! Inspect quantities you are trying to write out.')
                     pdb.set_trace()
+
+                #Write in Flux, Flux Error, and Background values for every source. 
                 for i in range(len(source_names)):                    
                     if i != len(source_names) - 1:
-                        format_string = '{:20.11f}, {:26.11f}, '
+                        format_string = '{:22.5f}, {:28.5f}, {:28.5f}, '
                     else:
-                        format_string = '{:20.11f}, {:26.11f}\n'
-                    
-                    f.write(format_string.format(ap_df[source_names[i]+' Flux'][j], ap_df[source_names[i]+' Flux Error'][j]))
+                        format_string = '{:22.5f}, {:28.5f}, {:28.5f}\n'
+                    f.write(format_string.format(ap_df[source_names[i]+' Flux'][j], ap_df[source_names[i]+' Flux Error'][j], ap_df[source_names[i]+' Background'][j]))
     print('')
     return 

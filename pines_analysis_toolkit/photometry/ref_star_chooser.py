@@ -11,6 +11,8 @@ from photutils import CircularAperture, aperture_photometry, CircularAnnulus
 from astropy.io import fits
 from astropy.stats import sigma_clipped_stats
 from scipy.stats import sigmaclip
+from astropy.convolution import Gaussian2DKernel, interpolate_replace_nans
+from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
 
 '''Authors:
 		Patrick Tamburo, Boston University, June 2020
@@ -33,7 +35,8 @@ from scipy.stats import sigmaclip
 	TODO:
 '''
 
-def ref_star_chooser(target, source_detect_image='', radius_check=6., non_linear_limit=3300., dimness_tolerance=1.0, closeness_tolerance=12., distance_from_target=700., exclude_lower_left=False, restore=False):
+def ref_star_chooser(target, source_detect_image='', guess_position=(705.,386.), radius_check=6., non_linear_limit=3300., dimness_tolerance=1.0, closeness_tolerance=12., distance_from_target=700., exclude_lower_left=False, restore=False):
+    plt.ion() 
     
     #Get the target's 'short name'
     short_name = short_name_creator(target)
@@ -58,23 +61,43 @@ def ref_star_chooser(target, source_detect_image='', radius_check=6., non_linear
         return
 
     #Set path to source directory. 
-    phot_dir = pines_path/('Objects/'+short_name+'/sources/')
+    source_dir = pines_path/('Objects/'+short_name+'/sources/')
 
     #By default, use the target's master image for the source detection. 
     if source_detect_image == '':
         source_detect_image_path = pines_path/('Master Images/'+target.replace(' ','')+'_master.fits')
+        #If the master image is used for source detection, centroids will be where we expect them to be based on the measured x/y shifts in the log,
+        #and we don't need to apply any "extra" x/y shifts. 
+        extra_x_shift = '0.0'
+        extra_y_shift = '0.0'
     #If a different reduced file is specified, use that. 
     else:
         source_detect_image_path = data_dir/(source_detect_image)
+        source_frame = source_detect_image.split('_')[0]+'.fits'
+        log_name = source_frame.split('.')[0]+'_log.txt'
+        log = pines_log_reader(pines_path/('Logs/'+log_name))
+        source_frame_ind = np.where(log['Filename'] == source_frame)[0][0]
+        #If the master image is *not* used for source detection, the image will shifted with respect to the master image, and extra x/y shifts must be
+        #applied in order for the x/y shifts in the log to accurately predict where the sources will be. 
+        extra_x_shift = log['X shift'][source_frame_ind]
+        extra_y_shift = log['Y shift'][source_frame_ind]
+    
+    extra_shift_path = (source_dir/'extra_shifts.txt')
+    with open(extra_shift_path, 'w') as file:
+        file.write(extra_x_shift+' '+extra_y_shift)
 
     #Detect sources in the image. 
-    sources = detect_sources(source_detect_image_path, fwhm=6., thresh=2., plot=False)
+    sources = detect_sources(source_detect_image_path, source_dir, fwhm=6., thresh=2., plot=True)
 
-    target_id = target_finder(sources)
-    #ax.plot(sources['xcenter'][target_id], sources['ycenter'][target_id], 'mx')
+    target_id = target_finder(sources, guess_position)
 
     #Now determine ids of suitable reference stars.
     image = fits.open(source_detect_image_path)[0].data
+
+    #Interpolate nans if any in image. 
+    kernel = Gaussian2DKernel(x_stddev=1)
+    image = interpolate_replace_nans(image, kernel)
+
     suitable_ref_ids = []
     bad_ref_ids = [target_id]
     #Get a value for the brightness of the target with a radius_check aperture. We don't want reference stars dimmer than dimness_tolerance * targ_flux_estimates. 
@@ -193,11 +216,11 @@ def ref_star_chooser(target, source_detect_image='', radius_check=6., non_linear
     ans = input('Happy with reference star selection? y/n: ')
     if ans == 'y':
         print('')
-        print('Saving target/reference info to {}.'.format(phot_dir/'target_and_references_source_detection.csv'))
-        output_df.to_csv(phot_dir/'target_and_references_source_detection.csv',index=False)
+        print('Saving target/reference info to {}.'.format(source_dir/'target_and_references_source_detection.csv'))
+        output_df.to_csv(source_dir/'target_and_references_source_detection.csv',index=False)
         print('')
-        print('Saving target and references image to {}.'.format(phot_dir/(source_detect_image_path.name.split('.fits')[0]+'_target_and_refs.png')))
-        plt.savefig(phot_dir/(source_detect_image_path.name.split('.fits')[0]+'_target_and_refs.png'))
+        print('Saving target and references image to {}.'.format(source_dir/(source_detect_image_path.name.split('.fits')[0]+'_target_and_refs.png')))
+        plt.savefig(source_dir/(source_detect_image_path.name.split('.fits')[0]+'_target_and_refs.png'))
         plt.close('all')
         return output_df
     elif ans =='n':

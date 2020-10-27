@@ -4,3 +4,4 @@ from pines_analysis_toolkit.utils.object_directory_creator import object_directo
 from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
 from pines_analysis_toolkit.utils.pines_login import pines_login
 from pines_analysis_toolkit.utils.quick_plot import quick_plot
+from pines_analysis_toolkit.utils.gif_utils import gif_maker

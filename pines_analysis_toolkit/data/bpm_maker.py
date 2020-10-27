@@ -33,11 +33,19 @@ def bpm_maker(date, exptime, band, upload=False, sftp=''):
     kokopelli_path = pines_path/('Calibrations/Kokopelli Mask/kokopelli_mask.fits')
     kokopelli_mask = (1-fits.open(kokopelli_path)[0].data).astype('int')[0:1024,:]
 
-    variable_path = pines_path/('Calibrations/Variable Pixel Masks/vpm_'+str(exptime)+'_s_'+date+'.fits')
+    if date == '20201003' and exptime == 15:
+        variable_path = pines_path/('Calibrations/Variable Pixel Masks/vpm_'+str(exptime)+'_s_'+'20200129'+'.fits')
+    else:
+        variable_path = pines_path/('Calibrations/Variable Pixel Masks/vpm_'+str(exptime)+'_s_'+date+'.fits')
     variable_mask = fits.open(variable_path)[0].data
 
-    hot_path = pines_path/('Calibrations/Hot Pixel Masks/hpm_'+str(exptime)+'_s_'+date+'.fits')
+    if date == '20201003' and exptime == 30:
+        hot_path = pines_path/('Calibrations/Hot Pixel Masks/hpm_'+str(exptime)+'_s_'+'20200129'+'.fits')
+    else:
+        hot_path = pines_path/('Calibrations/Hot Pixel Masks/hpm_'+str(exptime)+'_s_'+'20200129'+'.fits')
     hot_mask = fits.open(hot_path)[0].data
+
+
 
     dead_path = pines_path/('Calibrations/Dead Pixel Masks/dpm_'+band+'_'+date+'.fits')
     dead_mask = fits.open(dead_path)[0].data
