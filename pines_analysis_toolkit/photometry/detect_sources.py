@@ -70,6 +70,7 @@ def detect_sources(image_path, source_dir, fwhm=5.0, thresh=2.0, plot=False):
 
     #Detect sources using DAOStarFinder.
     daofind = DAOStarFinder(fwhm=fwhm, threshold=thresh*std)  
+
     initial_sources = daofind(image - med, mask=bpm)
 
     #Do a cut based on source sharpness to get rid of some false detections.

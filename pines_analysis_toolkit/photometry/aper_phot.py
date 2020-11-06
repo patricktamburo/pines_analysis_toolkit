@@ -131,8 +131,10 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
 
         #Create a list to hold the flux for each source.
         aperture_sum = []
+        interpolation_flags = np.zeros(len(phot_apertures.positions), dtype='bool')
 
-        for pos in phot_apertures.positions:
+        for i in range(len(phot_apertures.positions)):
+            pos = phot_apertures.positions[i]
             #Cutout around the source position
             cutout_w = 15
             x_pos = pos[0]
@@ -146,7 +148,21 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
             ap_mask = ap.to_mask(method='exact')
             ap_cut = ap_mask.cutout(cutout)
             if np.sum(np.isnan(ap_cut)) > 0:
+                bads = np.where(np.isnan(cutout))
+                bad_dists = np.sqrt((bads[1] - y_cutout)**2 + (bads[0] - x_cutout)**2)
+
+                #Check if any bad pixels fall within the aperture. If so, set the interpolation flag to True for this source. 
+                if np.sum(bad_dists < phot_apertures.r):
+                    interpolation_flags[i] = True
+                    # plt.imshow(cutout, origin='lower', norm=ImageNormalize(data=cutout, interval=ZScaleInterval()))
+                    # plt.plot(bads[1], bads[0], 'rx')
+                    # ap.plot(color='b', lw=2)
+                    # bg_ap = CircularAnnulus((x_cutout, y_cutout), r_in=bg_apertures.r_in, r_out=bg_apertures.r_out)
+                    # bg_ap.plot(color='m', lw=2)
+                    # pdb.set_trace()
+                
                 cutout = interpolate_replace_nans(cutout, kernel=Gaussian2DKernel(x_stddev=0.5))
+
 
             phot_source = aperture_photometry(cutout, ap, error=error_array)
             aperture_sum.append(phot_source['aperture_sum'][0])
@@ -177,8 +193,8 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
 
         # Make the final table
         X, Y = phot_apertures.positions.T
-        stacked = np.stack([X, Y, flux, flux_error, mag, mag_err, background], axis=1)
-        names = ['X', 'Y', 'flux', 'flux_error', 'mag', 'mag_error', 'background']
+        stacked = np.stack([X, Y, flux, flux_error, mag, mag_err, background, interpolation_flags], axis=1)
+        names = ['X', 'Y', 'flux', 'flux_error', 'mag', 'mag_error', 'background', 'interpolation_flag']
 
         final_tbl = Table(data=stacked, names=names)
 
@@ -191,6 +207,7 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
     def compute_phot_error(flux_variance, bg_phot, bg_method, ap_area, epadu=1.0):
         """Computes the flux errors using the DAOPHOT style computation"""
         #See eqn. 1 from Broeg et al. (2005): https://ui.adsabs.harvard.edu/abs/2005AN....326..134B/abstract
+        
         flux_variance_term = flux_variance / epadu
         bg_variance_term_1 = ap_area * (bg_phot['aperture_std'])**2
         bg_variance_term_2 = (ap_area * bg_phot['aperture_std'])**2 / bg_phot['aperture_area']
@@ -280,7 +297,7 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
     reduced_filenames = natsort.natsorted([x.name for x in reduced_path.glob('*.fits')])
     reduced_files = np.array([reduced_path/i for i in reduced_filenames])
     
-    source_names = natsort.natsorted(list(set([i[0:-2].replace('X','').replace('Y','').rstrip().lstrip() for i in centroided_sources.keys()])))
+    source_names = natsort.natsorted(list(set([i.replace('X','').replace('Y','').replace('Centroid Warning','').strip() for i in centroided_sources.keys()])))
 
     #Create output plot directories for each source.
     if plots:
@@ -295,8 +312,7 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
             #Create folders.
             os.mkdir(source_path)
 
-        
-    if len(source_names) != len(centroided_sources.keys())/2:
+    if len(source_names) != len(centroided_sources.keys())/3:
         print('ERROR: something going wrong grabbing source names. ')
         return
         
@@ -311,6 +327,7 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
             columns.append(source_names[i]+' Flux')
             columns.append(source_names[i]+' Flux Error')
             columns.append(source_names[i]+' Background')
+            columns.append(source_names[i]+' Interpolation Flag')
 
         ap_df = pd.DataFrame(index=range(len(reduced_files)), columns=columns)
         output_filename = pines_path/('Objects/'+short_name+'/aper_phot/'+short_name+'_aper_phot_'+str(float(ap))+'_pix_radius.csv')
@@ -319,10 +336,6 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
         pbar = ProgressBar()
         for j in pbar(range(len(reduced_files))):
             data = fits.open(reduced_files[j])[0].data
-
-            #Replace nans in data using Gaussian. 
-            ### kernel = Gaussian2DKernel(x_stddev=1)
-            ### data = interpolate_replace_nans(data, kernel)
 
             #Read in some supporting information.
             log_path = pines_path/('Logs/'+reduced_files[j].name.split('.')[0]+'_log.txt')
@@ -366,6 +379,7 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
                 ap_df[source_names[i]+' Flux'][j] = photometry_tbl['flux'][i] 
                 ap_df[source_names[i]+' Flux Error'][j] = photometry_tbl['flux_error'][i]
                 ap_df[source_names[i]+' Background'][j] = photometry_tbl['background'][i]
+                ap_df[source_names[i]+' Interpolation Flag'][j] = int(photometry_tbl['interpolation_flag'][i])
 
             #Make surface plots.
             if plots:
@@ -408,9 +422,9 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
                     f.write('{:>21s}, {:>22s}, {:>17s}, {:>7s}, {:>7s}, '.format('Filename', 'Time UT', 'Time JD', 'Airmass', 'Seeing'))
                     for i in range(len(source_names)):
                         if i != len(source_names) - 1:
-                            f.write('{:>22s}, {:>28s}, {:>28s}, '.format(source_names[i]+' Flux', source_names[i]+' Flux Error', source_names[i]+' Background'))
+                            f.write('{:>22s}, {:>28s}, {:>28s}, {:>31s}, '.format(source_names[i]+' Flux', source_names[i]+' Flux Error', source_names[i]+' Background', source_names[i]+' Interpolation Flag'))
                         else:
-                            f.write('{:>22s}, {:>28s}, {:>28s}\n'.format(source_names[i]+' Flux', source_names[i]+' Flux Error', source_names[i]+' Background'))
+                            f.write('{:>22s}, {:>28s}, {:>28s}, {:>31s}\n'.format(source_names[i]+' Flux', source_names[i]+' Flux Error', source_names[i]+' Background', source_names[i]+' Interpolation Flag'))
 
 
                 #Write in Filename, Time UT, Time JD, Airmass, Seeing values.
@@ -430,9 +444,9 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
                 #Write in Flux, Flux Error, and Background values for every source. 
                 for i in range(len(source_names)):                    
                     if i != len(source_names) - 1:
-                        format_string = '{:22.5f}, {:28.5f}, {:28.5f}, '
+                        format_string = '{:22.5f}, {:28.5f}, {:28.5f}, {:31d}, '
                     else:
-                        format_string = '{:22.5f}, {:28.5f}, {:28.5f}\n'
-                    f.write(format_string.format(ap_df[source_names[i]+' Flux'][j], ap_df[source_names[i]+' Flux Error'][j], ap_df[source_names[i]+' Background'][j]))
+                        format_string = '{:22.5f}, {:28.5f}, {:28.5f}, {:31d}\n'
+                    f.write(format_string.format(ap_df[source_names[i]+' Flux'][j], ap_df[source_names[i]+' Flux Error'][j], ap_df[source_names[i]+' Background'][j], ap_df[source_names[i]+' Interpolation Flag'][j]))
     print('')
     return 

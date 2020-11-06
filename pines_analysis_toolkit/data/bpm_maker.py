@@ -42,21 +42,18 @@ def bpm_maker(date, exptime, band, upload=False, sftp=''):
     if date == '20201003' and exptime == 30:
         hot_path = pines_path/('Calibrations/Hot Pixel Masks/hpm_'+str(exptime)+'_s_'+'20200129'+'.fits')
     else:
-        hot_path = pines_path/('Calibrations/Hot Pixel Masks/hpm_'+str(exptime)+'_s_'+'20200129'+'.fits')
+        hot_path = pines_path/('Calibrations/Hot Pixel Masks/hpm_'+str(exptime)+'_s_'+date+'.fits')
+
     hot_mask = fits.open(hot_path)[0].data
-
-
 
     dead_path = pines_path/('Calibrations/Dead Pixel Masks/dpm_'+band+'_'+date+'.fits')
     dead_mask = fits.open(dead_path)[0].data
 
     #Visualize all masks
     bpm = np.zeros(np.shape(dead_mask), dtype='int')
-    bpm[np.where(kokopelli_mask == 1)] = 1
-    bpm[np.where(variable_mask == 1)] = 1
-    bpm[np.where(hot_mask == 1)] = 1
-    bpm[np.where(dead_mask) == 1] = 1
-
+    bad_locs = np.where((kokopelli_mask == 1) | (variable_mask == 1) | (hot_mask == 1) | (dead_mask == 1))
+    bpm[bad_locs] = 1
+    
     num_bad = len(np.where(bpm ==1)[0])
     frac_bad = num_bad / 1024**2
 

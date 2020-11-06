@@ -50,7 +50,7 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
     
     #If an sftp connection to the PINES server was passed, download the dark data. 
     if type(sftp) == pysftp.Connection:
-        sftp.chdir('data/raw/mimir')
+        sftp.chdir('/data/raw/mimir')
         run_list = sftp.listdir()
         data_path = '' #Initialize to check that it gets filled. 
         for i in range(len(run_list)):

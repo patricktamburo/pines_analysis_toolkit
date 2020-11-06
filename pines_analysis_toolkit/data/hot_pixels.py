@@ -73,7 +73,7 @@ def hot_pixels(date, exptime, clip_lvl=6, box_l=3, saturation=4000, upload=False
         pbar = ProgressBar()
         for xx in pbar(range(int(box_l/2), shape[0]-int(box_l/2))):
             for yy in range(int(box_l/2), shape[1]-int(box_l/2)):
-                if (hot_pixel_mask[yy,xx] == 0) and not np.isnan(master_dark[yy,xx]):  
+                if (hot_pixel_mask[yy,xx] == 0) and not np.isnan(master_dark[yy,xx]):
                     pixel_val = master_dark[yy,xx]
                     neighbor_vals = np.delete(master_dark[yy-int(box_l/2):yy+int(box_l/2)+1,xx-int(box_l/2):xx+int(box_l/2)+1].ravel(),4) #This grabs the surrounding pixels, ignoring the target pixel. 
                     if pixel_val > np.nanmean(neighbor_vals) + clip_lvl*np.nanstd(neighbor_vals): #Flag pixel as hot if it is more than clip_lvl sigma higher than the mean of its neighbors. 

@@ -20,9 +20,10 @@ import natsort
 import pandas as pd
 from scipy.stats import sigmaclip
 import matplotlib.dates as mdates
+from photutils import make_source_mask 
 
 #Input parameters
-def lightcurve(target, sources, phot_type='aper', ref_set_choice=[]):
+def lightcurve(target, sources, centroided_sources, phot_type='aper', ref_set_choice=[]):
 
     def regression(flux, seeing, airmass, corr_significance=1e-5):
         #Looks at correlations between seeing and airmass with the target flux.
@@ -89,40 +90,20 @@ def lightcurve(target, sources, phot_type='aper', ref_set_choice=[]):
             corrected_flux = flux
         return corrected_flux
 
-    def noise_estimator(r,ref_set):
-        G = 8.21 #e- / DN
-        #RN = 19 #e- / pix. From Clemens (2007).
-        RN = 32.89600862127023 #e- / pix. Measured on a set of biases from Nov. 2019.
-        t = 30 #s
-        npix = np.pi*r**2 #pix
-        D = 0.98 #e- / pix / s
-
-        ref_variances = np.zeros((len(ref_set),len(times))) #Record each reference star's contribution to the error. 
-        ref_rates = np.zeros((len(ref_set),len(times)))
-        ref_backgrounds = np.zeros((len(ref_set),len(times)))
-
-        R_star = targ_flux * G / t #e- / s for the target. 
-        R_ref  = ref_flux  * G / t #e- / s for the reference set. 
-
-        for ii in range(len(ref_set)):
-            ref_rates[ii] = restored_output['Flux'][ref_set][ii][use_locs_2]*G / t
-            ref_backgrounds[ii] = restored_output['Background'][ref_set][ii][use_locs_2]*G/t
-            ref_variances[ii] = ref_rates[ii]*t + ref_backgrounds[ii]*t*npix + RN**2*npix + D*npix*t
-        
-        total_ref_variance = np.sum(ref_variances,axis=0)
-
     plt.ion()
     pines_path = pines_dir_check()
     short_name = short_name_creator(target)
     outlier_tolerance = 0.2 #If a reference > outlier_tolerance of its values above sigma clipping threshold, mark it as bad. 
+    centroided_sources.columns = centroided_sources.keys().str.strip()
 
+    
     #Get list of photometry files for this target. 
     photometry_path = pines_path/('Objects/'+short_name+'/'+phot_type+'_phot/')
     analysis_path = pines_path/('Objects/'+short_name+'/analysis')
     photometry_files = natsort.natsorted([x for x in photometry_path.glob('*.csv')])
 
     num_refs = len(sources) - 1
-
+    
     #Loop over all photometry files in the aper_phot directory. 
     for i in range(len(photometry_files)):
         #Load in the photometry data. 
@@ -136,6 +117,9 @@ def lightcurve(target, sources, phot_type='aper', ref_set_choice=[]):
             name = sources['Name'][j]
             phot_data[name+' Flux'] = phot_data[name+' Flux'].astype(float)
             phot_data[name+' Flux Error'] = phot_data[name+' Flux Error'].astype(float)
+
+        #Get target interpolation warnings. 
+        targ_interp_flags = np.array(phot_data[short_name+' Interpolation Flag'])
 
         #Get times of exposures. 
         times = np.array(phot_data['Time JD'])
@@ -163,11 +147,12 @@ def lightcurve(target, sources, phot_type='aper', ref_set_choice=[]):
                 #pdb.set_trace()
             #plt.plot(times, ref_flux[j]/np.nanmedian(ref_flux[j]), linestyle='', marker='o')
 
+        #plt.plot(times, targ_flux/np.nanmedian(targ_flux), marker='o')
+        #pdb.set_trace()
+
         closest_ref = np.where(abs(np.nanmean(ref_flux, axis=1)-np.nanmean(targ_flux)) == min(abs(np.nanmean(ref_flux, axis=1)-np.nanmean(targ_flux))))[0][0]
 
-        #Normalize reference lightcurves
-        for k in range(num_refs):
-            ref_flux[k] = ref_flux[k] / np.nanmedian(ref_flux[k])
+        
 
         #Split data up into individual nights. 
         night_inds = night_splitter(times)
@@ -202,6 +187,14 @@ def lightcurve(target, sources, phot_type='aper', ref_set_choice=[]):
             filename_list.append(np.array([phot_data['Filename'][z] for z in inds]))
             alc = np.zeros(len(inds))
 
+            
+            #Normalize reference lightcurves
+            #TODO: Each night should be normalized separately. 
+            for k in range(num_refs):
+                ref_flux[k][inds] = ref_flux[k][inds] / np.nanmedian(ref_flux[k][inds])
+                #plt.plot(times[inds], ref_flux[k][inds], linestyle='', color=colors[k], marker='o')
+            #pdb.set_trace()
+
             for k in range(len(inds)):
                 #Do a sigma clip on normalized references to avoid biasing median. 
                 ###values, clow, chigh = sigmaclip(ref_flux[:,inds[k]][~np.isnan(ref_flux[:,inds[k]])], low=1.5, high=1.5) 
@@ -210,14 +203,14 @@ def lightcurve(target, sources, phot_type='aper', ref_set_choice=[]):
                 alc[k] = med
 
                 #plt.plot(np.zeros(len(ref_flux[:,inds[k]])) + times[inds[k]], ref_flux[:,inds[k]], 'k.')
-                if k == 0:
-                    plt.plot(times[inds[k]], alc[k], color='tab:orange', marker='o', label='Reference LC')
-                else:
-                    plt.plot(times[inds[k]], alc[k], color='tab:orange', marker='o')
+                # if k == 0:
+                #     plt.plot(times[inds[k]], alc[k], color='tab:orange', marker='o', label='Reference LC')
+                # else:
+                #     plt.plot(times[inds[k]], alc[k], color='tab:orange', marker='o')
 
             
-            plt.plot(times[inds], targ_flux[inds]/np.nanmedian(targ_flux[inds]), marker='o', ls='', color='tab:blue', label='Target')
-            plt.legend()
+            #plt.plot(times[inds], targ_flux[inds]/np.nanmedian(targ_flux[inds]), marker='o', ls='', color='tab:blue', label='Target')
+
             
             #Correct the target lightcurve using the alc. 
             alc = alc / np.nanmedian(alc)

@@ -33,6 +33,7 @@ import paramiko
 import pysftp 
 from pines_analysis_toolkit.utils.quick_plot import quick_plot as qp
 from pines_analysis_toolkit.data.bg_2d import bg_2d
+from progressbar import ProgressBar
 
 '''Authors:
 		Paul Dalba, Boston University, February 2017
@@ -54,8 +55,6 @@ from pines_analysis_toolkit.data.bg_2d import bg_2d
 def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sftp=''):
 	t1 = time.time()
 	print('')
-	print('Starting reduction script for {}.'.format(target_name))
-
 	if (upload is True) and (sftp == ''):
 		print('ERROR: You must pass an sftp connection if you want to upload reduced files to pines.bu.edu.!')
 		return
@@ -72,10 +71,14 @@ def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sf
 	bpm_path = pines_path/('Calibrations/Bad Pixel Masks')
 
 	#Now begin the loop to load and reduce the raw science data
-	for i in range(np.size(raw_files)):
+	print("Reducing data for {}.".format(target_name))
+	print('Note: any reduced data already in reduced directory will be not be re-reduced.')
+				
+	pbar = ProgressBar()
+	for i in pbar(range(np.size(raw_files))):
 		target_filename = reduced_path/(raw_files[i].name.split('.fits')[0]+'_red.fits')
 		if target_filename.exists():
-			print('{} already in reduced directory, skipping.'.format(target_filename.name))
+			#print('{} already in reduced directory, skipping.'.format(target_filename.name))
 			continue
 		hdulist = fits.open(raw_files[i])
 		header = hdulist[0].header
@@ -109,11 +112,8 @@ def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sf
 
 		if not os.path.exists(target_filename):
 			fits.writeto(target_filename, frame_red, header)
-			print('')
-			print("Reducing {}: {} of {}, band = {}, exptime = {} s, dark = {}, flat = {}".format(raw_files[i].name, str(i+1), str(np.size(raw_files)), header['FILTNME2'], header['EXPTIME'], master_dark_name, master_flat_name))
-		else:
-			print('{} already in reduced path, skipping.'.format(raw_files[i].name))
-	
+			#print("Reducing {}: {} of {}, band = {}, exptime = {} s, dark = {}, flat = {}".format(raw_files[i].name, str(i+1), str(np.size(raw_files)), header['FILTNME2'], header['EXPTIME'], master_dark_name, master_flat_name))
+				
 	print('')
 	if upload:
 		print('Beginning upload process to pines.bu.edu...')

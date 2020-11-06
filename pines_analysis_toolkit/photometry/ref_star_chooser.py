@@ -13,6 +13,7 @@ from astropy.stats import sigma_clipped_stats
 from scipy.stats import sigmaclip
 from astropy.convolution import Gaussian2DKernel, interpolate_replace_nans
 from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
+import time
 
 '''Authors:
 		Patrick Tamburo, Boston University, June 2020
@@ -84,7 +85,7 @@ def ref_star_chooser(target, source_detect_image='', guess_position=(705.,386.),
     
     extra_shift_path = (source_dir/'extra_shifts.txt')
     with open(extra_shift_path, 'w') as file:
-        file.write(extra_x_shift+' '+extra_y_shift)
+        file.write(str(extra_x_shift)+' '+str(extra_y_shift))
 
     #Detect sources in the image. 
     sources = detect_sources(source_detect_image_path, source_dir, fwhm=6., thresh=2., plot=True)
@@ -178,6 +179,7 @@ def ref_star_chooser(target, source_detect_image='', guess_position=(705.,386.),
     handles, labels = ax.get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     ax.legend(by_label.values(), by_label.keys(), bbox_to_anchor=(1.1, 1.1))
+    pdb.set_trace()
 
     #Sometimes, the source detection returns things that are clearly not reference stars. 
     #Allow the user to remove them here. 

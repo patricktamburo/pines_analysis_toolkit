@@ -157,7 +157,7 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
                         print("ERROR: header['OBJECT'] for {} is not 'dome_lamp_on' or 'dome_lamp_off. Double check your date, try specifying start/stop file numbers, etc.".format(flat_files[j]))
     else:
         dome_flat_raw_path = pines_path/('Calibrations/Flats/Domeflats/'+band+'/Raw')
-        flat_files = natsort.natsorted(list(Path(dome_flat_raw_path).rglob('*.fits')))
+        flat_files = natsort.natsorted(list(Path(dome_flat_raw_path).rglob(date+'*.fits')))
         #Find the lights-on and lights-off flat files. 
         lights_on_files = []
         lights_off_files = []
