@@ -100,7 +100,7 @@ def get_raw_science_files(sftp, target_name):
                         print('Downloading to {}, {} of {}'.format(raw_data_path/files[k],file_num,len(file_names)))
                         sftp.get(files[k],raw_data_path/files[k])
                     else:
-                        print('{} already in {}, skipping.'.format(files[k],raw_data_path))
+                        print('{} already in {}, skipping download.'.format(files[k],raw_data_path))
                     file_num += 1
                 sftp.chdir('..')
         sftp.chdir('..')
@@ -122,7 +122,7 @@ def get_raw_science_files(sftp, target_name):
                             sftp.get(log_name,pines_path/('Logs/'+log_name))
                             print('Downloading {} to {}.'.format(log_name, pines_path/('Logs/'+log_name)))
                         else:
-                            print('{} already in {}, skipping.'.format(log_name,pines_path/'Logs/'))
+                            print('{} already in {}, skipping download.'.format(log_name,pines_path/'Logs/'))
                     sftp.chdir('..')
             sftp.chdir('..')
     

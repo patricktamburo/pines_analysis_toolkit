@@ -29,7 +29,9 @@ from pines_analysis_toolkit.data.bg_2d import bg_2d
         Make bpm a fits image?
 '''
 
-def detect_sources(image_path, source_dir, fwhm=5.0, thresh=2.0, plot=False):
+def detect_sources(image_path, source_dir, seeing_fwhm, thresh=2.0, plot=False):
+    fwhm = seeing_fwhm*2.355/0.579
+    
     ap_rad = 5 #Radius of aperture in pixels for doing quick photometry on detected sources.
     edge_tolerance = 25 #Number of pixels from the edge where detected sources are cut from. We don't want these because they can shift off the detector.
     
@@ -103,7 +105,6 @@ def detect_sources(image_path, source_dir, fwhm=5.0, thresh=2.0, plot=False):
     if plot:
         #Plot detected sources. 
         ax.plot(phot_table['xcenter'],phot_table['ycenter'],'rx')
-        plt.tight_layout()
         plt.savefig(source_dir/('source_detection.png'))
 
     print('Found {} sources.'.format(len(phot_table)))

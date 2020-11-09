@@ -40,7 +40,6 @@ from astropy.visualization import ZScaleInterval, ImageNormalize, SquaredStretch
     Outputs:
         Saves aperture photometry csv to PINES_analysis_toolkit/Objects/short_name/aper_phot/ for each aperture.
 	TODO:
-        Make sure Varun's routines are working properly. Why is photometric uncertainty < sqrt(flux)? 
 '''
 
 def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots=False, gain=8.21):
