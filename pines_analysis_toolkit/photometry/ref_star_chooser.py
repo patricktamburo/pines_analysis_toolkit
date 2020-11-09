@@ -22,6 +22,7 @@ import time
 	Inputs:
         target (str): The target's full 2MASS name
         source_detect_image (str, optional): The name of the reduced file to use for source detection. By default, the program will use the master image for the target. 
+        seeing_fwhm (float, optional): Seeing in arcsec for the source detection.
         radius_check (float, optional): The radius (in pixels) of an aperture that will be placed around potential reference stars to see if there are non-linear pixels.
         non_linear_limit (float, optional): If a potential reference star has a pixel within an aperture of radius radius_check with a value greater than non_linear_limit, it will not be used.
             NOTE: Mimir data becomes non-linear around 4000 ADU.
@@ -36,7 +37,7 @@ import time
 	TODO:
 '''
 
-def ref_star_chooser(target, source_detect_image='', guess_position=(705.,386.), radius_check=6., non_linear_limit=3300., dimness_tolerance=1.0, closeness_tolerance=12., distance_from_target=700., exclude_lower_left=False, restore=False):
+def ref_star_chooser(target, source_detect_image='', guess_position=(705.,386.), seeing_fwhm=2.5, radius_check=6., non_linear_limit=3300., dimness_tolerance=0.5, closeness_tolerance=12., distance_from_target=700., exclude_lower_left=False, restore=False):
     plt.ion() 
     
     #Get the target's 'short name'
@@ -88,7 +89,7 @@ def ref_star_chooser(target, source_detect_image='', guess_position=(705.,386.),
         file.write(str(extra_x_shift)+' '+str(extra_y_shift))
 
     #Detect sources in the image. 
-    sources = detect_sources(source_detect_image_path, source_dir, fwhm=6., thresh=2., plot=True)
+    sources = detect_sources(source_detect_image_path, source_dir, seeing_fwhm, thresh=2., plot=True)
 
     target_id = target_finder(sources, guess_position)
 
@@ -179,7 +180,7 @@ def ref_star_chooser(target, source_detect_image='', guess_position=(705.,386.),
     handles, labels = ax.get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     ax.legend(by_label.values(), by_label.keys(), bbox_to_anchor=(1.1, 1.1))
-    pdb.set_trace()
+    plt.show()
 
     #Sometimes, the source detection returns things that are clearly not reference stars. 
     #Allow the user to remove them here. 
@@ -214,6 +215,7 @@ def ref_star_chooser(target, source_detect_image='', guess_position=(705.,386.),
         handles, labels = ax.get_legend_handles_labels()
         by_label = dict(zip(labels, handles))
         ax.legend(by_label.values(), by_label.keys(), bbox_to_anchor=(1.1, 1.1))
+    plt.show()
 
     ans = input('Happy with reference star selection? y/n: ')
     if ans == 'y':

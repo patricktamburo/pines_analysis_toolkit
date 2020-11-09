@@ -87,6 +87,12 @@ def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sf
 
 		frame_raw = frame_raw[0:1024,:] #Cuts off 2 rows of overscan (?) pixels
 
+		#Add a flag to the header to check if background is near saturation
+		if sigma_clipped_stats(frame_raw)[1] > 3800: 
+			sat_flag = 1
+		else:
+			sat_flag = 0
+
 		#Load in the dark/flat files that were taken as close in time as possible to the target image. 
 		master_flat, master_flat_name = master_flat_chooser(flats_path, header)
 		master_dark, master_dark_name = master_dark_chooser(dark_path, header)
@@ -98,7 +104,8 @@ def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sf
 
 		#Set bad pixels to NaNs. 
 		frame_red[np.where(bad_pixel_mask == 1)] = np.nan
-		#qp(frame_red)
+		# qp(frame_red)
+		# pdb.set_trace()
 
 		# #Do a background model subtraction
 		# frame_red = bg_2d(frame_red)
@@ -109,6 +116,7 @@ def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sf
 		header['HIERARCH MASTER DARK'] = master_dark_name
 		header['HIERARCH MASTER FLAT'] = master_flat_name
 		header['HIERARCH BAD PIXEL MASK'] = bad_pixel_mask_name
+		header['HIERARCH SATURATION FLAG'] = sat_flag
 
 		if not os.path.exists(target_filename):
 			fits.writeto(target_filename, frame_red, header)
@@ -118,10 +126,11 @@ def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sf
 	if upload:
 		print('Beginning upload process to pines.bu.edu...')
 		print('Note, only PINES admins will be able to upload.')
+		print('WARNING: This will overwrite data already on the PINES server!')
 		print('')
-		time.sleep(2)
+		time.sleep(3)
 		sftp.chdir('/data/reduced/mimir/')
-		files_to_upload = array(natsort.natsorted(array([x for x in reduced_path.glob('*.fits')])))
+		files_to_upload = np.array(natsort.natsorted(np.array([x for x in reduced_path.glob('*.fits')])))
 		for i in range(len(files_to_upload)):
 			file = files_to_upload[i]
 			night_name = files_to_upload[i].name.split('.')[0]
@@ -129,19 +138,17 @@ def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sf
 				sftp.chdir(dir_change)
 				nights = sftp.listdir()
 				if night_name in nights:
-					ind  = np.where(array(nights) == night_name)[0][0]
+					ind  = np.where(np.array(nights) == night_name)[0][0]
 					break
 				sftp.chdir('..')
 			if nights[ind] != night_name:
 				print('ERROR: the date of the file you want to upload does not match the date directory where the program wants to upload it.')
 				pdb.set_trace()
-			if file.name not in sftp.listdir(nights[ind]):
-				print('Uploading to {}/{}, {} of {}'.format(sftp.getcwd(),nights[ind]+'/'+file.name, i+1,len(files_to_upload)))
-				sftp.put(file,nights[ind]+'/'+file.name)
-				sftp.chdir('..')
-			else:
-				print('{} already exists in {}, skipping. {} of {}.'.format(file.name,nights[ind],i+1,len(files_to_upload)))
-				sftp.chdir('..')
+			
+			print('Uploading to {}/{}, {} of {}'.format(sftp.getcwd(),nights[ind]+'/'+file.name, i+1,len(files_to_upload)))
+			sftp.put(file,nights[ind]+'/'+file.name)
+			sftp.chdir('..')
+			
 
 	if delete_raw:
 		files_to_delete = glob.glob(os.path.join(raw_path/'*.fits'))
