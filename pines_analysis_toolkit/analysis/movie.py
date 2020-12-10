@@ -12,7 +12,11 @@ from pines_analysis_toolkit.utils.pines_dir_check import pines_dir_check
 from pines_analysis_toolkit.utils.short_name_creator import short_name_creator
 import natsort
 import pandas as pd
-def movie(long_target_name,ap_rad, dates_to_examine=[],target_number=0,box_size=300,show_centroid=1):
+from astropy.visualization import ImageNormalize, ZScaleInterval, SquaredStretch
+from photutils.background import Background2D
+from astropy.convolution import interpolate_replace_nans, Gaussian2DKernel
+
+def movie(long_target_name, dates_to_examine=[],target_number=0,box_size=300,show_centroid=1):
     import time 
     '''Authors:
             Patrick Tamburo, Boston University, Jan 2020, July 2020
@@ -22,7 +26,8 @@ def movie(long_target_name,ap_rad, dates_to_examine=[],target_number=0,box_size=
         TODO:
     '''
     warnings.filterwarnings('ignore', category=UserWarning, append=True) #This turns of NaN warnings in sigma_clipped_stats, otherwise we'd get a warning every line. 
-    
+    kernel = Gaussian2DKernel(x_stddev=0.5)
+
     pines_path = pines_dir_check()
     target_name = short_name_creator(long_target_name)
     object_path = pines_path/('Objects/'+target_name+'/')
@@ -53,34 +58,34 @@ def movie(long_target_name,ap_rad, dates_to_examine=[],target_number=0,box_size=
                 title = image_path.name
                 image = fits.open(image_path)[0].data
                 header = fits.open(image_path)[0].header
+
+                image = interpolate_replace_nans(image, kernel)
+
+                image_bg = Background2D(image, 64)
+                image = image - image_bg.background
                 frame = image[initial_position[1]-int(box_size/2):initial_position[1]+int(box_size/2),initial_position[0]-int(box_size/2):initial_position[0]+int(box_size/2)]
-                ap = CircularAperture((x_positions[i],y_positions[i]),r=ap_rad)
-                avg,med,std = sigma_clipped_stats(image)
-                im = ax.imshow(image,origin='lower',vmin=med,vmax=med+5*std)
+                
+                norm = ImageNormalize(frame, interval=ZScaleInterval(), stretch=SquaredStretch())
+                im = ax.imshow(image, origin='lower', norm=norm)
                 ax.set_xlim(initial_position[0]-int(box_size/2),initial_position[0]+int(box_size/2))
                 ax.set_ylim(initial_position[1]-int(box_size/2),initial_position[1]+int(box_size/2))
-                cb = fig.colorbar(im, orientation='vertical',label='Counts')
                 if show_centroid:
-                    ap.plot(color='b',lw=2)
-                    ax.plot(x_positions[i],y_positions[i],'bx')
+                    ax.plot(x_positions[i],y_positions[i],'mo')
                 ax.set_title(title)
                 plt.pause(0.01)
                 ax.cla()
-                cb.remove()
         else:
             image_path = reduced_files[i]
             title = image_path.name
             image = fits.open(image_path)[0].data
             header = fits.open(image_path)[0].header
             frame = image[initial_position[1]-int(box_size/2):initial_position[1]+int(box_size/2),initial_position[0]-int(box_size/2):initial_position[0]+int(box_size/2)]
-            ap = CircularAperture((x_positions[i],y_positions[i]),r=ap_rad)
             avg,med,std = sigma_clipped_stats(image)
             im = ax.imshow(image,origin='lower',vmin=med,vmax=med+5*std)
             ax.set_xlim(initial_position[0]-int(box_size/2),initial_position[0]+int(box_size/2))
             ax.set_ylim(initial_position[1]-int(box_size/2),initial_position[1]+int(box_size/2))
             cb = fig.colorbar(im, orientation='vertical',label='Counts')
             if show_centroid:
-                ap.plot(color='b',lw=2)
                 ax.plot(x_positions[i],y_positions[i],'bx')
             ax.set_title(title)
             plt.pause(0.01)

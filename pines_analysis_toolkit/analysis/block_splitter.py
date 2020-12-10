@@ -7,12 +7,12 @@ import pdb
         Finds individual blocks of data given a single night of exposture times. 
 	Inputs:
         times (numpy array): 1D array of exposure times (in days)
-        bad_vals (numpy array): 1D array of any sigma-clipped values to be excluded in the averaging/error estimation 
+        bad_vals (numpy array, optional): 1D array of any sigma-clipped values to be excluded in the averaging/error estimation 
     Outputs:
         night_inds (list): list containing the data indices associated with each night
 	TODO:
 '''
-def block_splitter(times, bad_vals):
+def block_splitter(times, bad_vals=[]):
     block_boundaries = np.where(np.gradient(times) > 0.15/24)[0]
     
 
@@ -31,7 +31,6 @@ def block_splitter(times, bad_vals):
             block_inds[j].extend(np.arange(block_boundaries[2*j-1],block_boundaries[2*j]+1))
         else:
             block_inds[j].extend(np.arange(block_boundaries[2*j-1],len(times)))
-    
     if len(bad_vals) > 0:
         for i in range(len(block_inds)):
             bad_locs = []

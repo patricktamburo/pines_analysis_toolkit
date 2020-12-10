@@ -24,6 +24,7 @@ from astropy.visualization import ZScaleInterval, ImageNormalize, SquaredStretch
 from progressbar import ProgressBar
 from glob import glob 
 from photutils import make_source_mask, CircularAperture
+from pines_analysis_toolkit.utils.quick_plot import quick_plot as qp 
 
 #Turn off warnings from Astropy because they're incredibly annoying. 
 warnings.simplefilter("ignore", category=AstropyUserWarning)
@@ -131,17 +132,16 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
                 nan_flag = True
 
             #If there are clouds, shifts could have been erroneously high...just zero them?
-            if abs(x_shift) > 30:
-                x_shift = 0
+            if abs(x_shift) > 200:
+                #x_shift = 0
                 nan_flag = True
-            if abs(y_shift) > 30:
-                y_shift = 0
+            if abs(y_shift) > 200:
+                #y_shift = 0
                 nan_flag = True
 
             #Apply the shift. 
             x_pos = sources['Source Detect X'][i] - x_shift + extra_x_shift
             y_pos = sources['Source Detect Y'][i] + y_shift - extra_y_shift
-
 
             #TODO: Make all this its own function. 
 
@@ -154,10 +154,15 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
             std = np.nanstd(vals)
 
             centroid_x, centroid_y = centroid_1dg(cutout - med)
+
+
             centroid_x += int(x_pos) - box_w
             centroid_y += int(y_pos) - box_w
 
-            #If the shifts in the log are not 'nan' or > 30 pixels, check if the measured shifts are within shift_tolerance pixels of the expected position.
+            #if file.name.split('_')[0] ==  '20201205.343':
+            #    pdb.set_trace()
+
+            #If the shifts in the log are not 'nan' or > 200 pixels, check if the measured shifts are within shift_tolerance pixels of the expected position.
             #   If they aren't, try alternate centroiding methods to try and find it.
 
             #Otherwise, use the shifts as measured with centroid_1dg. PINES_watchdog likely failed while observing, and we don't expect the centroids measured here to actually be at the expected position.
@@ -218,7 +223,7 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
                                                 centroid_df[sources['Name'][i]+' Centroid Warning'][j] = 1
                                                 centroid_x = x_pos
                                                 centroid_y = y_pos
-                                                pdb.set_trace()
+                                                #pdb.set_trace()
 
             #Check that your measured position is actually on the detector. 
             if (centroid_x < 0) or (centroid_y < 0) or (centroid_x > 1023) or (centroid_y > 1023):
@@ -237,7 +242,7 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
                     centroid_df[sources['Name'][i]+' Centroid Warning'][j] = 1
                     centroid_x = x_pos
                     centroid_y = y_pos
-                    pdb.set_trace()
+                    #pdb.set_trace()
             
             #Check to make sure you didn't measure nan's. 
             if np.isnan(centroid_x):
@@ -260,8 +265,8 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
                 plt.plot(centroid_x, centroid_y, 'rx')
                 ap = CircularAperture((centroid_x, centroid_y), r=6)
                 ap.plot(lw=2, color='b')
-                plt.ylim(lock_y-30,lock_y+30-1)
-                plt.xlim(lock_x-30,lock_x+30-1)
+                plt.ylim(lock_y-150,lock_y+150-1)
+                plt.xlim(lock_x-150,lock_x+150-1)
                 plt.title('CENTROID DIAGNOSTIC PLOT\n'+sources['Name'][i]+', '+reduced_files[j].name+' (image '+str(j+1)+' of '+str(len(reduced_files))+')', fontsize=10)
                 plt.text(centroid_x, centroid_y+0.5, '('+str(np.round(centroid_x,1))+', '+str(np.round(centroid_y,1))+')', color='r', ha='center')
                 plot_output_path = (pines_path/('Objects/'+short_name+'/sources/'+sources['Name'][i]+'/'+str(j).zfill(4)+'.jpg'))

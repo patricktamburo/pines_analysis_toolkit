@@ -92,7 +92,7 @@ def epsf_phot(target, centroided_sources, plots=False):
     reduced_files = np.array([reduced_path/i for i in reduced_filenames])
 
     centroided_sources.columns = centroided_sources.columns.str.strip()
-    source_names = natsort.natsorted(list(set([i[0:-2].replace('X','').replace('Y','').rstrip().lstrip() for i in centroided_sources.keys()])))
+    source_names = natsort.natsorted(list(set([i.split(' ')[0]+' '+i.split(' ')[1] for i in centroided_sources.keys() if (i[0] == '2') or (i[0] == 'R')])))
     
     #Create output plot directories for each source.
     if plots:
@@ -164,8 +164,8 @@ def epsf_phot(target, centroided_sources, plots=False):
         data -= median_val
         
         #Replace nans in data using Gaussian. 
-        kernel = Gaussian2DKernel(x_stddev=1)
-        data = interpolate_replace_nans(data, kernel)
+        # kernel = Gaussian2DKernel(x_stddev=0.5)
+        # data = interpolate_replace_nans(data, kernel)
 
         #The extract_stars() function requires the input data as an NDData object. 
         nddata = NDData(data=data)  
@@ -175,13 +175,15 @@ def epsf_phot(target, centroided_sources, plots=False):
                         
 
         #Plot. 
-        # nrows = 5
-        # ncols = 5
-        # fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=(10, 10), squeeze=True)
-        # ax = ax.ravel()
-        # for j in range(len(stars)):           
-        #     norm = simple_norm(stars[j], 'log', percent=99.)
-        #     ax[j].imshow(stars[j].data, norm=norm, origin='lower', cmap='viridis')
+        nrows = 5
+        ncols = 5
+        fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=(10, 10), squeeze=True)
+        ax = ax.ravel()
+        for j in range(len(stars)):           
+            norm = simple_norm(stars[j], 'log', percent=99.)
+            ax[j].imshow(stars[j].data, norm=norm, origin='lower', cmap='viridis')
+
+        pdb.set_trace()
 
         #Construct the ePSF using the star cutouts.
         epsf_fitter = EPSFFitter()

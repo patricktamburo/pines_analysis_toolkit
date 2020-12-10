@@ -18,7 +18,6 @@ from pines_analysis_toolkit.data.bg_2d import bg_2d
         Finds sources in reduced Mimir image. 
 	Inputs:
         image_path (pathlib.Path): the path to the reduced image you want to detect sources in.
-        source_dir (pathlib.Path): path to the source directory for this object for saving source detection image. 
         fhwm (float): the fwhm in pixels for the source detection.
         thresh (float): the number of sigma above background for source detection.
         plot (bool, optional): whether or not to plot the detected sources. Will also save plot. 
@@ -29,11 +28,10 @@ from pines_analysis_toolkit.data.bg_2d import bg_2d
         Make bpm a fits image?
 '''
 
-def detect_sources(image_path, source_dir, seeing_fwhm, thresh=2.0, plot=False):
-    fwhm = seeing_fwhm*2.355/0.579
+def detect_sources(image_path, seeing_fwhm, edge_tolerance, thresh=6.0, plot=False):
+    fwhm = seeing_fwhm*0.579
     
-    ap_rad = 5 #Radius of aperture in pixels for doing quick photometry on detected sources.
-    edge_tolerance = 25 #Number of pixels from the edge where detected sources are cut from. We don't want these because they can shift off the detector.
+    ap_rad = 4 #Radius of aperture in pixels for doing quick photometry on detected sources.
     
     #Read in the image. 
     image = fits.open(image_path)[0].data
@@ -56,14 +54,14 @@ def detect_sources(image_path, source_dir, seeing_fwhm, thresh=2.0, plot=False):
 
     norm = ImageNormalize(data=image, interval=ZScaleInterval(), stretch=LinearStretch())
 
-    if plot:
-        title = image_path.name
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10,9))
-        ax.set_aspect('equal')
-        im = ax.imshow(image, origin='lower', norm=norm, cmap='Greys_r')
-        cax = fig.add_axes([0.87, 0.15, 0.035, 0.7])
-        fig.colorbar(im, cax=cax, orientation='vertical', label='ADU')
-        ax.set_title(title)
+#     if plot:
+#         title = image_path.name
+#         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10,9))
+#         ax.set_aspect('equal')
+#         im = ax.imshow(image, origin='lower', norm=norm)
+#         cax = fig.add_axes([0.94, 0.15, 0.015, 0.7])
+#         fig.colorbar(im, cax=cax, orientation='vertical', label='ADU')
+#         ax.set_title(title+' Initial Source Detection')
 
     print('')
     print('Finding sources in {}.'.format(image_path.name))
@@ -73,7 +71,7 @@ def detect_sources(image_path, source_dir, seeing_fwhm, thresh=2.0, plot=False):
     #Detect sources using DAOStarFinder.
     daofind = DAOStarFinder(fwhm=fwhm, threshold=thresh*std)  
 
-    initial_sources = daofind(image - med, mask=bpm)
+    initial_sources = daofind(image - med)
 
     #Do a cut based on source sharpness to get rid of some false detections.
     initial_sources.sort('sharpness')        
@@ -93,7 +91,7 @@ def detect_sources(image_path, source_dir, seeing_fwhm, thresh=2.0, plot=False):
     #Do quick photometry on the remaining sources. 
     positions = [(initial_sources['xcentroid'][i], initial_sources['ycentroid'][i]) for i in range(len(initial_sources))]
     apertures = CircularAperture(positions, r=ap_rad)
-    phot_table = aperture_photometry(image-med, apertures, mask=bpm)
+    phot_table = aperture_photometry(image-med, apertures)
 
     #Cut based on brightness.
     phot_table.sort('aperture_sum')
@@ -101,11 +99,10 @@ def detect_sources(image_path, source_dir, seeing_fwhm, thresh=2.0, plot=False):
     bad_source_locs = np.where(phot_table['aperture_sum'] < cutoff)
     phot_table.remove_rows(bad_source_locs)
     initial_sources.remove_rows(bad_source_locs)
-
-    if plot:
-        #Plot detected sources. 
-        ax.plot(phot_table['xcenter'],phot_table['ycenter'],'rx')
-        plt.savefig(source_dir/('source_detection.png'))
+    
+    #if plot:
+        ##Plot detected sources. 
+        #ax.plot(phot_table['xcenter'],phot_table['ycenter'], 'ro', markerfacecolor='none')
 
     print('Found {} sources.'.format(len(phot_table)))
     sources = phot_table[::-1].to_pandas() #Resort remaining sources so that the brightest are listed firsts. 

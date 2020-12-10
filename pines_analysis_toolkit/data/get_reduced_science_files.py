@@ -135,26 +135,26 @@ def get_reduced_science_files(sftp, target_name):
 
     print('')
     #Now grab the master image. 
-    sftp.chdir('/data/master_images/')
-    if sftp.exists(target_name.replace(' ','')+'_master.fits'):
-        if not (pines_path/('Master Images/'+target_name.replace(' ','')+'_master.fits')).exists():
-            sftp.get(target_name.replace(' ','')+'_master.fits', pines_path/('Master Images/'+target_name.replace(' ','')+'_master.fits'))
-            print('Downloading {} to {}.'.format(target_name.replace(' ','')+'_master.fits', pines_path/('Master Images/')))
+    # sftp.chdir('/data/master_images/')
+    # if sftp.exists(target_name.replace(' ','')+'_master.fits'):
+    #     if not (pines_path/('Master Images/'+target_name.replace(' ','')+'_master.fits')).exists():
+    #         sftp.get(target_name.replace(' ','')+'_master.fits', pines_path/('Master Images/'+target_name.replace(' ','')+'_master.fits'))
+    #         print('Downloading {} to {}.'.format(target_name.replace(' ','')+'_master.fits', pines_path/('Master Images/')))
 
-            #Reduce the master image. 
-            image = fits.open(pines_path/('Master Images/'+target_name.replace(' ','')+'_master.fits'))[0].data[0:1024,:]
-            header = fits.open(pines_path/('Master Images/'+target_name.replace(' ','')+'_master.fits'))[0].header
-            master_flat, master_flat_name = master_flat_chooser(pines_path/('Calibrations/Flats/Domeflats/'),header)
-            master_dark, master_dark_name = master_dark_chooser(pines_path/('Calibrations/Darks/'),header)
-            frame_red = (image - master_dark) / master_flat
-            header['HIERARCH DATE REDUCED'] = datetime.utcnow().strftime('%Y-%m-%d')+'T'+datetime.utcnow().strftime('%H:%M:%S')
-            header['HIERARCH MASTER DARK'] = master_dark_name
-            header['HIERARCH MASTER FLAT'] = master_flat_name
-            fits.writeto(pines_path/('Master Images/'+target_name.replace(' ','')+'_master.fits'), frame_red, header, overwrite=True)
-        else:
-            print('{} already exists in {}, skipping download.'.format(target_name.replace(' ','')+'_master.fits', pines_path/('Master Images/')))
-    else:
-        print('No master file found on pines.bu.edu:/data/master_images/ for {}.'.format(target_name))
+    #         #Reduce the master image. 
+    #         image = fits.open(pines_path/('Master Images/'+target_name.replace(' ','')+'_master.fits'))[0].data[0:1024,:]
+    #         header = fits.open(pines_path/('Master Images/'+target_name.replace(' ','')+'_master.fits'))[0].header
+    #         master_flat, master_flat_name = master_flat_chooser(pines_path/('Calibrations/Flats/Domeflats/'),header)
+    #         master_dark, master_dark_name = master_dark_chooser(pines_path/('Calibrations/Darks/'),header)
+    #         frame_red = (image - master_dark) / master_flat
+    #         header['HIERARCH DATE REDUCED'] = datetime.utcnow().strftime('%Y-%m-%d')+'T'+datetime.utcnow().strftime('%H:%M:%S')
+    #         header['HIERARCH MASTER DARK'] = master_dark_name
+    #         header['HIERARCH MASTER FLAT'] = master_flat_name
+    #         fits.writeto(pines_path/('Master Images/'+target_name.replace(' ','')+'_master.fits'), frame_red, header, overwrite=True)
+    #     else:
+    #         print('{} already exists in {}, skipping download.'.format(target_name.replace(' ','')+'_master.fits', pines_path/('Master Images/')))
+    # else:
+    #     print('No master file found on pines.bu.edu:/data/master_images/ for {}.'.format(target_name))
 
     print('')
     print('get_reduced_science_files runtime: ', np.round((time.time()-t1)/60,1), ' minutes.')
