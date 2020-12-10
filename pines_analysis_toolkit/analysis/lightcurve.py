@@ -285,3 +285,5 @@ def lightcurve(target, sources, centroided_sources, phot_type='aper', ref_set_ch
         fig.tight_layout(rect=[0, 0.03, 1, 0.93])
         if phot_type == 'aper':
             plt.savefig(analysis_path/(short_name+'_simple_lc_'+str(np.round(aperture_radius,1))+'.png'))
+        
+        pdb.set_trace()

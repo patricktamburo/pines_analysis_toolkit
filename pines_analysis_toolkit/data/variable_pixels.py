@@ -1,5 +1,5 @@
 import numpy as np
-from pines_analysis_toolkit.utils import pines_dir_check
+from pines_analysis_toolkit.utils import pines_dir_check, quick_plot as qp
 import pdb
 import natsort
 from astropy.io import fits
@@ -23,7 +23,7 @@ import time
 	TODO:
         None
 '''
-def variable_pixels(date, exptime, clip_lvl=3, upload=False, sftp=''):
+def variable_pixels(date, exptime, clip_lvl=5, upload=False, sftp=''):
     pines_path = pines_dir_check()
     dark_stddev_path = pines_path/('Calibrations/Darks/Master Darks Stddev/')
     all_dark_stddev_files = natsort.natsorted(list(Path(dark_stddev_path).rglob('*'+date+'.fits')))
@@ -38,6 +38,7 @@ def variable_pixels(date, exptime, clip_lvl=3, upload=False, sftp=''):
     master_dark_stddev = fits.open(dark_stddev_file)[0].data
     shape = np.shape(master_dark_stddev)
     #Flag variable pixels, those that vary >= clip_lvl * the mean variation. Save a boolean mask of variable pixels to incorporate into the bad pixel mask. 
+
     variable_inds = np.where(master_dark_stddev >= clip_lvl*np.nanmean(master_dark_stddev))
     variable_mask = np.zeros((shape[0], shape[1]), dtype='int')
     variable_mask[variable_inds] = 1
@@ -51,6 +52,7 @@ def variable_pixels(date, exptime, clip_lvl=3, upload=False, sftp=''):
     hdu = fits.PrimaryHDU(variable_mask)
     hdu.header['HIERARCH DATE CREATED'] = datetime.utcnow().strftime('%Y-%m-%d')+'T'+datetime.utcnow().strftime('%H:%M:%S')
     hdu.header['HIERARCH SIGMA CLIP LVL'] = clip_lvl
+    hdu.header['HIERARCH CLIP VALUE'] = clip_lvl*np.nanmean(master_dark_stddev)
 
     #Now save to a file on your local machine. 
     print('')

@@ -26,20 +26,20 @@ import os
 		None
 '''
 
-def bpm_maker(date, exptime, band, upload=False, sftp=''):
+def bpm_maker(flat_date, dark_date, exptime, band, upload=False, sftp=''):
     pines_path = pines_dir_check()
 
     #Load in the different masks. 
     kokopelli_path = pines_path/('Calibrations/Kokopelli Mask/kokopelli_mask.fits')
     kokopelli_mask = (1-fits.open(kokopelli_path)[0].data).astype('int')[0:1024,:]
 
-    variable_path = pines_path/('Calibrations/Variable Pixel Masks/vpm_'+str(exptime)+'_s_'+date+'.fits')
+    variable_path = pines_path/('Calibrations/Variable Pixel Masks/vpm_'+str(exptime)+'_s_'+dark_date+'.fits')
     variable_mask = fits.open(variable_path)[0].data
 
-    hot_path = pines_path/('Calibrations/Hot Pixel Masks/hpm_'+str(exptime)+'_s_'+date+'.fits')
+    hot_path = pines_path/('Calibrations/Hot Pixel Masks/hpm_'+str(exptime)+'_s_'+dark_date+'.fits')
     hot_mask = fits.open(hot_path)[0].data
 
-    dead_path = pines_path/('Calibrations/Dead Pixel Masks/dpm_'+band+'_'+date+'.fits')
+    dead_path = pines_path/('Calibrations/Dead Pixel Masks/dpm_'+band+'_'+flat_date+'.fits')
     dead_mask = fits.open(dead_path)[0].data
 
     #Visualize all masks
@@ -51,11 +51,11 @@ def bpm_maker(date, exptime, band, upload=False, sftp=''):
     frac_bad = num_bad / 1024**2
 
     print('{} percent of the detector flagged as bad.'.format(np.round(frac_bad*100,1)))
-    plt.ion()
-    plt.imshow(bpm, origin='lower')
+    # plt.ion()
+    # plt.imshow(bpm, origin='lower')
 
 
-    output_filename = 'bpm_'+band+'_'+str(exptime)+'_s_'+date+'.fits'
+    output_filename = 'bpm_'+band+'_'+str(exptime)+'_s_'+flat_date+'.fits'
     output_path = pines_path/('Calibrations/Bad Pixel Masks/'+output_filename)
 
     hdu = fits.PrimaryHDU(bpm)

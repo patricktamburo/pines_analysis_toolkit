@@ -14,6 +14,8 @@ from scipy.stats import sigmaclip
 from astropy.convolution import Gaussian2DKernel, interpolate_replace_nans
 from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
 import time
+from natsort import natsorted
+from astropy.visualization import ImageNormalize, ZScaleInterval
 
 '''Authors:
 		Patrick Tamburo, Boston University, June 2020
@@ -21,7 +23,7 @@ import time
         Chooses suitable reference stars for a target.
 	Inputs:
         target (str): The target's full 2MASS name
-        source_detect_image (str, optional): The name of the reduced file to use for source detection. By default, the program will use the master image for the target. 
+        source_detect_image_ind (int, optional): The number of the reduced file to use for source detection. By default, the program will use the 30th image for the target (don't want to use first image because background is usually still pretty high)
         seeing_fwhm (float, optional): Seeing in arcsec for the source detection.
         radius_check (float, optional): The radius (in pixels) of an aperture that will be placed around potential reference stars to see if there are non-linear pixels.
         non_linear_limit (float, optional): If a potential reference star has a pixel within an aperture of radius radius_check with a value greater than non_linear_limit, it will not be used.
@@ -37,7 +39,8 @@ import time
 	TODO:
 '''
 
-def ref_star_chooser(target, source_detect_image='', guess_position=(705.,386.), seeing_fwhm=2.5, radius_check=6., non_linear_limit=3300., dimness_tolerance=0.5, closeness_tolerance=12., distance_from_target=700., exclude_lower_left=False, restore=False):
+def ref_star_chooser(target, source_detect_image_ind=30, guess_position=(705.,386.), radius_check=6., non_linear_limit=3300., 
+                    dimness_tolerance=0.5, closeness_tolerance=12., distance_from_target=900., edge_tolerance=50., exclude_lower_left=False, restore=False):
     plt.ion() 
     
     #Get the target's 'short name'
@@ -55,7 +58,7 @@ def ref_star_chooser(target, source_detect_image='', guess_position=(705.,386.),
 
     #Find reduced files in the directory.
     data_dir = pines_path/('Objects/'+short_name+'/reduced/')
-    reduced_files = [x for x in data_dir.glob('*.fits')]
+    reduced_files = np.array(natsorted([x for x in data_dir.glob('*.fits')]))
 
     #If the directory doesn't exist, or there are no reduced files, return nothing. 
     if (not data_dir.exists()) or (len(reduced_files) == 0):
@@ -65,32 +68,50 @@ def ref_star_chooser(target, source_detect_image='', guess_position=(705.,386.),
     #Set path to source directory. 
     source_dir = pines_path/('Objects/'+short_name+'/sources/')
 
-    #By default, use the target's master image for the source detection. 
-    if source_detect_image == '':
-        source_detect_image_path = pines_path/('Master Images/'+target.replace(' ','')+'_master.fits')
-        #If the master image is used for source detection, centroids will be where we expect them to be based on the measured x/y shifts in the log,
-        #and we don't need to apply any "extra" x/y shifts. 
-        extra_x_shift = '0.0'
-        extra_y_shift = '0.0'
-    #If a different reduced file is specified, use that. 
-    else:
-        source_detect_image_path = data_dir/(source_detect_image)
-        source_frame = source_detect_image.split('_')[0]+'.fits'
-        log_name = source_frame.split('.')[0]+'_log.txt'
-        log = pines_log_reader(pines_path/('Logs/'+log_name))
-        source_frame_ind = np.where(log['Filename'] == source_frame)[0][0]
-        #If the master image is *not* used for source detection, the image will shifted with respect to the master image, and extra x/y shifts must be
-        #applied in order for the x/y shifts in the log to accurately predict where the sources will be. 
-        extra_x_shift = log['X shift'][source_frame_ind]
-        extra_y_shift = log['Y shift'][source_frame_ind]
+
+    source_detect_image_path = reduced_files[source_detect_image_ind]
+    source_frame = source_detect_image_path.name.split('_')[0]+'.fits'
+    log_name = source_frame.split('.')[0]+'_log.txt'
+    log = pines_log_reader(pines_path/('Logs/'+log_name))
+    source_frame_ind = np.where(log['Filename'] == source_frame)[0][0]
+    extra_x_shift = log['X shift'][source_frame_ind]
+    extra_y_shift = log['Y shift'][source_frame_ind]
+    source_detect_seeing = float(log['X seeing'][source_frame_ind])
+
+    #Make sure the seeing value isn't a NaN. 
+    if np.isnan(source_detect_seeing):
+        raise ValueError('Seeing value = NaN in log. Try a different source_detect_image_ind in call to ref_star_chooser.')
+    
+    if (float(extra_x_shift) > 20) or (float(extra_y_shift) > 20):
+        raise ValueError('Measured x or y shift > 20 pixels. Try a different source_detect_image_ind in call to ref_star_chooser.')
+
+    # #By default, use the target's master image for the source detection. 
+    # if source_detect_image == '':
+    #     source_detect_image_path = pines_path/('Master Images/'+target.replace(' ','')+'_master.fits')
+    #     #If the master image is used for source detection, centroids will be where we expect them to be based on the measured x/y shifts in the log,
+    #     #and we don't need to apply any "extra" x/y shifts. 
+    #     extra_x_shift = '0.0'
+    #     extra_y_shift = '0.0'
+    # #If a different reduced file is specified, use that. 
+    # else:
+    #     source_detect_image_path = data_dir/(source_detect_image)
+    #     source_frame = source_detect_image.split('_')[0]+'.fits'
+    #     log_name = source_frame.split('.')[0]+'_log.txt'
+    #     log = pines_log_reader(pines_path/('Logs/'+log_name))
+    #     source_frame_ind = np.where(log['Filename'] == source_frame)[0][0]
+    #     #If the master image is *not* used for source detection, the image will shifted with respect to the master image, and extra x/y shifts must be
+    #     #applied in order for the x/y shifts in the log to accurately predict where the sources will be. 
+    #     extra_x_shift = log['X shift'][source_frame_ind]
+    #     extra_y_shift = log['Y shift'][source_frame_ind]
     
     extra_shift_path = (source_dir/'extra_shifts.txt')
     with open(extra_shift_path, 'w') as file:
         file.write(str(extra_x_shift)+' '+str(extra_y_shift))
 
     #Detect sources in the image. 
-    sources = detect_sources(source_detect_image_path, source_dir, seeing_fwhm, thresh=2., plot=True)
+    sources = detect_sources(source_detect_image_path, source_detect_seeing, edge_tolerance, plot=True)
 
+    #Identify the target in the image using guess_position. 
     target_id = target_finder(sources, guess_position)
 
     #Now determine ids of suitable reference stars.
@@ -115,7 +136,6 @@ def ref_star_chooser(target, source_detect_image='', guess_position=(705.,386.),
     for i in range(len(sources)):
         if i != target_id:
             potential_ref_loc = (sources['xcenter'][i], sources['ycenter'][i])
-            #Identify brightnesses of pixels surrounding the potential reference within a 10 pixel radius. 
             ap = CircularAperture(potential_ref_loc, r=radius_check)
             an = CircularAnnulus(potential_ref_loc, r_in=12, r_out=30)
             mask = an.to_mask(method='center')
@@ -131,7 +151,7 @@ def ref_star_chooser(target, source_detect_image='', guess_position=(705.,386.),
             for j in range(len(sources)):
                 dists.append(np.sqrt((sources['xcenter'][i]-sources['xcenter'][j])**2+(sources['ycenter'][i]-sources['ycenter'][j])**2))
             dists = np.array(dists)
-            
+
             non_linear_flag = len(np.where(sub_image > non_linear_limit)[0]) == 0 #Check if potential ref is near non-linear regime.
             dimness_flag = ((aperture_photometry(image, ap)['aperture_sum'] - bg_estimate * ap.area) > dimness_tolerance*targ_flux_estimate)[0] #Check if potential ref is bright enough. 
             closeness_flag = (len(np.where(dists[np.where(dists != 0)] < closeness_tolerance)[0]) == 0)

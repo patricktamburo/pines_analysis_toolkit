@@ -37,8 +37,9 @@ from pines_analysis_toolkit.utils.quick_plot import quick_plot as qp
     Outputs:
 		None
 	TODO:
-		Tabular printing
-        Bad image flagging
+
+    FIXME:
+        Specifying start/stop numbers without passing an sftp will cause a crash if the flat files do not have 'dome_lamp_on' or 'dome_lamp_off' in the headers. 
 '''
 
 

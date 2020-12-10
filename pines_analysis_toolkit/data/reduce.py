@@ -34,6 +34,10 @@ import pysftp
 from pines_analysis_toolkit.utils.quick_plot import quick_plot as qp
 from pines_analysis_toolkit.data.bg_2d import bg_2d
 from progressbar import ProgressBar
+from astropy.visualization import ImageNormalize, ZScaleInterval, SquaredStretch, SqrtStretch, SinhStretch
+from copy import deepcopy
+from astropy.convolution import Gaussian2DKernel, interpolate_replace_nans
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 '''Authors:
 		Paul Dalba, Boston University, February 2017
@@ -49,7 +53,7 @@ from progressbar import ProgressBar
 	Outputs:
 		None
 	TODO:
-		None
+		Add check to see if .fits files are the correct size. If they didn't fully download, fits.open() will crash. 
 '''
 	
 def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sftp=''):
@@ -82,8 +86,9 @@ def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sf
 			continue
 		hdulist = fits.open(raw_files[i])
 		header = hdulist[0].header
-		
+
 		frame_raw = fits.open(raw_files[i])[0].data
+
 
 		frame_raw = frame_raw[0:1024,:] #Cuts off 2 rows of overscan (?) pixels
 
@@ -101,9 +106,39 @@ def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sf
 		#Reduce the image. 
 		frame_red = (frame_raw - master_dark)/master_flat
 		frame_red = frame_red.astype('float32')
+		
+		#frame_red_no_flag = deepcopy(frame_red)
 
 		#Set bad pixels to NaNs. 
 		frame_red[np.where(bad_pixel_mask == 1)] = np.nan
+
+		# norm = ImageNormalize(data=frame_red, interval=ZScaleInterval())
+		# plt.ion()
+		# fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(16,7), sharex=True, sharey=True)
+		# im = ax[0].imshow(frame_red_no_flag, origin='lower', norm=norm)
+		# ax[0].set_title('Reduced')
+		# divider = make_axes_locatable(ax[0])
+		# cax = divider.new_vertical(size="3%", pad=0.3, pack_start=True)
+		# fig.add_axes(cax)
+		# fig.colorbar(im, cax=cax, orientation="horizontal", label='ADUs')
+
+		# im2 = ax[1].imshow(frame_red, origin='lower', norm=norm)
+		# ax[1].set_title('Reduced, Bad Pixels Flagged')
+		# divider = make_axes_locatable(ax[1])
+		# cax = divider.new_vertical(size="3%", pad=0.3, pack_start=True)
+		# fig.add_axes(cax)
+		# fig.colorbar(im2, cax=cax, orientation="horizontal", label='ADUs')
+
+		# kernel = Gaussian2DKernel(x_stddev=0.5)
+		# frame_red_interp = interpolate_replace_nans(frame_red, kernel=kernel)
+		# im3 = ax[2].imshow(frame_red_interp, origin='lower', norm=norm)
+		# ax[2].set_title('Reduced, Bad Pixels Interpolated')
+		# divider = make_axes_locatable(ax[2])
+		# cax = divider.new_vertical(size="3%", pad=0.3, pack_start=True)
+		# fig.add_axes(cax)
+		# fig.colorbar(im3, cax=cax, orientation="horizontal", label='ADUs')
+		# plt.tight_layout()
+		# pdb.set_trace()
 		# qp(frame_red)
 		# pdb.set_trace()
 

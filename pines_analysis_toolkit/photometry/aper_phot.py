@@ -22,7 +22,11 @@ from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import cm
 from astropy.convolution import Gaussian2DKernel, interpolate_replace_nans
 from progressbar import ProgressBar
-from astropy.visualization import ZScaleInterval, ImageNormalize, SquaredStretch
+from astropy.visualization import ZScaleInterval, ImageNormalize, SquaredStretch, MinMaxInterval
+from pines_analysis_toolkit.data.master_dark_stddev_chooser import master_dark_stddev_chooser
+from pines_analysis_toolkit.utils.quick_plot import quick_plot as qp 
+from astropy.modeling import models, fitting
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 '''Authors:
 		Patrick Tamburo, Boston University, June 2020
@@ -42,7 +46,7 @@ from astropy.visualization import ZScaleInterval, ImageNormalize, SquaredStretch
 	TODO:
 '''
 
-def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots=False, gain=8.21):
+def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots=False, gain=8.21, qe=0.9):
 
     def hmsm_to_days(hour=0,min=0,sec=0,micro=0):
         """
@@ -92,7 +96,7 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
         
         return jd
     
-    def iraf_style_photometry(phot_apertures, bg_apertures, data, error_array=None, bg_method='median', epadu=1.0):
+    def iraf_style_photometry(phot_apertures, bg_apertures, data, dark_std_data, header, seeing, bg_method='mean', epadu=1.0):
         """Computes photometry with PhotUtils apertures, with IRAF formulae
         Parameters
         ----------
@@ -104,12 +108,6 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
             i.e. the object returned via CircularAnnulus.
         data : array
             The data for the image to be measured.
-        error_array: array, optional
-            The array of pixelwise error of the data.  If none, the
-            Poisson noise term in the error computation will just be the
-            square root of the flux/epadu. If not none, the
-            aperture_sum_err column output by aperture_photometry
-            (divided by epadu) will be used as the Poisson noise term.
         bg_method: {'mean', 'median', 'mode'}, optional
             The statistic used to calculate the background.
             All measurements are sigma clipped.
@@ -122,12 +120,11 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
             An astropy Table with the colums X, Y, flux, flux_error, mag,
             and mag_err measurements for each of the sources.
         """
+        exptime = header['EXPTIME']
 
         if bg_method not in ['mean', 'median', 'mode']:
             raise ValueError('Invalid background method, choose either mean, median, or mode')
         
-        #phot_all = aperture_photometry(data, phot_apertures, error=error_array)
-
         #Create a list to hold the flux for each source.
         aperture_sum = []
         interpolation_flags = np.zeros(len(phot_apertures.positions), dtype='bool')
@@ -148,22 +145,50 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
             ap_cut = ap_mask.cutout(cutout)
             if np.sum(np.isnan(ap_cut)) > 0:
                 bads = np.where(np.isnan(cutout))
-                bad_dists = np.sqrt((bads[1] - y_cutout)**2 + (bads[0] - x_cutout)**2)
+                bad_dists = np.sqrt((bads[0] - y_cutout)**2 + (bads[1] - x_cutout)**2)
 
                 #Check if any bad pixels fall within the aperture. If so, set the interpolation flag to True for this source. 
-                if np.sum(bad_dists < phot_apertures.r):
+                if np.sum(bad_dists < phot_apertures.r+1):
+
+                    # if np.sum(bad_dists < 1) == 0:
+                    #     #ONLY interpolate if bad pixels lay away from centroid position by at least a pixel. 
+                    #     #2D gaussian fitting approach
+                    #     #Set up a 2D Gaussian model to interpolate the bad pixel values in the cutout. 
+                    #     model_init = models.Const2D(amplitude=np.nanmedian(cutout))+models.Gaussian2D(amplitude=np.nanmax(cutout), x_mean=x_cutout, y_mean=y_cutout, x_stddev=seeing, y_stddev=seeing)
+                    #     xx, yy = np.indices(cutout.shape) #2D grids of x and y coordinates
+                    #     mask = ~np.isnan(cutout) #Find locations where the cutout has *good* values (i.e. not NaNs). 
+                    #     x = xx[mask] #Only use coordinates at these good values.
+                    #     y = yy[mask]
+                    #     cutout_1d = cutout[mask] #Make a 1D cutout using only the good values. 
+                    #     fitter = fitting.LevMarLSQFitter()
+                    #     model_fit = fitter(model_init, x, y, cutout_1d) #Fit the model to the 1d cutout.
+                    #     cutout[~mask] = model_fit(xx,yy)[~mask] #Interpolate the pixels in the cutout using the 2D Gaussian fit. 
+                    #     pdb.set_trace()
+                    #     #TODO: interpolate_replace_nans with 2DGaussianKernel probably gives better estimation of *background* pixels. 
+                    # else:
+                    #     interpolation_flags[i] = True
+
+                    #2D gaussian fitting approach
+                    #Set up a 2D Gaussian model to interpolate the bad pixel values in the cutout. 
+                    model_init = models.Const2D(amplitude=np.nanmedian(cutout))+models.Gaussian2D(amplitude=np.nanmax(cutout), x_mean=x_cutout, y_mean=y_cutout, x_stddev=seeing, y_stddev=seeing)
+                    xx, yy = np.indices(cutout.shape) #2D grids of x and y coordinates
+                    mask = ~np.isnan(cutout) #Find locations where the cutout has *good* values (i.e. not NaNs). 
+                    x = xx[mask] #Only use coordinates at these good values.
+                    y = yy[mask]
+                    cutout_1d = cutout[mask] #Make a 1D cutout using only the good values. 
+                    fitter = fitting.LevMarLSQFitter()
+                    model_fit = fitter(model_init, x, y, cutout_1d) #Fit the model to the 1d cutout.
+                    cutout[~mask] = model_fit(xx,yy)[~mask] #Interpolate the pixels in the cutout using the 2D Gaussian fit. 
                     interpolation_flags[i] = True
-                    # plt.imshow(cutout, origin='lower', norm=ImageNormalize(data=cutout, interval=ZScaleInterval()))
-                    # plt.plot(bads[1], bads[0], 'rx')
-                    # ap.plot(color='b', lw=2)
-                    # bg_ap = CircularAnnulus((x_cutout, y_cutout), r_in=bg_apertures.r_in, r_out=bg_apertures.r_out)
-                    # bg_ap.plot(color='m', lw=2)
-                    # pdb.set_trace()
-                
-                cutout = interpolate_replace_nans(cutout, kernel=Gaussian2DKernel(x_stddev=0.5))
+                    
+                    # #Gaussian convolution approach.
+                    # cutout = interpolate_replace_nans(cutout, kernel=Gaussian2DKernel(x_stddev=0.5))
 
 
-            phot_source = aperture_photometry(cutout, ap, error=error_array)
+            phot_source = aperture_photometry(cutout, ap)
+            # if np.isnan(phot_source['aperture_sum'][0]):
+            #     pdb.set_trace()
+
             aperture_sum.append(phot_source['aperture_sum'][0])
 
         #Add positions/fluxes to a table
@@ -181,11 +206,7 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
         flux = phot['aperture_sum'] - background * ap_area
 
         # Need to use variance of the sources for Poisson noise term in error computation.
-        #This means error needs to be squared. If no error_array error = flux ** .5
-        if error_array is not None:
-            flux_error = compute_phot_error(phot['aperture_sum_err']**2.0, bg_phot, bg_method, ap_area, epadu)
-        else:
-            flux_error = compute_phot_error(flux, bg_phot, bg_method, ap_area, epadu)
+        flux_error = compute_phot_error(flux, bg_phot, bg_method, ap_area, exptime, dark_std_data, phot_apertures, epadu)
 
         mag = -2.5 * np.log10(flux)
         mag_err = 1.0857 * flux_error / flux
@@ -200,17 +221,30 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
         #Check for nans
         if sum(np.isnan(final_tbl['flux'])) > 0:
             bad_locs = np.where(np.isnan(final_tbl['flux']))[0]
+            #pdb.set_trace()
 
         return final_tbl
         
-    def compute_phot_error(flux_variance, bg_phot, bg_method, ap_area, epadu=1.0):
-        """Computes the flux errors using the DAOPHOT style computation"""
+    def compute_phot_error(flux_variance, bg_phot, bg_method, ap_area, exptime, dark_std_data, phot_apertures, epadu=1.0):
+        """Computes the flux errors using the DAOPHOT style computation.
+            Includes photon noise from the source, background terms, dark current, and read noise."""
+
         #See eqn. 1 from Broeg et al. (2005): https://ui.adsabs.harvard.edu/abs/2005AN....326..134B/abstract
-        
-        flux_variance_term = flux_variance / epadu
+        flux_variance_term = flux_variance / epadu #This is just the flux in photons. 
         bg_variance_term_1 = ap_area * (bg_phot['aperture_std'])**2
         bg_variance_term_2 = (ap_area * bg_phot['aperture_std'])**2 / bg_phot['aperture_area']
-        variance = flux_variance_term + bg_variance_term_1 + bg_variance_term_2
+
+        #Measure combined read noise + dark current using the dark standard deviation image. 
+        #TODO: Check that this is correct. 
+        dark_rn_term = np.zeros(len(flux_variance_term))
+        for i in range(len(phot_apertures)):
+            ap = phot_apertures[i]
+            dark_rn_ap = ap.to_mask().multiply(dark_std_data)
+            dark_rn_ap = dark_rn_ap[dark_rn_ap != 0]
+            dark_rn_term[i] = ap_area * (np.median(dark_rn_ap)**2)
+        #dark_current_variance_term = np.zeros(len(flux_variance_term)) + dark_current * exptime * ap_area
+        #read_noise_variance_term = np.zeros(len(flux_variance_term)) + (read_noise)**2*ap_area
+        variance = flux_variance_term + bg_variance_term_1 + bg_variance_term_2 + dark_rn_term
         flux_error = variance ** .5
         return flux_error    
     
@@ -256,6 +290,7 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
 
         # Place the array of the x y positions alongside the stats
         stacked = np.hstack([apertures.positions, aperture_stats])
+        
         # Name the columns
         names = ['X','Y','aperture_mean','aperture_median','aperture_mode','aperture_std', 'aperture_area']
         
@@ -271,11 +306,10 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
         if cutout is None:
             return (np.nan, np.nan, np.nan, np.nan, np.nan)
         else:
-            values = cutout[cutout != 0]
-            values = values[~np.isnan(values)]
-
+            values = cutout[cutout != 0] #Unwrap the annulus into a 1D array. 
+            values = values[~np.isnan(values)] #Ignore any NaNs in the annulus. 
             if sigma_clip:
-                values, clow, chigh = sigmaclip(values, low=3, high=3)
+                values, clow, chigh = sigmaclip(values, low=3, high=3) #Sigma clip the 1D annulus values. 
             mean = np.nanmean(values)
             median = np.nanmedian(values)
             std = np.nanstd(values)
@@ -353,6 +387,12 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
             except:
                 print('Header DATE-OBS format does not match the format code in strptime! Inspect/correct the DATE-OBS value.')
                 pdb.set_trace()
+            
+            #Get the closest date master_dark_stddev image for this exposure time.
+            #We'll use this to measure read noise and dark current. 
+            date_str = date_obs.split('T')[0].replace('-','')
+            master_dark_stddev = master_dark_stddev_chooser(pines_path/('Calibrations/Darks/Master Darks Stddev/'), header)
+            
             days = date.day + hmsm_to_days(date.hour,date.minute,date.second,date.microsecond)
             jd = date_to_jd(date.year,date.month,days)
             ap_df['Filename'][j] = reduced_files[j].name
@@ -372,7 +412,7 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
             #Create an annulus centered on this position. 
             annuli = CircularAnnulus(positions, r_in=an_in, r_out=an_out)
 
-            photometry_tbl = iraf_style_photometry(apertures, annuli, data*gain)
+            photometry_tbl = iraf_style_photometry(apertures, annuli, data*gain, master_dark_stddev*gain, header, ap_df['Seeing'][j])
 
             for i in range(len(photometry_tbl)):
                 ap_df[source_names[i]+' Flux'][j] = photometry_tbl['flux'][i] 
@@ -421,9 +461,9 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
                     f.write('{:>21s}, {:>22s}, {:>17s}, {:>7s}, {:>7s}, '.format('Filename', 'Time UT', 'Time JD', 'Airmass', 'Seeing'))
                     for i in range(len(source_names)):
                         if i != len(source_names) - 1:
-                            f.write('{:>22s}, {:>28s}, {:>28s}, {:>31s}, '.format(source_names[i]+' Flux', source_names[i]+' Flux Error', source_names[i]+' Background', source_names[i]+' Interpolation Flag'))
+                            f.write('{:>22s}, {:>28s}, {:>28s}, {:>34s}, '.format(source_names[i]+' Flux', source_names[i]+' Flux Error', source_names[i]+' Background', source_names[i]+' Interpolation Flag'))
                         else:
-                            f.write('{:>22s}, {:>28s}, {:>28s}, {:>31s}\n'.format(source_names[i]+' Flux', source_names[i]+' Flux Error', source_names[i]+' Background', source_names[i]+' Interpolation Flag'))
+                            f.write('{:>22s}, {:>28s}, {:>28s}, {:>34s}\n'.format(source_names[i]+' Flux', source_names[i]+' Flux Error', source_names[i]+' Background', source_names[i]+' Interpolation Flag'))
 
 
                 #Write in Filename, Time UT, Time JD, Airmass, Seeing values.
@@ -443,9 +483,9 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
                 #Write in Flux, Flux Error, and Background values for every source. 
                 for i in range(len(source_names)):                    
                     if i != len(source_names) - 1:
-                        format_string = '{:22.5f}, {:28.5f}, {:28.5f}, {:31d}, '
+                        format_string = '{:22.5f}, {:28.5f}, {:28.5f}, {:34d}, '
                     else:
-                        format_string = '{:22.5f}, {:28.5f}, {:28.5f}, {:31d}\n'
+                        format_string = '{:22.5f}, {:28.5f}, {:28.5f}, {:34d}\n'
                     f.write(format_string.format(ap_df[source_names[i]+' Flux'][j], ap_df[source_names[i]+' Flux Error'][j], ap_df[source_names[i]+' Background'][j], ap_df[source_names[i]+' Interpolation Flag'][j]))
     print('')
     return 
