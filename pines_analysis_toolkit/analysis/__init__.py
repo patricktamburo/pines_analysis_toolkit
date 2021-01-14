@@ -7,4 +7,5 @@ from pines_analysis_toolkit.analysis.block_splitter import block_splitter
 from pines_analysis_toolkit.analysis.raw_flux_plot import raw_flux_plot
 from pines_analysis_toolkit.analysis.speculoos_style_lightcurve import speculoos_style_lightcurve
 from pines_analysis_toolkit.analysis.pines_alc import pines_alc
-from pines_analysis_toolkit.analysis.pines_lc_plot import pines_lc_plot
+#from pines_analysis_toolkit.analysis.pines_lc_plot import pines_lc_plot
+from pines_analysis_toolkit.analysis.analysis_plots import *

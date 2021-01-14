@@ -131,7 +131,7 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
             print('Found {} flat files.'.format(len(flat_files)))
             print('')
 
-            #Downoad data to the appropriate Calibrations/Flats/Domeflats/band/Raw/ directory. 
+            #Download data to the appropriate Calibrations/Flats/Domeflats/band/Raw/ directory. 
             dome_flat_raw_path = pines_path/('Calibrations/Flats/Domeflats/'+band+'/Raw')
             for j in range(len(flat_files)):
                 if not (dome_flat_raw_path/flat_files[j]).exists():

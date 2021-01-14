@@ -10,6 +10,7 @@ import natsort
 from astropy.stats import sigma_clipped_stats
 import numpy as np
 from astropy.io import fits
+import matplotlib
 import matplotlib.pyplot as plt
 import pdb
 import pandas as pd
@@ -46,6 +47,8 @@ warnings.simplefilter("ignore", category=AstropyUserWarning)
 '''
 
 def centroider(target, sources, output_plots=False, gif=False, restore=False, box_w=8):
+    matplotlib.use('TkAgg')
+    plt.ioff()
     t1 = time.time()
     pines_path = pines_dir_check()
     short_name = short_name_creator(target)
@@ -103,7 +106,7 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
             print('ERROR: {} not in {}. Download it from the PINES server.'.format(i+'_log.txt',log_path))
             pdb.set_trace()
 
-    shift_tolerance = 1.5 #Number of pixels that the measured centroid can be away from the expected position in either x or y before trying other centroiding algorithms. 
+    shift_tolerance = 2.0 #Number of pixels that the measured centroid can be away from the expected position in either x or y before trying other centroiding algorithms. 
     for i in range(len(sources)):
         #Get the initial source position.
         x_pos = sources['Source Detect X'][i] 
@@ -139,28 +142,36 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
                 #y_shift = 0
                 nan_flag = True
 
-            #Apply the shift. 
+            #Apply the shift. NOTE: This relies on having accurate x_shift and y_shift values from the log. 
+            #If they're incorrect, the cutout will not be in the right place. 
             x_pos = sources['Source Detect X'][i] - x_shift + extra_x_shift
             y_pos = sources['Source Detect Y'][i] + y_shift - extra_y_shift
 
             #TODO: Make all this its own function. 
 
-            #Get sigma_clipped_stats of the box around this guess position.
-            #stats = sigma_clipped_stats(image[int(y_pos-box_w):int(y_pos+box_w), int(x_pos-box_w):int(x_pos+box_w)])
-            cutout = interpolate_replace_nans(image[int(y_pos-box_w):int(y_pos+box_w)+1, int(x_pos-box_w):int(x_pos+box_w)+1], kernel=Gaussian2DKernel(x_stddev=0.5))            
+            #Cutout around the expected position and interpolate over any NaNs (which screw up source detection).
+            cutout = interpolate_replace_nans(image[int(y_pos-box_w):int(y_pos+box_w)+1, int(x_pos-box_w):int(x_pos+box_w)+1], kernel=Gaussian2DKernel(x_stddev=0.5))
 
-            vals, lower, upper = sigmaclip(cutout, low=1.5, high=2.5) #~3x faster than astropy's sigma_clipped_stats
+            #interpolate_replace_nans struggles with edge pixels, so shave off edge_shave pixels in each direction of the cutout. 
+            edge_shave = 1      
+            cutout = cutout[edge_shave:len(cutout)-edge_shave,edge_shave:len(cutout)-edge_shave]
+            
+            vals, lower, upper = sigmaclip(cutout, low=1.5, high=2.5) #Get sigma clipped stats on the cutout
             med = np.nanmedian(vals)
             std = np.nanstd(vals)
 
-            centroid_x, centroid_y = centroid_1dg(cutout - med)
+            centroid_x_cutout, centroid_y_cutout = centroid_2dg(cutout - med) #Perform centroid detection on the cutout.
 
+            centroid_x = centroid_x_cutout + int(x_pos) - box_w + edge_shave #Translate the detected centroid from the cutout coordinates back to the full-frame coordinates. 
+            centroid_y = centroid_y_cutout + int(y_pos) - box_w + edge_shave
 
-            centroid_x += int(x_pos) - box_w
-            centroid_y += int(y_pos) - box_w
+            # if i == 0:
+            #     qp(cutout)
+            #     plt.plot(centroid_x_cutout, centroid_y_cutout, 'rx')
 
-            #if file.name.split('_')[0] ==  '20201205.343':
-            #    pdb.set_trace()
+            #     # qp(image)
+            #     # plt.plot(centroid_x, centroid_y, 'rx')
+            #     pdb.set_trace()
 
             #If the shifts in the log are not 'nan' or > 200 pixels, check if the measured shifts are within shift_tolerance pixels of the expected position.
             #   If they aren't, try alternate centroiding methods to try and find it.
@@ -169,15 +180,15 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
             if not nan_flag:
                 #Try a 2D Gaussian detection.
                 if (abs(centroid_x - x_pos) > shift_tolerance) or (abs(centroid_y - y_pos) > shift_tolerance):
-                    centroid_x, centroid_y = centroid_2dg(cutout - med)
-                    centroid_x += int(x_pos) - box_w
-                    centroid_y += int(y_pos) - box_w
+                    centroid_x_cutout, centroid_y_cutout = centroid_2dg(cutout - med)
+                    centroid_x = centroid_x_cutout + int(x_pos) - box_w
+                    centroid_y = centroid_y_cutout + int(y_pos) - box_w
 
                     #If that fails, try a COM detection.
                     if (abs(centroid_x - x_pos) > shift_tolerance) or (abs(centroid_y - y_pos) > shift_tolerance):
-                        centroid_x, centroid_y = centroid_com(cutout - med)
-                        centroid_x += int(x_pos) - box_w
-                        centroid_y += int(y_pos) - box_w
+                        centroid_x_cutout, centroid_y_cutout = centroid_com(cutout - med)
+                        centroid_x = centroid_x_cutout + int(x_pos) - box_w
+                        centroid_y = centroid_y_cutout + int(y_pos) - box_w
 
                         #If that fails, try masking source and interpolate over any bad pixels that aren't in the bad pixel mask, then redo 1D gaussian detection.
                         if (abs(centroid_x - x_pos) > shift_tolerance) or (abs(centroid_y - y_pos) > shift_tolerance):
@@ -187,34 +198,34 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
                             cutout[bad_locs] = np.nan
                             cutout = interpolate_replace_nans(cutout, kernel=Gaussian2DKernel(x_stddev=0.5))
                             
-                            centroid_x, centroid_y = centroid_1dg(cutout - med)
-                            centroid_x += int(x_pos) - box_w
-                            centroid_y += int(y_pos) - box_w
+                            centroid_x_cutout, centroid_y_cutout = centroid_1dg(cutout - med)
+                            centroid_x = centroid_x_cutout + int(x_pos) - box_w
+                            centroid_y = centroid_y_cutout + int(y_pos) - box_w
 
                             #Try a 2D Gaussian detection on the interpolated cutout
                             if (abs(centroid_x - x_pos) > shift_tolerance) or (abs(centroid_y - y_pos) > shift_tolerance):
-                                centroid_x, centroid_y = centroid_2dg(cutout - med)
-                                centroid_x += int(x_pos) - box_w
-                                centroid_y += int(y_pos) - box_w
+                                centroid_x_cutout, centroid_y_cutout = centroid_2dg(cutout - med)
+                                centroid_x = centroid_x_cutout + int(x_pos) - box_w
+                                centroid_y = centroid_y_cutout + int(y_pos) - box_w
 
                                 #Try a COM on the interpolated cutout.
                                 if (abs(centroid_x - x_pos) > shift_tolerance) or (abs(centroid_y - y_pos) > shift_tolerance):
-                                    centroid_x, centroid_y = centroid_com(cutout)
-                                    centroid_x += int(x_pos) - box_w
-                                    centroid_y += int(y_pos) - box_w
+                                    centroid_x_cutout, centroid_y_cutout = centroid_com(cutout)
+                                    centroid_x = centroid_x_cutout + int(x_pos) - box_w
+                                    centroid_y = centroid_y_cutout + int(y_pos) - box_w
 
                                     #Last resort: try cutting off the edge of the cutout. Edge pixels can experience poor interpolation, and this sometimes helps. 
                                     if (abs(centroid_x - x_pos) > shift_tolerance) or (abs(centroid_y - y_pos) > shift_tolerance):
                                         cutout = cutout[1:-1, 1:-1]
-                                        centroid_x, centroid_y = centroid_1dg(cutout - med)
-                                        centroid_x += int(x_pos) - box_w + 1
-                                        centroid_y += int(y_pos) - box_w + 1
+                                        centroid_x_cutout, centroid_y_cutout = centroid_1dg(cutout - med)
+                                        centroid_x = centroid_x_cutout + int(x_pos) - box_w + 1
+                                        centroid_y = centroid_y_cutout + int(y_pos) - box_w + 1
 
                                         #Try with a 2DG
                                         if (abs(centroid_x - x_pos) > shift_tolerance) or (abs(centroid_y - y_pos) > shift_tolerance):
-                                            centroid_x, centroid_y = centroid_2dg(cutout - med)
-                                            centroid_x += int(x_pos) - box_w + 1
-                                            centroid_y += int(y_pos) - box_w + 1
+                                            centroid_x_cutout, centroid_y_cutout = centroid_2dg(cutout - med)
+                                            centroid_x = centroid_x_cutout + int(x_pos) - box_w + 1
+                                            centroid_y = centroid_y_cutout + int(y_pos) - box_w + 1
 
                                             #If ALL that fails, report the expected position as the centroid. 
                                             if (abs(centroid_x - x_pos) > shift_tolerance) or (abs(centroid_y - y_pos) > shift_tolerance):
@@ -263,10 +274,10 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
                 norm = ImageNormalize(data=image, interval=ZScaleInterval(), stretch=SquaredStretch())
                 plt.imshow(image, origin='lower', norm=norm)
                 plt.plot(centroid_x, centroid_y, 'rx')
-                ap = CircularAperture((centroid_x, centroid_y), r=6)
+                ap = CircularAperture((centroid_x, centroid_y), r=5)
                 ap.plot(lw=2, color='b')
-                plt.ylim(lock_y-150,lock_y+150-1)
-                plt.xlim(lock_x-150,lock_x+150-1)
+                plt.ylim(lock_y-20,lock_y+20-1)
+                plt.xlim(lock_x-20,lock_x+20-1)
                 plt.title('CENTROID DIAGNOSTIC PLOT\n'+sources['Name'][i]+', '+reduced_files[j].name+' (image '+str(j+1)+' of '+str(len(reduced_files))+')', fontsize=10)
                 plt.text(centroid_x, centroid_y+0.5, '('+str(np.round(centroid_x,1))+', '+str(np.round(centroid_y,1))+')', color='r', ha='center')
                 plot_output_path = (pines_path/('Objects/'+short_name+'/sources/'+sources['Name'][i]+'/'+str(j).zfill(4)+'.jpg'))
@@ -276,10 +287,9 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
                 plt.gca().xaxis.set_major_locator(plt.NullLocator())
                 plt.gca().yaxis.set_major_locator(plt.NullLocator())
                 plt.savefig(plot_output_path, bbox_inches='tight', pad_inches=0)
-                
                 plt.close()
 
-        if gif:
+        if gif: 
             gif_path = (pines_path/('Objects/'+short_name+'/sources/'+sources['Name'][i]+'/'))
             gif_maker(path=gif_path, fps=20)
 

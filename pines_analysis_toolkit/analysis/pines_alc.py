@@ -4,7 +4,7 @@ import pdb
 from pines_analysis_toolkit.utils import pines_dir_check, short_name_creator
 from pines_analysis_toolkit.analysis.night_splitter import night_splitter
 from pines_analysis_toolkit.analysis.block_splitter import block_splitter
-from pines_analysis_toolkit.analysis.pines_lc_plot import pines_lc_plot
+from pines_analysis_toolkit.analysis.analysis_plots import raw_flux_plot, global_raw_flux_plot, normalized_flux_plot, global_normalized_flux_plot, corr_target_plot, global_corr_target_plot, corr_all_sources_plot
 from glob import glob
 from natsort import natsorted
 import pandas as pd
@@ -16,6 +16,7 @@ import os
 import shutil
 from copy import deepcopy
 from scipy.stats import pearsonr
+from pathlib import Path
 
 def pines_alc(target, phot_type='aper', convergence_threshold=1e-5, mode='night'):
 
@@ -27,13 +28,15 @@ def pines_alc(target, phot_type='aper', convergence_threshold=1e-5, mode='night'
         target (str): the target's full 2MASS name.
         phot_type (str, optional): 'aper' for aperture photometry.
         convergence_threshold (float, optional): the threshold for maximum change for each weight between iterations before they're considered converged. By default, 1e-5 (Murray et al. 2020). 
-        mode (str): either 'night' or 'global. 'night' will make a separate lightcurve for each night of data for the target, while 'global' makes a lightcurve using all nights of data simultaneously. 
+        mode (str): either 'night' or 'global'. 'night' will make a separate lightcurve for each night of data for the target, while 'global' makes a lightcurve using all nights of data simultaneously. 
     Outputs:
 
 	TODO:
         Make compatible with PSF photometry.
         Add 'global' performance. 
     '''
+    if (phot_type != 'aper') and (phot_type != 'psf'):
+        raise ValueError("phot_type must be either 'aper' or 'psf'!")
 
     #Set up paths and get photometry files. 
     pines_path = pines_dir_check()
@@ -45,7 +48,12 @@ def pines_alc(target, phot_type='aper', convergence_threshold=1e-5, mode='night'
     #Loop over all photometry files.
     for i in range(len(phot_files)):
 
-        phot_file = phot_files[i]
+        phot_file = Path(phot_files[i])
+        if phot_type == 'aper':
+            ap_rad = phot_file.name.split('_')[3]
+        else:
+            ap_rad == ''
+
         df = pd.read_csv(phot_file)
         df.columns = df.keys().str.strip()
         
@@ -56,8 +64,42 @@ def pines_alc(target, phot_type='aper', convergence_threshold=1e-5, mode='night'
         num_refs = len(ref_names)
 
         #Split data up into individual nights. 
-        night_inds = night_splitter(full_times)
+        if mode == 'night':
+            night_inds = night_splitter(full_times)
+        #Or treat all observations as a single "night".
+        elif mode == 'global':
+            night_inds = [list(np.arange(len(full_times)))]
+        else:
+            raise ValueError("mode must be either 'night' or 'global'!")
+
         num_nights = len(night_inds)
+
+        #Declare some lists to hold data for all nights after processing is complete. 
+        all_nights_times                 = []
+        all_nights_binned_times          = []
+
+        all_nights_raw_targ_flux         = []
+        all_nights_raw_targ_err          = []
+        all_nights_norm_targ_flux        = []
+        all_nights_norm_targ_err         = []
+
+        all_nights_raw_ref_flux          = []
+        all_nights_raw_ref_err           = []
+        all_nights_norm_ref_flux         = []
+        all_nights_norm_ref_err          = []
+
+        all_nights_alc_flux              = []
+        all_nights_alc_err               = []
+
+        all_nights_corr_targ_flux        = []
+        all_nights_corr_targ_err         = []
+        all_nights_binned_corr_targ_flux = []
+        all_nights_binned_corr_targ_err  = []
+
+        all_nights_corr_ref_flux         = []
+        all_nights_corr_ref_err          = []
+        all_nights_binned_corr_ref_flux  = []
+        all_nights_binned_corr_ref_err   = []
 
         #Loop over each night in the dataset.
         for j in range(num_nights):
@@ -73,18 +115,23 @@ def pines_alc(target, phot_type='aper', convergence_threshold=1e-5, mode='night'
             corr_flux =      np.zeros((num_frames,num_refs)) #norm flux corrected to remove atm veriation, unitless, near 1.0
             corr_err =       np.zeros((num_frames,num_refs)) #corr flux err
             running_stddev = np.zeros((num_frames,num_refs)) #running std dev of corr flux
-            ref_x_pos =      np.zeros((num_frames,num_refs)) #The x pixel position of reference stars on the chip
-            ref_y_pos =      np.zeros((num_frames,num_refs)) #The y pixel position of reference stars on the chip
 
             times = np.array(full_times[inds])
+            all_nights_times.append(times)
+
             #times = np.array([julian.from_jd(times[i], fmt='jd') for i in range(len(times))])
 
             targ_flux = np.array(df[short_name+' Flux'][inds])
             targ_flux_err = np.array(df[short_name+' Flux Error'][inds])
+            all_nights_raw_targ_flux.append(targ_flux)
+            all_nights_raw_targ_err.append(targ_flux_err)
+
             normalization = np.sum(targ_flux/targ_flux_err**2) / np.sum(1/targ_flux_err**2)
             targ_flux_norm = targ_flux/normalization 
             targ_flux_err_norm = targ_flux_err / normalization
-
+            all_nights_norm_targ_flux.append(targ_flux_norm)
+            all_nights_norm_targ_err.append(targ_flux_err_norm)
+            
             #fill raw flux and err flux arrays, and normalize
             for k in np.arange(num_refs):
                 r = ref_names[k]
@@ -97,6 +144,11 @@ def pines_alc(target, phot_type='aper', convergence_threshold=1e-5, mode='night'
                 norm_flux[:,k] = raw_flux[:,k] / normalization
                 norm_err[:,k] = raw_err[:,k] / normalization   
             
+            all_nights_raw_ref_flux.append(raw_flux)
+            all_nights_raw_ref_err.append(raw_err)
+            all_nights_norm_ref_flux.append(norm_flux)
+            all_nights_norm_ref_err.append(norm_err)
+
             # #Plot normalized reference star fluxes. 
             # fig, ax = plt.subplots(1,1,figsize=(14,5))
             # ax.plot(times, norm_flux, '.')
@@ -141,12 +193,20 @@ def pines_alc(target, phot_type='aper', convergence_threshold=1e-5, mode='night'
                 
                 if np.sum(fractional_changes) < 0.000000001:
                     keep_going = False
-                
+            
+            all_nights_corr_ref_flux.append(corr_flux)
+            all_nights_corr_ref_err.append(corr_err)
+
             alc_final_flux = np.sum(norm_flux/norm_err**2,axis=1) / np.sum(1/norm_err**2,axis=1)
             alc_final_err = np.sqrt( 1 / np.sum(1/norm_err**2,axis=1))    
 
+            all_nights_alc_flux.append(alc_final_flux)
+            all_nights_alc_err.append(alc_final_err)
+
             targ_flux_corr = targ_flux_norm/alc_final_flux
             targ_flux_corr_err = np.sqrt( (targ_flux_err_norm/alc_final_flux)**2 + (targ_flux_norm*alc_final_err/(alc_final_flux**2))**2 )
+            all_nights_corr_targ_flux.append(targ_flux_corr)
+            all_nights_corr_targ_err.append(targ_flux_corr_err)
 
             block_inds = block_splitter(times, [])  
             binned_times = np.zeros(len(block_inds))
@@ -167,41 +227,31 @@ def pines_alc(target, phot_type='aper', convergence_threshold=1e-5, mode='night'
                     binned_ref_flux_errs[k,l] = np.mean(corr_err[:,l][block_inds[k]]) / np.sqrt(len(block_inds[k])) #Uses calculated errors.
                     #binned_ref_flux_errs[k,l] = np.std(corr_flux[:,l][block_inds[k]])/np.sqrt(len(block_inds[k])) #Uses standard deviation of the block.
             
-            #Plot the corrected target lightcurve. 
-            pines_lc_plot(times, targ_flux_corr, binned_times, binned_flux, binned_errs, analysis_path, time_mode='UT')
-            
-            cmap = plt.cm.viridis
-            fig, ax = plt.subplots(num_refs+1, 1, figsize=(14,5*num_refs))
-            plt.subplots_adjust(top=0.95, left=0.05, bottom=0.05, right=0.95)
+            all_nights_binned_times.append(binned_times)
+            all_nights_binned_corr_targ_flux.append(binned_flux)
+            all_nights_binned_corr_targ_err.append(binned_errs)
+            all_nights_binned_corr_ref_flux.append(binned_ref_fluxes)
+            all_nights_binned_corr_ref_err.append(binned_ref_flux_errs)
 
-            ax[0].axhline(1, color='k', alpha=0.7, lw=1, zorder=0)
-            ax[0].grid(alpha=0.4)
-            ax[0].plot(times, targ_flux_corr, '.', zorder=1, color=cmap(0), alpha=0.5)
-            ax[0].errorbar(binned_times, binned_flux, binned_errs, linestyle='', marker='o', zorder=2, color=cmap(0))
-            ax[0].set_ylabel('Corrected Flux', fontsize=14)
-            ax[0].set_title(short_name, fontsize=16, color=cmap(0))
-            ax[0].tick_params(labelsize=12)
-            ax[0].set_ylim(0.9,1.1)
-            ax[0].set_xlabel('Time (JD$_{UTC})$', fontsize=14)
-            
-            for k in range(num_refs):
-                color_ind = int(((k+2) * 256 / (num_refs+1))) - 1
-                color = cmap(color_ind)
-                ax[k+1].axhline(1, color='k', alpha=0.7, lw=1, zorder=0)
-                ax[k+1].grid(alpha=0.4)
-                ax[k+1].plot(times, corr_flux[:,k], '.', zorder=1, color=color, alpha=0.5)
-                ax[k+1].errorbar(binned_times, binned_ref_fluxes[:,k], binned_ref_flux_errs[:,k], linestyle='', marker='o', zorder=2, color=color)
-                ax[k+1].set_ylabel('Corrected Flux', fontsize=14)
-                ax[k+1].set_title('CS '+str(k+1), fontsize=16, color=color)
-                ax[k+1].tick_params(labelsize=12)
-                ax[k+1].set_ylim(0.9,1.1)
-                ax[k+1].set_xlabel('Time (JD$_{UTC})$', fontsize=14)
-            plt.tight_layout()
-            plt.savefig(analysis_path/'cs_fig.png')
-            
-            bin_dict = {'Binned Time':binned_times, 'Binned '+short_name+ ' Flux':binned_flux, 'Binned '+short_name+ ' Flux Error':binned_errs}
-            for k in range(num_refs):
-                bin_dict['Binned '+ref_names[k]+ ' Flux'] = binned_ref_fluxes[:,k]
-                bin_dict['Binned '+ref_names[k]+ ' Flux Error'] = binned_ref_flux_errs[:,k]
+        #TODO: Would be nice to wrap all this up in a dictionary that gets passed to the plotting programs. 
+        #Plot the raw fluxes, normalized fluxes, corrected target flux, and corrected reference star fluxes. 
+        if mode == 'night':
+            normalized_flux_plot(all_nights_times, all_nights_norm_targ_flux, all_nights_norm_targ_err, all_nights_norm_ref_flux, all_nights_norm_ref_err, all_nights_alc_flux, short_name, analysis_path, phot_type, ap_rad)
+            raw_flux_plot(all_nights_times, all_nights_raw_targ_flux, all_nights_raw_targ_err, all_nights_raw_ref_flux, all_nights_raw_ref_err, short_name, analysis_path, phot_type, ap_rad)   
+            corr_target_plot(all_nights_times, all_nights_corr_targ_flux, all_nights_binned_times, all_nights_binned_corr_targ_flux, all_nights_binned_corr_targ_err, short_name, analysis_path, phot_type, ap_rad)
+            corr_all_sources_plot(all_nights_times, all_nights_corr_targ_flux, all_nights_binned_times, all_nights_binned_corr_targ_flux, all_nights_binned_corr_targ_err, all_nights_corr_ref_flux, all_nights_binned_corr_ref_flux, all_nights_binned_corr_ref_err, short_name, analysis_path, phot_type, ap_rad)
+        else:
+            global_raw_flux_plot(all_nights_times, all_nights_raw_targ_flux, all_nights_raw_targ_err, all_nights_raw_ref_flux, all_nights_raw_ref_err, short_name, analysis_path, phot_type, ap_rad)
+            global_normalized_flux_plot(all_nights_times, all_nights_norm_targ_flux, all_nights_norm_targ_err, all_nights_norm_ref_flux, all_nights_norm_ref_err, all_nights_alc_flux, short_name, analysis_path, phot_type, ap_rad)
+            global_corr_target_plot(all_nights_times, all_nights_corr_targ_flux, all_nights_binned_times, all_nights_binned_corr_targ_flux, all_nights_binned_corr_targ_err, short_name, analysis_path, phot_type, ap_rad)
 
-            targ_dict = {'Time':times, 'Flux':targ_flux_corr}
+        pdb.set_trace()
+        #Plot the corrected lightcurves for target and references. 
+        #corr_all_sources_plot(times, targ_flux_corr, binned_times, binned_flux, binned_errs, corr_flux, binned_ref_fluxes, binned_ref_flux_errs, short_name, num_refs, analysis_path)
+
+            # bin_dict = {'Binned Time':binned_times, 'Binned '+short_name+ ' Flux':binned_flux, 'Binned '+short_name+ ' Flux Error':binned_errs}
+            # for k in range(num_refs):
+            #     bin_dict['Binned '+ref_names[k]+ ' Flux'] = binned_ref_fluxes[:,k]
+            #     bin_dict['Binned '+ref_names[k]+ ' Flux Error'] = binned_ref_flux_errs[:,k]
+
+            # targ_dict = {'Time':times, 'Flux':targ_flux_corr}

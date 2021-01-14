@@ -11,6 +11,7 @@ from astropy.convolution import Gaussian2DKernel, interpolate_replace_nans
 from pines_analysis_toolkit.data.bpm_chooser import bpm_chooser
 from astropy.visualization import ImageNormalize, ZScaleInterval, SquaredStretch, SqrtStretch, LinearStretch
 from pines_analysis_toolkit.data.bg_2d import bg_2d
+plt.ion() 
 
 '''Authors:
         Patrick Tamburo, Boston University, June 2020
@@ -38,34 +39,28 @@ def detect_sources(image_path, seeing_fwhm, edge_tolerance, thresh=6.0, plot=Fal
     header = fits.open(image_path)[0].header
     
     #Interpolate nans if any in image. 
-    kernel = Gaussian2DKernel(x_stddev=1)
+    kernel = Gaussian2DKernel(x_stddev=0.5)
     image = interpolate_replace_nans(image, kernel)
     
     #Do a quick background model subtraction (makes source detection easier).
-    image = bg_2d(image, box_size=64)
-
-    #Get a bad pixel mask to help in source detection.
-    pines_path = pines_dir_check()
-    bpm_path = pines_path/('Calibrations/Bad Pixel Masks')            
-    bpm, bad_pixel_mask_name = bpm_chooser(bpm_path, header)
+    image = bg_2d(image, box_size=32)
 
     #Get the sigma_clipped_stats for the image.
     avg, med, std = sigma_clipped_stats(image)
 
     norm = ImageNormalize(data=image, interval=ZScaleInterval(), stretch=LinearStretch())
 
-#     if plot:
-#         title = image_path.name
-#         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10,9))
-#         ax.set_aspect('equal')
-#         im = ax.imshow(image, origin='lower', norm=norm)
-#         cax = fig.add_axes([0.94, 0.15, 0.015, 0.7])
-#         fig.colorbar(im, cax=cax, orientation='vertical', label='ADU')
-#         ax.set_title(title+' Initial Source Detection')
+    if plot:
+        title = image_path.name
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10,9))
+        ax.set_aspect('equal')
+        im = ax.imshow(image, origin='lower', norm=norm)
+        cax = fig.add_axes([0.94, 0.15, 0.015, 0.7])
+        fig.colorbar(im, cax=cax, orientation='vertical', label='ADU')
+        ax.set_title(title+' Initial Source Detection')
 
     print('')
     print('Finding sources in {}.'.format(image_path.name))
-    print('....')
     print('')
 
     #Detect sources using DAOStarFinder.
@@ -100,10 +95,11 @@ def detect_sources(image_path, seeing_fwhm, edge_tolerance, thresh=6.0, plot=Fal
     phot_table.remove_rows(bad_source_locs)
     initial_sources.remove_rows(bad_source_locs)
     
-    #if plot:
-        ##Plot detected sources. 
-        #ax.plot(phot_table['xcenter'],phot_table['ycenter'], 'ro', markerfacecolor='none')
-
+    if plot:
+        #Plot detected sources. 
+        #TODO: indicate saturated sources, sources near edge, etc. with different color markers. 
+        ax.plot(phot_table['xcenter'],phot_table['ycenter'], 'ro', markerfacecolor='none')
+        pdb.set_trace()
     print('Found {} sources.'.format(len(phot_table)))
     sources = phot_table[::-1].to_pandas() #Resort remaining sources so that the brightest are listed firsts. 
     return sources
