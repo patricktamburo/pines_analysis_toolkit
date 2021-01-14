@@ -47,7 +47,6 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
     plt.ion() #Turn on interactive plotting.
 
     t1 = time.time()
-    
     #If an sftp connection to the PINES server was passed, download the dark data. 
     if type(sftp) == pysftp.Connection:
         sftp.chdir('/data/raw/mimir')
@@ -62,11 +61,9 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
                 sftp.chdir(date)
                 break
             sftp.chdir('..')
-        
         if data_path == '':
             print('ERROR: specified date not found in any run on pines.bu.edu:data/raw/mimir/\n')
             return
-
         else:
             #If the file start/stop numbers are specfied, grab those files.
             if (dark_stop != 0):
@@ -103,9 +100,9 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
                 #Identify dark files. 
                 dark_inds = np.where((log['Target'] == 'Dark') & (log['Filename'] != 'test.fits') & (log['Exptime'] == exptime))[0]
                 dark_files = natsort.natsorted(list(set(log['Filename'][dark_inds]))) #Set guarantees we only grab the unique files that have been identified as flats, in case the log bugged out. 
+            pdb.set_trace()
             print('Found {} dark files.'.format(len(dark_files)))
             print('')
-
             #Downoad data to the Calibrations/Darks/Raw/ directory. 
             dark_path = pines_path/('Calibrations/Darks/Raw')
             for j in range(len(dark_files)):

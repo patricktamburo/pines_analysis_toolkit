@@ -9,7 +9,7 @@ def short_name_creator(long_name):
     else:
         print('')
         print('WARNING: long_name does not match 2MASS Jxxxxxxxx+xxxxxxx format, returning long_name.')
-        time.sleep(3)
+        #time.sleep(3)
         short_name = long_name
     
     return short_name

@@ -6,6 +6,8 @@ from pines_analysis_toolkit.utils.quick_plot import quick_plot
 import pdb
 import pandas as pd
 import numpy as np
+import matplotlib
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 from photutils import CircularAperture, aperture_photometry, CircularAnnulus
 from astropy.io import fits
@@ -16,7 +18,6 @@ from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
 import time
 from natsort import natsorted
 from astropy.visualization import ImageNormalize, ZScaleInterval
-
 '''Authors:
 		Patrick Tamburo, Boston University, June 2020
 	Purpose:
@@ -41,8 +42,8 @@ from astropy.visualization import ImageNormalize, ZScaleInterval
 
 def ref_star_chooser(target, source_detect_image_ind=30, guess_position=(705.,386.), radius_check=6., non_linear_limit=3300., 
                     dimness_tolerance=0.5, closeness_tolerance=12., distance_from_target=900., edge_tolerance=50., exclude_lower_left=False, restore=False):
-    plt.ion() 
-    
+    plt.ion()
+
     #Get the target's 'short name'
     short_name = short_name_creator(target)
 
@@ -108,8 +109,9 @@ def ref_star_chooser(target, source_detect_image_ind=30, guess_position=(705.,38
     with open(extra_shift_path, 'w') as file:
         file.write(str(extra_x_shift)+' '+str(extra_y_shift))
 
+    source_detect_seeing = 2.5
     #Detect sources in the image. 
-    sources = detect_sources(source_detect_image_path, source_detect_seeing, edge_tolerance, plot=True)
+    sources = detect_sources(source_detect_image_path, source_detect_seeing, edge_tolerance, plot=False)
 
     #Identify the target in the image using guess_position. 
     target_id = target_finder(sources, guess_position)
@@ -201,7 +203,7 @@ def ref_star_chooser(target, source_detect_image_ind=30, guess_position=(705.,38
     by_label = dict(zip(labels, handles))
     ax.legend(by_label.values(), by_label.keys(), bbox_to_anchor=(1.1, 1.1))
     plt.show()
-
+    
     #Sometimes, the source detection returns things that are clearly not reference stars. 
     #Allow the user to remove them here. 
     ans = input('Enter IDs of references to remove, separated by commas (e.g.: 1,4,8,14).\nIf none to remove, hit enter:  ')

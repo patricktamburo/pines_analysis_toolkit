@@ -143,6 +143,7 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
             #Cut out the pixels JUST inside the aperture, and check if there are NaNs there. If so, interpolate over NaNs in the cutout. 
             ap_mask = ap.to_mask(method='exact')
             ap_cut = ap_mask.cutout(cutout)
+
             if np.sum(np.isnan(ap_cut)) > 0:
                 bads = np.where(np.isnan(cutout))
                 bad_dists = np.sqrt((bads[0] - y_cutout)**2 + (bads[1] - x_cutout)**2)
