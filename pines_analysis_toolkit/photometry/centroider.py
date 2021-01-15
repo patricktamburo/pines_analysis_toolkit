@@ -160,7 +160,11 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
             med = np.nanmedian(vals)
             std = np.nanstd(vals)
 
-            centroid_x_cutout, centroid_y_cutout = centroid_2dg(cutout - med) #Perform centroid detection on the cutout.
+
+            try:
+                centroid_x_cutout, centroid_y_cutout = centroid_2dg(cutout - med) #Perform centroid detection on the cutout.
+            except:
+                pdb.set_trace()
 
             centroid_x = centroid_x_cutout + int(x_pos) - box_w + edge_shave #Translate the detected centroid from the cutout coordinates back to the full-frame coordinates. 
             centroid_y = centroid_y_cutout + int(y_pos) - box_w + edge_shave
