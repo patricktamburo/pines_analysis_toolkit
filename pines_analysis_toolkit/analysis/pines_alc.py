@@ -44,6 +44,13 @@ def pines_alc(target, phot_type='aper', convergence_threshold=1e-5, mode='night'
     phot_path = pines_path/('Objects/'+short_name+'/'+phot_type+'_phot/')
     phot_files = natsorted(glob(str(phot_path/'*.csv')))
     analysis_path = pines_path/('Objects/'+short_name+'/analysis/')
+    
+    #Get source names for this observation. 
+    source_detection_file = pines_path/('Objects/'+short_name+'/sources/target_and_references_source_detection.csv')
+    source_df = pd.read_csv(source_detection_file)
+    source_names = np.array(source_df['Name'])
+    ref_names = source_names[1:]
+    num_refs = len(ref_names)
 
     #Loop over all photometry files.
     for i in range(len(phot_files)):
@@ -57,11 +64,7 @@ def pines_alc(target, phot_type='aper', convergence_threshold=1e-5, mode='night'
         df = pd.read_csv(phot_file)
         df.columns = df.keys().str.strip()
         
-        full_times = np.array(df['Time JD'])
-
-        source_names = natsorted(list(set([i.split(' ')[0]+' '+i.split(' ')[1] for i in df.keys() if (i[0] == '2') or (i[0] == 'R')])))
-        ref_names = source_names[1:]
-        num_refs = len(ref_names)
+        full_times = np.array(df['Time JD'])        
 
         #Split data up into individual nights. 
         if mode == 'night':
@@ -149,18 +152,6 @@ def pines_alc(target, phot_type='aper', convergence_threshold=1e-5, mode='night'
             all_nights_norm_ref_flux.append(norm_flux)
             all_nights_norm_ref_err.append(norm_err)
 
-            # #Plot normalized reference star fluxes. 
-            # fig, ax = plt.subplots(1,1,figsize=(14,5))
-            # ax.plot(times, norm_flux, '.')
-            # ax.errorbar(times, targ_flux_norm, targ_flux_err_norm, marker='o', linestyle='')
-            # ax.set_title('Normalized Reference Star Fluxes', fontsize=16)
-            # ax.tick_params(labelsize=12)
-            # ax.set_ylabel('Normalized Flux', fontsize=14)
-            # ax.set_xlabel('Time (JD$_{UTC}$)', fontsize=14)
-            # plt.tight_layout()
-            # plt.savefig(analysis_path/'norm_refs.png')
-
-
             #now calculate the "special" ALC for each ref star. 
             old_stddev = np.zeros(num_refs)
             new_stddev = np.zeros(num_refs)
@@ -236,10 +227,10 @@ def pines_alc(target, phot_type='aper', convergence_threshold=1e-5, mode='night'
         #TODO: Would be nice to wrap all this up in a dictionary that gets passed to the plotting programs. 
         #Plot the raw fluxes, normalized fluxes, corrected target flux, and corrected reference star fluxes. 
         if mode == 'night':
-            normalized_flux_plot(all_nights_times, all_nights_norm_targ_flux, all_nights_norm_targ_err, all_nights_norm_ref_flux, all_nights_norm_ref_err, all_nights_alc_flux, short_name, analysis_path, phot_type, ap_rad)
             raw_flux_plot(all_nights_times, all_nights_raw_targ_flux, all_nights_raw_targ_err, all_nights_raw_ref_flux, all_nights_raw_ref_err, short_name, analysis_path, phot_type, ap_rad)   
+            normalized_flux_plot(all_nights_times, all_nights_norm_targ_flux, all_nights_norm_targ_err, all_nights_norm_ref_flux, all_nights_norm_ref_err, all_nights_alc_flux, short_name, analysis_path, phot_type, ap_rad)
             corr_target_plot(all_nights_times, all_nights_corr_targ_flux, all_nights_binned_times, all_nights_binned_corr_targ_flux, all_nights_binned_corr_targ_err, short_name, analysis_path, phot_type, ap_rad)
-            corr_all_sources_plot(all_nights_times, all_nights_corr_targ_flux, all_nights_binned_times, all_nights_binned_corr_targ_flux, all_nights_binned_corr_targ_err, all_nights_corr_ref_flux, all_nights_binned_corr_ref_flux, all_nights_binned_corr_ref_err, short_name, analysis_path, phot_type, ap_rad)
+            #corr_all_sources_plot(all_nights_times, all_nights_corr_targ_flux, all_nights_binned_times, all_nights_binned_corr_targ_flux, all_nights_binned_corr_targ_err, all_nights_corr_ref_flux, all_nights_binned_corr_ref_flux, all_nights_binned_corr_ref_err, short_name, analysis_path, phot_type, ap_rad, num_refs, num_nights)
         else:
             global_raw_flux_plot(all_nights_times, all_nights_raw_targ_flux, all_nights_raw_targ_err, all_nights_raw_ref_flux, all_nights_raw_ref_err, short_name, analysis_path, phot_type, ap_rad)
             global_normalized_flux_plot(all_nights_times, all_nights_norm_targ_flux, all_nights_norm_targ_err, all_nights_norm_ref_flux, all_nights_norm_ref_err, all_nights_alc_flux, short_name, analysis_path, phot_type, ap_rad)

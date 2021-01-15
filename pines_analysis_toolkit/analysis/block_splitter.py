@@ -14,7 +14,6 @@ import pdb
 '''
 def block_splitter(times, bad_vals=[]):
     block_boundaries = np.where(np.gradient(times) > 0.15/24)[0]
-    
 
     #Staring observations. TODO: This will not work if there is a mix of staring/hopping observations on a single night!
     if len(block_boundaries) == 0:

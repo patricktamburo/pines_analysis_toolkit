@@ -100,7 +100,6 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
                 #Identify dark files. 
                 dark_inds = np.where((log['Target'] == 'Dark') & (log['Filename'] != 'test.fits') & (log['Exptime'] == exptime))[0]
                 dark_files = natsort.natsorted(list(set(log['Filename'][dark_inds]))) #Set guarantees we only grab the unique files that have been identified as flats, in case the log bugged out. 
-            pdb.set_trace()
             print('Found {} dark files.'.format(len(dark_files)))
             print('')
             #Downoad data to the Calibrations/Darks/Raw/ directory. 

@@ -241,8 +241,8 @@ def lightcurve(target, sources, centroided_sources, phot_type='aper', ref_set_ch
             #Do sigma clipping on the corrected lightcurve to get rid of outliers (from clouds, bad target centroid, cosmic rays, etc.)
             ###vals, lo, hi = sigmaclip(targ_corr, low=2.5, high=2.5)
             avg, med, std = sigma_clipped_stats(targ_corr, sigma=3)      
-            bad_vals = np.where((targ_corr > med + 3*std) | (targ_corr < med - 3*std))[0]
-            good_vals = np.where((targ_corr < med + 3*std) & (targ_corr > med - 3*std))[0]      
+            bad_vals = np.where((targ_corr > med + 5*std) | (targ_corr < med - 5*std))[0]
+            good_vals = np.where((targ_corr < med + 5*std) & (targ_corr > med - 5*std))[0]      
             vals = targ_corr[good_vals]
             if len(bad_vals) != 0:
                 plt.plot(dts[inds][bad_vals], targ_corr[bad_vals], marker='x',color='r', mew=1.8, ms=7, zorder=0, ls='')
