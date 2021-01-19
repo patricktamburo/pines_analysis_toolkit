@@ -49,9 +49,7 @@ def get_raw_science_files(sftp, target_name):
     raw_data_path = pines_path/('Objects/'+short_name+'/raw/')
     dark_path = pines_path/('Calibrations/Darks')
     flats_path = pines_path/('Calibrations/Flats/Domeflats')
-    
-    print('Searching pines.bu.edu for raw science files for {}.'.format(target_name))
-    
+        
     #Grab an up-to-date copy of the master log, which will be used to find images. 
     get_master_log(sftp, pines_path)
 
@@ -67,7 +65,7 @@ def get_raw_science_files(sftp, target_name):
     targ_inds = np.where(np.array(df['Target']) == target_name)
     file_names = np.array(df['Filename'])[targ_inds]
     print('')
-    
+    print('Searching pines.bu.edu for raw science files for {}.'.format(target_name))
     #Get list of dates that data are from, in chronological order. 
     dates = [int(i) for i in list(set([str.split(file_names[i],'.')[0] for i in range(len(file_names))]))]
     dates = np.array(dates)[np.argsort(dates)]
@@ -105,50 +103,34 @@ def get_raw_science_files(sftp, target_name):
                 sftp.chdir('..')
         sftp.chdir('..')
     
+    print('')
     #Now grab the logs.
-    sftp.chdir('/data/raw/mimir')
-    print('')
-    for i in range(len(run_dirs)):
-            sftp.chdir(run_dirs[i])
-            night_dirs = sftp.listdir()
-            for j in range(len(night_dirs)):
-                night_check = night_dirs[j]
-                if night_check in dates:
-                    sftp.chdir(night_check)
-                    log_name = night_check+'_log.txt'
-                    files_in_path = sftp.listdir()
-                    if log_name in files_in_path:
-                        if not (pines_path/('Logs/'+log_name)).exists():
-                            sftp.get(log_name,pines_path/('Logs/'+log_name))
-                            print('Downloading {} to {}.'.format(log_name, pines_path/('Logs/'+log_name)))
-                        else:
-                            print('{} already in {}, skipping download.'.format(log_name,pines_path/'Logs/'))
-                    sftp.chdir('..')
-            sftp.chdir('..')
+    sftp.chdir('/data/logs')
+    for i in range(len(dates)):
+        log_name = dates[i]+'_log.txt'
+        print('Downloading {} to {}.'.format(log_name, pines_path/('Logs/'+log_name)))
+        sftp.get(log_name, pines_path/('Logs/'+log_name))
+
+    # sftp.chdir('/data/raw/mimir')
+    # print('')
+    # for i in range(len(run_dirs)):
+    #         sftp.chdir(run_dirs[i])
+    #         night_dirs = sftp.listdir()
+    #         for j in range(len(night_dirs)):
+    #             night_check = night_dirs[j]
+    #             if night_check in dates:
+    #                 sftp.chdir(night_check)
+    #                 log_name = night_check+'_log.txt'
+    #                 files_in_path = sftp.listdir()
+    #                 if log_name in files_in_path:
+    #                     if not (pines_path/('Logs/'+log_name)).exists():
+    #                         sftp.get(log_name,pines_path/('Logs/'+log_name))
+    #                         print('Downloading {} to {}.'.format(log_name, pines_path/('Logs/'+log_name)))
+    #                     else:
+    #                         print('{} already in {}, skipping download.'.format(log_name,pines_path/'Logs/'))
+    #                 sftp.chdir('..')
+    #         sftp.chdir('..')
     
-    print('')
-    #Now grab the master image. 
-    # sftp.chdir('/data/master_images/')
-    # if sftp.exists(target_name.replace(' ','')+'_master.fits'):
-    #     if not (pines_path/('Master Images/'+target_name.replace(' ','')+'_master.fits')).exists():
-    #         sftp.get(target_name.replace(' ','')+'_master.fits', pines_path/('Master Images/'+target_name.replace(' ','')+'_master.fits'))
-    #         print('Downloading {} to {}.'.format(target_name.replace(' ','')+'_master.fits', pines_path/('Master Images/')))
-
-    #         #Reduce the master image. 
-    #         image = fits.open(pines_path/('Master Images/'+target_name.replace(' ','')+'_master.fits'))[0].data[0:1024,:]
-    #         header = fits.open(pines_path/('Master Images/'+target_name.replace(' ','')+'_master.fits'))[0].header
-    #         master_flat, master_flat_name = master_flat_chooser(pines_path/('Calibrations/Flats/Domeflats/'),header)
-    #         master_dark, master_dark_name = master_dark_chooser(pines_path/('Calibrations/Darks/'),header)
-    #         frame_red = (image - master_dark) / master_flat
-    #         header['HIERARCH DATE REDUCED'] = datetime.utcnow().strftime('%Y-%m-%d')+'T'+datetime.utcnow().strftime('%H:%M:%S')
-    #         header['HIERARCH MASTER DARK'] = master_dark_name
-    #         header['HIERARCH MASTER FLAT'] = master_flat_name
-    #         fits.writeto(pines_path/('Master Images/'+target_name.replace(' ','')+'_master.fits'), frame_red, header, overwrite=True)
-    #     else:
-    #         print('{} already exists in {}, skipping download.'.format(target_name.replace(' ','')+'_master.fits', pines_path/('Master Images/')))
-    # else:
-    #     print('No master file found on pines.bu.edu:/data/master_images/ for {}.'.format(target_name))
-
     print('')
     print('get_raw_science_files runtime: ', np.round((time.time()-t1)/60,1), ' minutes.')
     print('Done!')
