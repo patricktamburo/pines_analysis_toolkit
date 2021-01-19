@@ -61,7 +61,6 @@ def detect_sources(image_path, seeing_fwhm, edge_tolerance, thresh=6.0, plot=Fal
 
     print('')
     print('Finding sources in {}.'.format(image_path.name))
-    print('')
 
     #Detect sources using DAOStarFinder.
     daofind = DAOStarFinder(fwhm=fwhm, threshold=thresh*std)  
@@ -100,7 +99,7 @@ def detect_sources(image_path, seeing_fwhm, edge_tolerance, thresh=6.0, plot=Fal
         #TODO: indicate saturated sources, sources near edge, etc. with different color markers. 
         ax.plot(phot_table['xcenter'],phot_table['ycenter'], 'ro', markerfacecolor='none')
         pdb.set_trace()
-    print('Found {} sources.'.format(len(phot_table)))
+    #print('Found {} sources.'.format(len(phot_table)))
     sources = phot_table[::-1].to_pandas() #Resort remaining sources so that the brightest are listed firsts. 
     return sources
     

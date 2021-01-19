@@ -121,6 +121,7 @@ if __name__ == '__main__':
             print('measured x shift: {:4.1f}, measured y shift: {:4.1f}'.format(measured_x_shift, measured_y_shift))
             print('')
 
+
             #Overwrite the telescope's logged shifts with the new measurements. 
             log['X shift'][log_ind] = str(np.round(measured_x_shift,1))
             log['Y shift'][log_ind] = str(np.round(measured_y_shift,1))
