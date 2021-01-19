@@ -62,9 +62,11 @@ INSTRUCTIONS FOR CONTRIBUTING TO CODEBASE.
 MODULES (all still under development)
  
     data - programs to grab raw data, science data, calibrations, logs, reducing data, etc. 
+  
+    observing - programs that mimic functionality that we have in programs at the telescope. Measuring shifts, updating observing logs, etc. 
     
     photometry - programs for performing photometry on reduced data
   
     analysis - programs for making lightcurves, analyzing variability, etc.
-    
+
     utils - programs for various quality-of-life things
