@@ -94,7 +94,7 @@ def ref_star_chooser(target, source_detect_image_ind=30, guess_position=(705.,38
     #source_detect_seeing = 3.5
 
     #Detect sources in the image. 
-    sources = detect_sources(source_detect_image_path, source_detect_seeing, edge_tolerance, plot=source_detect_plot, thresh=4.0)
+    sources = detect_sources(source_detect_image_path, source_detect_seeing, edge_tolerance, plot=source_detect_plot, thresh=2.0)
     
     #Identify the target in the image using guess_position. 
     target_id = target_finder(sources, guess_position)
