@@ -290,12 +290,12 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
                 plt.margins(0,0)
                 plt.gca().xaxis.set_major_locator(plt.NullLocator())
                 plt.gca().yaxis.set_major_locator(plt.NullLocator())
-                plt.savefig(plot_output_path, bbox_inches='tight', pad_inches=0)
+                plt.savefig(plot_output_path, bbox_inches='tight', pad_inches=0, dpi=300)
                 plt.close()
 
         if gif: 
             gif_path = (pines_path/('Objects/'+short_name+'/sources/'+sources['Name'][i]+'/'))
-            gif_maker(path=gif_path, fps=20)
+            gif_maker(path=gif_path, fps=10)
 
     output_filename = pines_path/('Objects/'+short_name+'/sources/target_and_references_centroids.csv')
     #centroid_df.to_csv(pines_path/('Objects/'+short_name+'/sources/target_and_references_centroids.csv'))

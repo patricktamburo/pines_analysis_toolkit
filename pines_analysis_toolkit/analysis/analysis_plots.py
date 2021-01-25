@@ -271,23 +271,24 @@ def corr_target_plot(times, targ_flux_corr, binned_times, binned_flux, binned_er
         ax.axhline(1, color='r', lw=2, zorder=0)
         ax.grid(alpha=0.4)
         #Plot the corrected target and corrected binned target flux. 
-        ax.plot(times[i], targ_flux_corr[i], linestyle='', marker='o', zorder=1, color='darkgrey', ms=5, label='Unbinned data')
-        ax.errorbar(binned_times[i], binned_flux[i], binned_errs[i], linestyle='', marker='o', zorder=2, color='k', capsize=2, ms=7, label='Binned data')
+        ax.plot(times[i], targ_flux_corr[i], linestyle='', marker='o', zorder=1, color='darkgrey', ms=5, label='30-second exposures')
+        ax.errorbar(binned_times[i], binned_flux[i], binned_errs[i], linestyle='', marker='o', zorder=2, color='k', capsize=2, ms=7, label='10-minute binned data')
         
         #Plot the 5-sigma decrement line. 
         five_sig = 5*np.mean(binned_errs[i])
         ax.axhline(1-five_sig, color='k', lw=2, linestyle='--', zorder=0, label='5-$\sigma$ threshold')
-        ax.tick_params(labelsize=14)
+        ax.tick_params(labelsize=16)
         
         #Set labels.
         if i == 0:
-            ax.set_ylabel('Normalized Flux', fontsize=14)
-        ax.set_xlabel('Time (JD$_{UTC}$)', fontsize=14)
+            ax.set_ylabel('Normalized Flux', fontsize=20)
+            ax.legend(fontsize=16)
+        ax.set_xlabel('Time (JD$_{UTC}$)', fontsize=20)
         ut_date = julian.from_jd(times[i][0])
         ut_date_str = 'UT '+ut_date.strftime('%b. %d %Y')
-        ax.set_title(ut_date_str, fontsize=14)
+        ax.set_title(ut_date_str, fontsize=20)
 
-    plt.suptitle(short_name+' Nightly Corrected Target Lightcurve', fontsize=16)
+    plt.suptitle(short_name+' Nightly Corrected Target Lightcurve', fontsize=20)
 
     #Output the figure. 
     if phot_type == 'aper':

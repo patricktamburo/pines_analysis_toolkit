@@ -1,9 +1,10 @@
 import pines_analysis_toolkit as pat
-import pdb
+#import pdb
+from pdb import set_trace as stop
 
-targets = ['2MASS J00242463-0158201']
-#targets = ['SIMP 0136'] #Declare a target. This is SIMP J013656.5+093347.
-exptimes = [10.] #Exposure time of the images in seconds. 
+targets = ['2MASS J00320509+0219017']
+
+exptimes = [30.] #Exposure time of the images in seconds. 
 flat_date = '20201003' #The date that dome flat calibration data were taken for the target. 
 dark_date = '20201003' #The date that dark calibration data were taken for the target.
 band = 'J'
@@ -25,23 +26,29 @@ band = 'J'
 
 #for target in targets:
 #    pat.data.get_raw_science_files(sftp, target)
-#    pat.data.reduce(target, delete_raw=True, delete_reduced=False, upload=True, sftp=sftp)
+#   pat.data.reduce(target, delete_raw=True, delete_reduced=False, upload=True, sftp=sftp)
 
 #sftp.close()
-
+#pdb.set_trace()
 
 target = targets[0]
-sources = pat.photometry.ref_star_chooser(target, restore=False, source_detect_image_ind=120, 
-            exclude_lower_left=False, dimness_tolerance=0.25, distance_from_target=900., non_linear_limit=3300, 
+
+#Update logs with more accurate shifts.
+# dates = ['20201002', '20201004']
+# for date in dates:
+#     pat.observing.log_updater(target, date, upload=True)
+
+sources = pat.photometry.ref_star_chooser(target, restore=True, source_detect_image_ind=90, 
+            exclude_lower_left=False, dimness_tolerance=0.8, distance_from_target=900., non_linear_limit=3300, 
             edge_tolerance=80., source_detect_plot=False)
 
 
-centroided_sources = pat.photometry.centroider(target, sources, restore=False, output_plots=False, gif=False, box_w=7)
+centroided_sources = pat.photometry.centroider(target, sources, restore=True, output_plots=True, gif=True, box_w=7)
 
-pat.photometry.aper_phot(target, centroided_sources, [6], an_in=9)
+#pat.photometry.aper_phot(target, centroided_sources, [6], an_in=9)
 #pat.photometry.epsf_phot(target, centroided_sources, plots=True)
 #pat.photometry.basic_psf_phot(target, centroided_sources, plots=True)
 
 #pat.analysis.lightcurve(target, sources, centroided_sources)
 #pat.analysis.speculoos_style_lightcurve(target, sources, output_plots=True, phot_type='aper')
-pat.analysis.pines_alc(target, phot_type='aper', mode='night')
+pat.analysis.pines_alc(target, phot_type='aper', mode='global')

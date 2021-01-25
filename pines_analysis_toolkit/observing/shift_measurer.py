@@ -62,10 +62,10 @@ def shift_measurer(target, image_name, short_name):
     raw_filename = image_name.split('_')[0]+'.fits'
     ind = np.where(log['Filename'] == raw_filename)[0][0]
     seeing = float(log['X seeing'][ind])
-    seeing = 3.0
+    #seeing = 3.5
 
     #Find sources in the image. 
-    sources = detect_sources(image_path, seeing, edge_tolerance=90, thresh=3.5)
+    sources = detect_sources(image_path, seeing, edge_tolerance=70, thresh=3.5)
     
     sort_inds = np.argsort(np.array(sources['aperture_sum']))[::-1]
     source_x = np.array(sources['xcenter'])[sort_inds[0:15]]
@@ -84,6 +84,10 @@ def shift_measurer(target, image_name, short_name):
     (x_shift,y_shift) = corr_shift_determination(corr)
     #print('(X shift, Y shift): ({:3.1f}, {:3.1f})'.format(x_shift, -y_shift))
     #print('')
+
+    if (abs(x_shift) > 256) or (abs(y_shift) > 256):
+        pdb.set_trace()
+
     return x_shift, -y_shift
 
 if __name__ == '__main__':

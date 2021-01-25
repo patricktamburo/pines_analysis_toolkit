@@ -20,8 +20,9 @@ import pandas as pd
 pd.options.mode.chained_assignment = None  # Suppress some useless warnings. 
 from pines_analysis_toolkit.observing.shift_measurer import shift_measurer
 from pines_analysis_toolkit.utils import pines_dir_check 
-from pines_analysis_toolkit.observing.logging import logging
+from pines_analysis_toolkit.observing.pines_logging import pines_logging
 from pines_analysis_toolkit.utils.pines_login import pines_login
+from pines_analysis_toolkit.observing.log_out_of_order_fixer import log_out_of_order_fixer
 
 def log_updater(target, date, upload=False):
     '''
@@ -32,7 +33,7 @@ def log_updater(target, date, upload=False):
         we use *half* resolution images (to save time between exposures). By measuring on full-res images, we get more accurate shifts, which allows 
         us to determine centroids more easily.
 	Inputs:
-        target (str): a targets 'long' 2MASS name, e.g. '2MASSJ01234567+012345678'
+        target (str): a targets 'long' 2MASS name, e.g. '2MASS J01234567+012345678'
         date (str): the UT date of the log whose shifts you want to update in YYYYMMDD format, e.g. '20151110'
         upload (bool): whether or not to push the updated log to the PINES server (only admins can do this)
     Outputs:
@@ -47,26 +48,32 @@ def log_updater(target, date, upload=False):
     log_path = pines_path/('Logs/'+date+'_log.txt')
     reduced_path = pines_path/('Objects/'+short_name+'/reduced/')
     files = np.array(natsorted(glob(str(reduced_path)+'/'+date+'*.fits'))) #Get files to measure new shifts with
+
+    #Begin by checking filenames, making sure they're in sequential order, and that there is only one entry for each. 
+    log_out_of_order_fixer(log_path)
+
+    # #Sometimes logs can be out of order...make sure to sort lines based on file names. 
+    # log_filenums = []
+    # for i in range(len(lines)):
+    #     if lines[i][0] == '#':
+    #         log_filenums.append(0)
+    #     elif 'test.fits' in lines[i].split(',')[0]:
+    #         continue
+    #     else:
+    #         log_filenums.append(int(lines[i].split(',')[0].split('.')[1]))
+
+    # sort_inds = np.argsort(log_filenums)
+    # lines = list(np.array(lines)[sort_inds])
     
     log = pines_log_reader(log_path) #Get telescope log shifts.
     myfile = open(log_path, 'r')
     lines = myfile.readlines()
     myfile.close()
 
-    #Sometimes logs can be out of order...make sure to sort lines based on file names. 
-    log_filenums = []
-    for i in range(len(lines)):
-        if lines[i][0] == '#':
-            log_filenums.append(0)
-        else:
-            log_filenums.append(int(lines[i].split(',')[0].split('.')[1]))
-    sort_inds = np.argsort(log_filenums)
-    lines = list(np.array(lines)[sort_inds])
-
-    #Write out the filename-sorted log. 
-    with open(log_path, 'w') as f:
-        for line in lines:
-            f.write(line)
+    # #Write out the filename-sorted log. 
+    # with open(log_path, 'w') as f:
+    #     for line in lines:
+    #         f.write(line)
 
     #Now loop over all files for this target in the log, measure shifts in each file and update the line in the log. 
     for i in range(len(files)):
@@ -76,6 +83,8 @@ def log_updater(target, date, upload=False):
 
         #Measure the shifts. 
         measured_x_shift, measured_y_shift = shift_measurer(target, filename, short_name)
+
+
 
         #Make sure the measured shifts are real values. 
         if np.isnan(measured_x_shift) or np.isnan(measured_y_shift):
@@ -92,7 +101,7 @@ def log_updater(target, date, upload=False):
 
         #Grab entries for log line.
         filename = log['Filename'][log_ind]
-        date = log['Date'][log_ind]
+        log_date = log['Date'][log_ind]
         target_name = log['Target'][log_ind]
         filter_name = log['Filt.'][log_ind]
         exptime = log['Exptime'][log_ind]
@@ -103,7 +112,7 @@ def log_updater(target, date, upload=False):
         y_seeing = log['Y seeing'][log_ind]
         
         #Generate line of log text following the PINES telescope log format. 
-        log_text = logging(filename, date, target_name, filter_name, exptime, airmass, x_shift, y_shift, x_seeing, y_seeing)
+        log_text = pines_logging(filename, log_date, target_name, filter_name, exptime, airmass, x_shift, y_shift, x_seeing, y_seeing)
 
         #Overwrite the line with the new shifts.
         line_ind = log_ind + 1
