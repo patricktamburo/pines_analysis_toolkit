@@ -24,9 +24,24 @@ from photutils import make_source_mask
 
 #Input parameters
 def lightcurve(target, sources, centroided_sources, phot_type='aper', ref_set_choice=[], plot_mode='combined'):
-    '''
-        plot_mode (str): 'combined' for all nights on one plot, 'separate' for nights on individual plots.
-    '''
+    '''Authors: 
+        Patrick Tamburo, Boston University, June 2020
+    Purpose: 
+            Makes a "simple" lightcurve with each reference star weighted equally when creating the artificial comparison lightcurve. 
+    Inputs:
+        target (str): the target's long name (e.g. '2MASS J12345678+1234567').
+        sources (pandas DataFrame): DataFrame with source names, and x/y positions in the source_detect_image. Output from ref_star_chooser. 
+        centroided_sources (pandas DataFrame): Dataframe with source positions in every image. Output from centroider. 
+        phot_type (str): 'aper' or 'psf'. Whether to use aperture or PSF phomometry NOTE: PSF photometry currently not implemented.
+        ref_set_choice (list): list of reference IDs to use to make the lightcurve, in case you want to exclude any. 
+        plot_mode (str): 'combined' or 'separate'. 'combined' plots all nights in one figure, while 'separate' plots nights in separate figures. 
+    Outputs:
+        Saves lightcurve plots to target's analysis directory. 
+    TODO:
+        PSF photometry 
+        Regression? 
+'''
+
     def regression(flux, seeing, airmass, corr_significance=1e-5):
         #Looks at correlations between seeing and airmass with the target flux.
         #Takes those variables which are significantly correlated, and uses them in a linear regression to de-correlated the target flux. 
@@ -96,7 +111,6 @@ def lightcurve(target, sources, centroided_sources, phot_type='aper', ref_set_ch
     short_name = short_name_creator(target)
     outlier_tolerance = 0.2 #If a reference > outlier_tolerance of its values above sigma clipping threshold, mark it as bad. 
     centroided_sources.columns = centroided_sources.keys().str.strip()
-
     
     #Get list of photometry files for this target. 
     photometry_path = pines_path/('Objects/'+short_name+'/'+phot_type+'_phot/')
@@ -153,7 +167,7 @@ def lightcurve(target, sources, centroided_sources, phot_type='aper', ref_set_ch
         num_nights = len(night_inds)
         
         if plot_mode == 'combined':
-            fig, ax = plt.subplots(nrows=1, ncols=num_nights, figsize=(16, 5))
+            fig, axis = plt.subplots(nrows=1, ncols=num_nights, figsize=(16, 5))
         
         colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan']
 
@@ -172,7 +186,8 @@ def lightcurve(target, sources, centroided_sources, phot_type='aper', ref_set_ch
             if plot_mode == 'separate':
                 fig, ax = plt.subplots(1, 1, figsize=(16,5))
             else:
-                ax = ax[j]
+                ax = axis[j]
+            
             if phot_type =='aper':
                 fig.suptitle(short_name, fontsize=16)
            

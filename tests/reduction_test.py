@@ -58,6 +58,6 @@ centroided_sources = pat.photometry.centroider(target, sources, restore=True, ou
 
 for target in targets:
     print(target)
-    pat.analysis.lightcurve(target, sources, centroided_sources, plot_mode='separate')
+    pat.analysis.lightcurve(target, sources, centroided_sources, plot_mode='combined')
     pdb.set_trace()
     pat.analysis.pines_alc(target, phot_type='aper', mode='night')
