@@ -23,8 +23,10 @@ import matplotlib.dates as mdates
 from photutils import make_source_mask 
 
 #Input parameters
-def lightcurve(target, sources, centroided_sources, phot_type='aper', ref_set_choice=[]):
-
+def lightcurve(target, sources, centroided_sources, phot_type='aper', ref_set_choice=[], plot_mode='combined'):
+    '''
+        plot_mode (str): 'combined' for all nights on one plot, 'separate' for nights on individual plots.
+    '''
     def regression(flux, seeing, airmass, corr_significance=1e-5):
         #Looks at correlations between seeing and airmass with the target flux.
         #Takes those variables which are significantly correlated, and uses them in a linear regression to de-correlated the target flux. 
@@ -89,7 +91,6 @@ def lightcurve(target, sources, centroided_sources, phot_type='aper', ref_set_ch
             #print('No regressors used.')
             corrected_flux = flux
         return corrected_flux
-
     plt.ion()
     pines_path = pines_dir_check()
     short_name = short_name_creator(target)
@@ -144,24 +145,16 @@ def lightcurve(target, sources, centroided_sources, phot_type='aper', ref_set_ch
             values, clow, chigh = sigmaclip(ref_flux[j], low=2.5, high=2.5)
             if (len(phot_data) - len(values)) > (int(outlier_tolerance * len(phot_data))):
                 print('Have to add flagging bad refs.')
-                #pdb.set_trace()
-            #plt.plot(times, ref_flux[j]/np.nanmedian(ref_flux[j]), linestyle='', marker='o')
-
-        #plt.plot(times, targ_flux/np.nanmedian(targ_flux), marker='o')
-        #pdb.set_trace()
 
         closest_ref = np.where(abs(np.nanmean(ref_flux, axis=1)-np.nanmean(targ_flux)) == min(abs(np.nanmean(ref_flux, axis=1)-np.nanmean(targ_flux))))[0][0]
-
-        
 
         #Split data up into individual nights. 
         night_inds = night_splitter(times)
         num_nights = len(night_inds)
-
         
-        fig = plt.figure(figsize=(16, 5))
-        if phot_type =='aper':
-            fig.suptitle(short_name+', aperture radius = '+str(np.round(aperture_radius,1))+' pixels', fontsize=16)
+        if plot_mode == 'combined':
+            fig, ax = plt.subplots(nrows=1, ncols=num_nights, figsize=(16, 5))
+        
         colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan']
 
         #Get the time range of each night. Set each plot panel's xrange according to the night with the longest time. Makes seeing potential variability signals easier. 
@@ -171,14 +164,19 @@ def lightcurve(target, sources, centroided_sources, phot_type='aper', ref_set_ch
             night_lengths[j] = times[inds][-1] - times[inds][0]
         longest_night = max(night_lengths)
         longest_night_hours = np.ceil(longest_night*24)
-        global ax_list, line_list, filename_list
-        ax_list = []
+        global line_list, filename_list
         line_list = []
         filename_list = []
+
         for j in range(num_nights):
+            if plot_mode == 'separate':
+                fig, ax = plt.subplots(1, 1, figsize=(16,5))
+            else:
+                ax = ax[j]
+            if phot_type =='aper':
+                fig.suptitle(short_name, fontsize=16)
+           
             j += 1
-            ax = subplot(1, num_nights, j)
-            ax_list.append(ax)
             if j == 1:
                 ax.set_ylabel('Normalized Flux', fontsize=16)
             ax.set_xlabel('Time (UT)', fontsize=16)
@@ -187,13 +185,10 @@ def lightcurve(target, sources, centroided_sources, phot_type='aper', ref_set_ch
             filename_list.append(np.array([phot_data['Filename'][z] for z in inds]))
             alc = np.zeros(len(inds))
 
-            
             #Normalize reference lightcurves
             #TODO: Each night should be normalized separately. 
             for k in range(num_refs):
                 ref_flux[k][inds] = ref_flux[k][inds] / np.nanmedian(ref_flux[k][inds])
-                #plt.plot(times[inds], ref_flux[k][inds], linestyle='', color=colors[k], marker='o')
-            #pdb.set_trace()
 
             for k in range(len(inds)):
                 #Do a sigma clip on normalized references to avoid biasing median. 
@@ -201,16 +196,6 @@ def lightcurve(target, sources, centroided_sources, phot_type='aper', ref_set_ch
                 ###alc[k] = np.median(values)
                 avg, med, std = sigma_clipped_stats(ref_flux[:,inds[k]][~np.isnan(ref_flux[:,inds[k]])], sigma=1.5)
                 alc[k] = med
-
-                #plt.plot(np.zeros(len(ref_flux[:,inds[k]])) + times[inds[k]], ref_flux[:,inds[k]], 'k.')
-                # if k == 0:
-                #     plt.plot(times[inds[k]], alc[k], color='tab:orange', marker='o', label='Reference LC')
-                # else:
-                #     plt.plot(times[inds[k]], alc[k], color='tab:orange', marker='o')
-
-            
-            #plt.plot(times[inds], targ_flux[inds]/np.nanmedian(targ_flux[inds]), marker='o', ls='', color='tab:blue', label='Target')
-
             
             #Correct the target lightcurve using the alc. 
             alc = alc / np.nanmedian(alc)
@@ -218,20 +203,12 @@ def lightcurve(target, sources, centroided_sources, phot_type='aper', ref_set_ch
             targ_corr = targ_flux_norm / alc
             targ_corr = targ_corr / np.nanmedian(targ_corr)
 
-            
-          
             #Correct the example reference lightcurve using the alc. 
             ref_corr_norm = ref_flux[closest_ref][inds] / np.nanmedian(ref_flux[closest_ref][inds])
             ref_corr = ref_corr_norm / alc
             ref_corr = ref_corr / np.nanmedian(ref_corr)
 
-
-            #if j == 5:
-            #    plt.plot(times[inds], targ_flux_norm, color='b', marker='o')
-            #    pdb.set_trace()
-
             #Plot the target and reference lightcurves. 
-            #ax.plot(dts[inds], ref_corr,'.', color='tab:grey')
             t_plot, = ax.plot(dts[inds], targ_corr, '.', color=colors[i])
             line_list.append(t_plot)
             myFmt = mdates.DateFormatter('%H:%M')
@@ -278,6 +255,7 @@ def lightcurve(target, sources, centroided_sources, phot_type='aper', ref_set_ch
             ax.set_title(phot_data['Time UT'][inds[0]].split('T')[0], fontsize=14)
             ax.tick_params(labelsize=12)
             print('average seeing, night {}: {}'.format(j, np.mean(seeing[inds])))
+            pdb.set_trace()
             #print('pearson correlation between target and closest ref: {}'.format(pearsonr(targ_corr[good_vals], ref_corr[good_vals])))
             
         print(np.mean(bin_errs))

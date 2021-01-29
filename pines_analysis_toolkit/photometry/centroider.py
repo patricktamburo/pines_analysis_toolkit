@@ -275,13 +275,13 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
                 #Plot
                 lock_x = int(centroid_df[sources['Name'][i]+' X'][0])
                 lock_y = int(centroid_df[sources['Name'][i]+' Y'][0])
-                norm = ImageNormalize(data=image, interval=ZScaleInterval(), stretch=SquaredStretch())
+                norm = ImageNormalize(data=cutout, interval=ZScaleInterval(), stretch=SquaredStretch())
                 plt.imshow(image, origin='lower', norm=norm)
                 plt.plot(centroid_x, centroid_y, 'rx')
                 ap = CircularAperture((centroid_x, centroid_y), r=5)
                 ap.plot(lw=2, color='b')
-                plt.ylim(lock_y-20,lock_y+20-1)
-                plt.xlim(lock_x-20,lock_x+20-1)
+                plt.ylim(lock_y-15,lock_y+15-1)
+                plt.xlim(lock_x-15,lock_x+15-1)
                 plt.title('CENTROID DIAGNOSTIC PLOT\n'+sources['Name'][i]+', '+reduced_files[j].name+' (image '+str(j+1)+' of '+str(len(reduced_files))+')', fontsize=10)
                 plt.text(centroid_x, centroid_y+0.5, '('+str(np.round(centroid_x,1))+', '+str(np.round(centroid_y,1))+')', color='r', ha='center')
                 plot_output_path = (pines_path/('Objects/'+short_name+'/sources/'+sources['Name'][i]+'/'+str(j).zfill(4)+'.jpg'))
@@ -290,7 +290,7 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
                 plt.margins(0,0)
                 plt.gca().xaxis.set_major_locator(plt.NullLocator())
                 plt.gca().yaxis.set_major_locator(plt.NullLocator())
-                plt.savefig(plot_output_path, bbox_inches='tight', pad_inches=0, dpi=300)
+                plt.savefig(plot_output_path, bbox_inches='tight', pad_inches=0, dpi=150)
                 plt.close()
 
         if gif: 
