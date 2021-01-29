@@ -1,8 +1,12 @@
 import pines_analysis_toolkit as pat
-#import pdb
 from pdb import set_trace as stop
 
-targets = ['2MASS J00320509+0219017']
+targets = ['2MASS J00144919-0838207',
+'2MASS J00191165+0030176',
+'2MASS J00242463-0158201',
+'2MASS J00261147-0943406',
+'2MASS J00320509+0219017',
+'2MASS J00345684-0706013']
 
 exptimes = [30.] #Exposure time of the images in seconds. 
 flat_date = '20201003' #The date that dome flat calibration data were taken for the target. 
@@ -38,9 +42,9 @@ target = targets[0]
 # for date in dates:
 #     pat.observing.log_updater(target, date, upload=True)
 
-sources = pat.photometry.ref_star_chooser(target, restore=True, source_detect_image_ind=90, 
+sources = pat.photometry.ref_star_chooser(target, restore=True, source_detect_image_ind=30, 
             exclude_lower_left=False, dimness_tolerance=0.8, distance_from_target=900., non_linear_limit=3300, 
-            edge_tolerance=80., source_detect_plot=False)
+            edge_tolerance=80., source_detect_plot=False, guess_position=(745,459))
 
 
 centroided_sources = pat.photometry.centroider(target, sources, restore=True, output_plots=True, gif=True, box_w=7)
@@ -51,4 +55,9 @@ centroided_sources = pat.photometry.centroider(target, sources, restore=True, ou
 
 #pat.analysis.lightcurve(target, sources, centroided_sources)
 #pat.analysis.speculoos_style_lightcurve(target, sources, output_plots=True, phot_type='aper')
-pat.analysis.pines_alc(target, phot_type='aper', mode='global')
+
+for target in targets:
+    print(target)
+    pat.analysis.lightcurve(target, sources, centroided_sources, plot_mode='separate')
+    pdb.set_trace()
+    pat.analysis.pines_alc(target, phot_type='aper', mode='night')

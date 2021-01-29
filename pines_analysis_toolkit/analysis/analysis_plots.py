@@ -5,6 +5,15 @@ import julian
 import matplotlib.dates as mdates
 
 plt.ioff() 
+def standard_x_range(times):
+    '''
+        Calculates a standard range of time to use for x range in the plots for this target. 
+    '''
+    time_durations = np.zeros(len(times))
+    for i in range(len(times)):
+        time_durations[i] = (times[i][-1] - times[i][0])*24 + 1 #Gets the span of the night's observations in **HOURS**. Adds on an additional hour for padding.
+        
+    return np.ceil(np.max(time_durations))/24 #Returns maximum time span of the nights in **DAYS** 
 
 def raw_flux_plot(times, raw_targ_flux, raw_targ_err, raw_ref_flux, raw_ref_err, short_name, analysis_path, phot_type, ap_rad): 
     '''Authors:
@@ -257,6 +266,8 @@ def corr_target_plot(times, targ_flux_corr, binned_times, binned_flux, binned_er
 
     num_nights = len(times)
 
+    standard_time_range = standard_x_range(times)
+
     #Plot the corrected target flux. 
     fig, axis = plt.subplots(nrows=1,ncols=num_nights,figsize=(17,5), sharey=True)
     plt.subplots_adjust(left=0.07, wspace=0.1, top=0.86, bottom=0.17, right=0.96)
@@ -271,22 +282,22 @@ def corr_target_plot(times, targ_flux_corr, binned_times, binned_flux, binned_er
         ax.axhline(1, color='r', lw=2, zorder=0)
         ax.grid(alpha=0.4)
         #Plot the corrected target and corrected binned target flux. 
-        ax.plot(times[i], targ_flux_corr[i], linestyle='', marker='o', zorder=1, color='darkgrey', ms=5, label='30-second exposures')
-        ax.errorbar(binned_times[i], binned_flux[i], binned_errs[i], linestyle='', marker='o', zorder=2, color='k', capsize=2, ms=7, label='10-minute binned data')
+        ax.plot(times[i], targ_flux_corr[i], linestyle='', marker='o', zorder=1, color='darkgrey', ms=5)
+        ax.errorbar(binned_times[i], binned_flux[i], binned_errs[i], linestyle='', marker='o', zorder=2, color='k', capsize=2, ms=7)
         
         #Plot the 5-sigma decrement line. 
         five_sig = 5*np.mean(binned_errs[i])
-        ax.axhline(1-five_sig, color='k', lw=2, linestyle='--', zorder=0, label='5-$\sigma$ threshold')
+        ax.axhline(1-five_sig, color='k', lw=2, linestyle='--', zorder=0)
         ax.tick_params(labelsize=16)
         
         #Set labels.
         if i == 0:
             ax.set_ylabel('Normalized Flux', fontsize=20)
-            ax.legend(fontsize=16)
         ax.set_xlabel('Time (JD$_{UTC}$)', fontsize=20)
         ut_date = julian.from_jd(times[i][0])
         ut_date_str = 'UT '+ut_date.strftime('%b. %d %Y')
         ax.set_title(ut_date_str, fontsize=20)
+        ax.set_xlim(np.mean(times[i])-standard_time_range/2, np.mean(times[i])+standard_time_range/2)
 
     plt.suptitle(short_name+' Nightly Corrected Target Lightcurve', fontsize=20)
 
@@ -298,7 +309,7 @@ def corr_target_plot(times, targ_flux_corr, binned_times, binned_flux, binned_er
 
     print('Saving target lightcurve...')
     plt.savefig(analysis_path/filename, dpi=300)
-
+    #pdb.set_trace()
 
 def global_corr_target_plot(times, targ_flux_corr, binned_times, binned_flux, binned_errs, short_name, analysis_path, phot_type, ap_rad):
     '''Authors:
@@ -347,32 +358,91 @@ def global_corr_target_plot(times, targ_flux_corr, binned_times, binned_flux, bi
     plt.savefig(analysis_path/filename, dpi=300)
 
 
-def corr_all_sources_plot(times, targ_flux_corr, binned_times, binned_flux, binned_errs, corr_flux, binned_ref_fluxes, binned_ref_flux_errs, short_name, analysis_path, phot_type, ap_rad, num_refs, num_nights):
+
+def corr_all_sources_plot(times, targ_flux_corr, binned_times, binned_flux, binned_errs, corr_flux, binned_ref_fluxes, binned_ref_flux_errs, short_name, analysis_path, phot_type, ap_rad, num_refs, num_nights, norm_night_weights):
     cmap = plt.cm.viridis
-    fig, axis = plt.subplots(num_refs+1, 1, figsize=(14,5*num_refs))
-    plt.subplots_adjust(top=0.95, left=0.05, bottom=0.05, right=0.95)
+    fig, axis = plt.subplots(num_refs+1, num_nights, figsize=(14,4*num_refs))
+    plt.subplots_adjust(top=0.95, left=0.1, bottom=0.1, right=0.95, hspace=0.1)
     
-    ax[0].axhline(1, color='k', alpha=0.7, lw=1, zorder=0)
-    ax[0].grid(alpha=0.4)
-    ax[0].plot(times, targ_flux_corr, '.', zorder=1, color=cmap(0), alpha=0.5)
-    ax[0].errorbar(binned_times, binned_flux, binned_errs, linestyle='', marker='o', zorder=2, color=cmap(0))
-    ax[0].set_ylabel('Corrected Flux', fontsize=14)
-    ax[0].set_title(short_name, fontsize=16, color=cmap(0))
-    ax[0].tick_params(labelsize=12)
-    ax[0].set_ylim(0.9,1.1)
-    ax[0].set_xlabel('Time (JD$_{UTC})$', fontsize=14)
-    
-    for k in range(num_refs):
-        color_ind = int(((k+2) * 256 / (num_refs+1))) - 1
-        color = cmap(color_ind)
-        ax[k+1].axhline(1, color='k', alpha=0.7, lw=1, zorder=0)
-        ax[k+1].grid(alpha=0.4)
-        ax[k+1].plot(times, corr_flux[:,k], '.', zorder=1, color=color, alpha=0.5)
-        ax[k+1].errorbar(binned_times, binned_ref_fluxes[:,k], binned_ref_flux_errs[:,k], linestyle='', marker='o', zorder=2, color=color)
-        ax[k+1].set_ylabel('Corrected Flux', fontsize=14)
-        ax[k+1].set_title('CS '+str(k+1), fontsize=16, color=color)
-        ax[k+1].tick_params(labelsize=12)
-        ax[k+1].set_ylim(0.9,1.1)
-        ax[k+1].set_xlabel('Time (JD$_{UTC})$', fontsize=14)
+    standard_time_range = standard_x_range(times)
+
+    if num_nights > 1:
+        #First, plot the target's corrected flux for each night. 
+        ax = axis[0,:]
+        for i in range(num_nights):
+            ax[i].axhline(1, color='k', alpha=0.7, lw=1, zorder=0)
+            ax[i].grid(alpha=0.4)
+            ax[i].plot(times[i], targ_flux_corr[i], '.', zorder=1, color=cmap(0), alpha=0.5)
+            ax[i].errorbar(binned_times[i], binned_flux[i], binned_errs[i], linestyle='', marker='o', zorder=2, color=cmap(0))
+            if i == 0:
+                ax[i].set_ylabel('Flux', fontsize=14)
+            else:
+                ax[i].set_yticklabels([])
+            ax[i].set_title(short_name, fontsize=16, color=cmap(0))
+            ax[i].tick_params(labelsize=12)
+            ax[i].set_ylim(0.85,1.15)
+            ax[i].set_xlim(np.mean(times[i])-standard_time_range/2, np.mean(times[i])+standard_time_range/2)
+            ax[i].set_xlabel('Time (JD$_{UTC})$', fontsize=14)
+        
+
+        #Now, plot each reference star's corrected flux on every night. 
+        color = cmap(95)
+
+        for k in range(num_refs):
+            ax = axis[k+1,:]
+            for i in range(num_nights):
+                weight = norm_night_weights[i][k]
+                ax[i].axhline(1, color='k', alpha=0.7, lw=1, zorder=0)
+                ax[i].grid(alpha=0.4)
+                ax[i].plot(times[i], corr_flux[i][:,k], '.', zorder=1, color=color, alpha=0.5)
+                ax[i].errorbar(binned_times[i], binned_ref_fluxes[i][:,k], binned_ref_flux_errs[i][:,k], linestyle='', marker='o', zorder=2, color=color)
+                if i == 0:
+                    ax[i].set_ylabel('Flux', fontsize=14)
+                else:
+                    ax[i].set_yticklabels([])
+                ax[i].set_title('CS '+str(k+1)+', weight = {:1.2f}'.format(weight), fontsize=16, color=color)
+                ax[i].tick_params(labelsize=12)
+                ax[i].set_ylim(0.85,1.15)
+                ax[i].set_xlim(np.mean(times[i])-standard_time_range/2, np.mean(times[i])+standard_time_range/2)
+                ax[i].set_xlabel('Time (JD$_{UTC})$', fontsize=14)
+
+    elif num_nights == 1:
+        #First, plot the target's corrected flux for each night. 
+        ax = axis[0]
+        ax.axhline(1, color='k', alpha=0.7, lw=1, zorder=0)
+        ax.grid(alpha=0.4)
+        ax.plot(times[0], targ_flux_corr[0], '.', zorder=1, color=cmap(0), alpha=0.5)
+        ax.errorbar(binned_times[0], binned_flux[0], binned_errs[0], linestyle='', marker='o', zorder=2, color=cmap(0))
+        ax.set_ylabel('Flux', fontsize=14)
+        ax.set_title(short_name, fontsize=16, color=cmap(0))
+        ax.tick_params(labelsize=12)
+        ax.set_ylim(0.9,1.1)
+        ax.set_xlim(np.mean(times[0])-standard_time_range/2, np.mean(times[0])+standard_time_range/2)
+        ax.set_xlabel('Time (JD$_{UTC})$', fontsize=14)
+
+        #Now, plot each reference star's corrected flux on every night. 
+        color = cmap(95)
+        for k in range(num_refs):
+            ax = axis[k+1]
+            weight = norm_night_weights[0][k]
+            ax.axhline(1, color='k', alpha=0.7, lw=1, zorder=0)
+            ax.grid(alpha=0.4)
+            ax.plot(times[0], corr_flux[0][:,k], '.', zorder=1, color=color, alpha=0.5)
+            ax.errorbar(binned_times[0], binned_ref_fluxes[0][:,k], binned_ref_flux_errs[0][:,k], linestyle='', marker='o', zorder=2, color=color)
+            ax.set_ylabel('Flux', fontsize=14)
+            ax.set_title('CS '+str(k+1)+', weight = {:1.2f}'.format(weight), fontsize=16, color=color)
+            ax.tick_params(labelsize=12)
+            ax.set_ylim(0.9,1.1)
+            ax.set_xlim(np.mean(times[0])-standard_time_range/2, np.mean(times[0])+standard_time_range/2)
+            ax.set_xlabel('Time (JD$_{UTC})$', fontsize=14)
+
+    #Output the figure. 
+    if phot_type == 'aper':
+        filename = short_name.replace(' ','')+'_'+phot_type+'_phot_'+'r='+ap_rad+'_nightly_corrected_flux_all_targets.png'
+    else:
+        filename = short_name.replace(' ','')+'_'+phot_type+'_phot_nightly_corrected_flux_all_targets.png'
+
     plt.tight_layout()
-    plt.savefig(analysis_path/'cs_fig.png', dpi=300)
+    #pdb.set_trace()
+    print('Saving lightcurves for all targets...')
+    plt.savefig(analysis_path/filename, dpi=300)

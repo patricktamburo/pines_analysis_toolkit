@@ -51,29 +51,11 @@ def log_updater(target, date, upload=False):
 
     #Begin by checking filenames, making sure they're in sequential order, and that there is only one entry for each. 
     log_out_of_order_fixer(log_path)
-
-    # #Sometimes logs can be out of order...make sure to sort lines based on file names. 
-    # log_filenums = []
-    # for i in range(len(lines)):
-    #     if lines[i][0] == '#':
-    #         log_filenums.append(0)
-    #     elif 'test.fits' in lines[i].split(',')[0]:
-    #         continue
-    #     else:
-    #         log_filenums.append(int(lines[i].split(',')[0].split('.')[1]))
-
-    # sort_inds = np.argsort(log_filenums)
-    # lines = list(np.array(lines)[sort_inds])
     
     log = pines_log_reader(log_path) #Get telescope log shifts.
     myfile = open(log_path, 'r')
     lines = myfile.readlines()
     myfile.close()
-
-    # #Write out the filename-sorted log. 
-    # with open(log_path, 'w') as f:
-    #     for line in lines:
-    #         f.write(line)
 
     #Now loop over all files for this target in the log, measure shifts in each file and update the line in the log. 
     for i in range(len(files)):

@@ -104,6 +104,8 @@ def pines_alc(target, phot_type='aper', convergence_threshold=1e-5, mode='night'
         all_nights_binned_corr_ref_flux  = []
         all_nights_binned_corr_ref_err   = []
 
+        norm_night_weights = []
+
         #Loop over each night in the dataset.
         for j in range(num_nights):
             num_frames = len(night_inds[j])
@@ -191,6 +193,7 @@ def pines_alc(target, phot_type='aper', convergence_threshold=1e-5, mode='night'
             alc_final_flux = np.sum(norm_flux/norm_err**2,axis=1) / np.sum(1/norm_err**2,axis=1)
             alc_final_err = np.sqrt( 1 / np.sum(1/norm_err**2,axis=1))    
 
+            norm_night_weights.append((1/norm_err[0,:])**2/np.sum((1/norm_err[0,:])**2)) #Save the NORMALIZED weight for each comparison star on this night.
             all_nights_alc_flux.append(alc_final_flux)
             all_nights_alc_err.append(alc_final_err)
 
@@ -230,13 +233,13 @@ def pines_alc(target, phot_type='aper', convergence_threshold=1e-5, mode='night'
             raw_flux_plot(all_nights_times, all_nights_raw_targ_flux, all_nights_raw_targ_err, all_nights_raw_ref_flux, all_nights_raw_ref_err, short_name, analysis_path, phot_type, ap_rad)   
             normalized_flux_plot(all_nights_times, all_nights_norm_targ_flux, all_nights_norm_targ_err, all_nights_norm_ref_flux, all_nights_norm_ref_err, all_nights_alc_flux, short_name, analysis_path, phot_type, ap_rad)
             corr_target_plot(all_nights_times, all_nights_corr_targ_flux, all_nights_binned_times, all_nights_binned_corr_targ_flux, all_nights_binned_corr_targ_err, short_name, analysis_path, phot_type, ap_rad)
-            #corr_all_sources_plot(all_nights_times, all_nights_corr_targ_flux, all_nights_binned_times, all_nights_binned_corr_targ_flux, all_nights_binned_corr_targ_err, all_nights_corr_ref_flux, all_nights_binned_corr_ref_flux, all_nights_binned_corr_ref_err, short_name, analysis_path, phot_type, ap_rad, num_refs, num_nights)
+            corr_all_sources_plot(all_nights_times, all_nights_corr_targ_flux, all_nights_binned_times, all_nights_binned_corr_targ_flux, all_nights_binned_corr_targ_err, all_nights_corr_ref_flux, all_nights_binned_corr_ref_flux, all_nights_binned_corr_ref_err, short_name, analysis_path, phot_type, ap_rad, num_refs, num_nights, norm_night_weights)
         else:
             global_raw_flux_plot(all_nights_times, all_nights_raw_targ_flux, all_nights_raw_targ_err, all_nights_raw_ref_flux, all_nights_raw_ref_err, short_name, analysis_path, phot_type, ap_rad)
             global_normalized_flux_plot(all_nights_times, all_nights_norm_targ_flux, all_nights_norm_targ_err, all_nights_norm_ref_flux, all_nights_norm_ref_err, all_nights_alc_flux, short_name, analysis_path, phot_type, ap_rad)
             global_corr_target_plot(all_nights_times, all_nights_corr_targ_flux, all_nights_binned_times, all_nights_binned_corr_targ_flux, all_nights_binned_corr_targ_err, short_name, analysis_path, phot_type, ap_rad)
 
-        pdb.set_trace()
+        #pdb.set_trace()
         #Plot the corrected lightcurves for target and references. 
         #corr_all_sources_plot(times, targ_flux_corr, binned_times, binned_flux, binned_errs, corr_flux, binned_ref_fluxes, binned_ref_flux_errs, short_name, num_refs, analysis_path)
 
