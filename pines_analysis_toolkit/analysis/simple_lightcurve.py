@@ -23,7 +23,8 @@ import matplotlib.dates as mdates
 from photutils import make_source_mask 
 
 #Input parameters
-def lightcurve(target, sources, centroided_sources, phot_type='aper', ref_set_choice=[], plot_mode='combined'):
+def simple_lightcurve(target, sources, centroided_sources, phot_type='aper', ref_set_choice=[], plot_mode='combined'):
+    print('\nRunning simple_lightcurve().\n')
     '''Authors: 
         Patrick Tamburo, Boston University, June 2020
     Purpose: 
@@ -106,7 +107,7 @@ def lightcurve(target, sources, centroided_sources, phot_type='aper', ref_set_ch
             #print('No regressors used.')
             corrected_flux = flux
         return corrected_flux
-    plt.ion()
+    #plt.ion()
     pines_path = pines_dir_check()
     short_name = short_name_creator(target)
     outlier_tolerance = 0.2 #If a reference > outlier_tolerance of its values above sigma clipping threshold, mark it as bad. 
@@ -156,9 +157,9 @@ def lightcurve(target, sources, centroided_sources, phot_type='aper', ref_set_ch
             ref_flux[j,:] = phot_data['Reference '+str(j+1)+' Flux']
             ref_flux_err[j,:] = phot_data['Reference '+str(j+1)+' Flux Error']
             #Discard variable stars. 
-            values, clow, chigh = sigmaclip(ref_flux[j], low=2.5, high=2.5)
-            if (len(phot_data) - len(values)) > (int(outlier_tolerance * len(phot_data))):
-                print('Have to add flagging bad refs.')
+            #values, clow, chigh = sigmaclip(ref_flux[j], low=2.5, high=2.5)
+            # if (len(phot_data) - len(values)) > (int(outlier_tolerance * len(phot_data))):
+            #     print('Have to add flagging bad refs.')
 
         closest_ref = np.where(abs(np.nanmean(ref_flux, axis=1)-np.nanmean(targ_flux)) == min(abs(np.nanmean(ref_flux, axis=1)-np.nanmean(targ_flux))))[0][0]
 
@@ -166,10 +167,10 @@ def lightcurve(target, sources, centroided_sources, phot_type='aper', ref_set_ch
         night_inds = night_splitter(times)
         num_nights = len(night_inds)
         
-        if plot_mode == 'combined':
-            fig, axis = plt.subplots(nrows=1, ncols=num_nights, figsize=(16, 5))
+        #if plot_mode == 'combined':
+        #    fig, axis = plt.subplots(nrows=1, ncols=num_nights, figsize=(16, 5))
         
-        colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan']
+        #colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan']
 
         #Get the time range of each night. Set each plot panel's xrange according to the night with the longest time. Makes seeing potential variability signals easier. 
         night_lengths = np.zeros(num_nights)
@@ -183,18 +184,18 @@ def lightcurve(target, sources, centroided_sources, phot_type='aper', ref_set_ch
         filename_list = []
 
         for j in range(num_nights):
-            if plot_mode == 'separate':
-                fig, ax = plt.subplots(1, 1, figsize=(16,5))
-            else:
-                ax = axis[j]
+            #if plot_mode == 'separate':
+            #    fig, ax = plt.subplots(1, 1, figsize=(16,5))
+            #else:
+            #    ax = axis[j]
             
-            if phot_type =='aper':
-                fig.suptitle(short_name, fontsize=16)
+            #if phot_type =='aper':
+            #    fig.suptitle(short_name, fontsize=16)
            
             j += 1
-            if j == 1:
-                ax.set_ylabel('Normalized Flux', fontsize=16)
-            ax.set_xlabel('Time (UT)', fontsize=16)
+            #if j == 1:
+            #    ax.set_ylabel('Normalized Flux', fontsize=16)
+            #ax.set_xlabel('Time (UT)', fontsize=16)
 
             inds = night_inds[j-1]
             filename_list.append(np.array([phot_data['Filename'][z] for z in inds]))
@@ -224,11 +225,11 @@ def lightcurve(target, sources, centroided_sources, phot_type='aper', ref_set_ch
             ref_corr = ref_corr / np.nanmedian(ref_corr)
 
             #Plot the target and reference lightcurves. 
-            t_plot, = ax.plot(dts[inds], targ_corr, '.', color=colors[i])
-            line_list.append(t_plot)
-            myFmt = mdates.DateFormatter('%H:%M')
-            ax.xaxis.set_major_formatter(myFmt)
-            fig.autofmt_xdate()       
+            #t_plot, = ax.plot(dts[inds], targ_corr, '.', color=colors[i])
+            #line_list.append(t_plot)
+            #myFmt = mdates.DateFormatter('%H:%M')
+            #ax.xaxis.set_major_formatter(myFmt)
+            #fig.autofmt_xdate()       
 
             #Do sigma clipping on the corrected lightcurve to get rid of outliers (from clouds, bad target centroid, cosmic rays, etc.)
             ###vals, lo, hi = sigmaclip(targ_corr, low=2.5, high=2.5)
@@ -236,8 +237,8 @@ def lightcurve(target, sources, centroided_sources, phot_type='aper', ref_set_ch
             bad_vals = np.where((targ_corr > med + 5*std) | (targ_corr < med - 5*std))[0]
             good_vals = np.where((targ_corr < med + 5*std) & (targ_corr > med - 5*std))[0]      
             vals = targ_corr[good_vals]
-            if len(bad_vals) != 0:
-                plt.plot(dts[inds][bad_vals], targ_corr[bad_vals], marker='x',color='r', mew=1.8, ms=7, zorder=0, ls='')
+            #if len(bad_vals) != 0:
+            #    plt.plot(dts[inds][bad_vals], targ_corr[bad_vals], marker='x',color='r', mew=1.8, ms=7, zorder=0, ls='')
             
             blocks = block_splitter(times[inds], bad_vals)
             bin_times = np.zeros(len(blocks))
@@ -254,29 +255,40 @@ def lightcurve(target, sources, centroided_sources, phot_type='aper', ref_set_ch
                 except:
                     pdb.set_trace()
             bin_dts = np.array(bin_dts)
-            ax.errorbar(bin_dts, bin_fluxes, yerr=bin_errs, marker='o', color='k',zorder=3, ls='')
+            #ax.errorbar(bin_dts, bin_fluxes, yerr=bin_errs, marker='o', color='k',zorder=3, ls='')
             
             #Draw the y=1 and 5-sigma detection threshold lines. 
-            ax.axhline(y=1, color='r', lw=2, zorder=0)
-            ax.axhline(1-5*np.median(bin_errs), zorder=0, lw=2, color='k', ls='--', alpha=0.4)
+            #ax.axhline(y=1, color='r', lw=2, zorder=0)
+            #ax.axhline(1-5*np.median(bin_errs), zorder=0, lw=2, color='k', ls='--', alpha=0.4)
 
             #Set the y-range so you can see the 5-sigma detection line. 
-            ax.set_ylim(0.9, 1.1)
+            #ax.set_ylim(0.9, 1.1)
 
             #Set the x-range to be the same for all nights. 
-            ax.set_xlim(julian.from_jd(times[inds][0]-0.025, fmt='jd'), julian.from_jd(times[inds][0]+longest_night+0.025, fmt='jd'))
+            #ax.set_xlim(julian.from_jd(times[inds][0]-0.025, fmt='jd'), julian.from_jd(times[inds][0]+longest_night+0.025, fmt='jd'))
             
-            ax.grid(alpha=0.2)
-            ax.set_title(phot_data['Time UT'][inds[0]].split('T')[0], fontsize=14)
-            ax.tick_params(labelsize=12)
-            print('average seeing, night {}: {}'.format(j, np.mean(seeing[inds])))
-            pdb.set_trace()
+            #ax.grid(alpha=0.2)
+            #ax.set_title(phot_data['Time UT'][inds[0]].split('T')[0], fontsize=14)
+            #ax.tick_params(labelsize=12)
+            #print('average seeing, night {}: {}'.format(j, np.mean(seeing[inds])))
+            #pdb.set_trace()
             #print('pearson correlation between target and closest ref: {}'.format(pearsonr(targ_corr[good_vals], ref_corr[good_vals])))
             
-        print(np.mean(bin_errs))
-        print('')
-        fig.tight_layout(rect=[0, 0.03, 1, 0.93])
+        #print(np.mean(bin_errs))
+        #print('')
+        #fig.tight_layout(rect=[0, 0.03, 1, 0.93])
+
+        #Output the simple lc data to a csv. 
+        time_save = times
+        flux_save = targ_corr 
+        flux_err_save = np.zeros(len(flux_save)) + np.std(targ_corr)
+        output_dict = {'Time':time_save, 'Flux':flux_save, 'Flux Error':flux_err_save}
+        output_df = pd.DataFrame(data=output_dict)
         if phot_type == 'aper':
-            plt.savefig(analysis_path/(short_name+'_simple_lc_'+str(np.round(aperture_radius,1))+'.png'))
-        
-        pdb.set_trace()
+            output_filename = analysis_path/(short_name+'_simple_lc_aper_phot_'+str(np.round(aperture_radius,1))+'_pix.csv')
+            print('\nSaving to {}.\n'.format(output_filename))
+            output_df.to_csv(output_filename)
+        elif phot_type == 'psf':
+            print("ERROR: Need to create flux output for PSF photometry.")     
+               
+    return
