@@ -22,7 +22,22 @@ from pines_analysis_toolkit.utils.pines_dir_check import pines_dir_check
 from pines_analysis_toolkit.utils.short_name_creator import short_name_creator
 from pines_analysis_toolkit.utils.quick_plot import quick_plot as qp 
 
-def master_synthetic_image_creator(target, image_name, seeing=2.5):
+def master_synthetic_image_creator(target, image_name, seeing=2.5, sigma_above_bg=5):
+    '''Authors:
+            Patrick Tamburo, Boston University, February 2021
+        Purpose:
+            Creates a master synthetic image for a PINES target by detecting sources in a reduced image of the field.
+        Inputs:
+            target (str): The target's full 2MASS name.
+            image_name (str): The name of the reduced file (e.g., 20210204.420_red.fits).
+            seeing (float): The FWHM seeing of the image in arcsec. By default, 2.5". 
+            sigma_above_bg (float): The sigma above background used to rule in sources in daostarfinder. By default, 5.
+        Outputs:
+            Writes out a master synthetic image to PINES_analysis_toolkit/Calibrations/Master Synthetic Images/.
+        TODO:
+            Write the filename used to create the master image to the master image header. 
+    '''
+
 
     def mimir_source_finder(image_path,sigma_above_bg,fwhm):
         """Find sources in Mimir images."""
@@ -144,7 +159,7 @@ def master_synthetic_image_creator(target, image_name, seeing=2.5):
     avg,med,std = sigma_clipped_stats(image)
 
     #Find sources in the image. 
-    (x_centroids,y_centroids) = mimir_source_finder(image,sigma_above_bg=5,fwhm=daostarfinder_fwhm)
+    (x_centroids,y_centroids) = mimir_source_finder(image, sigma_above_bg=sigma_above_bg, fwhm=daostarfinder_fwhm)
 
     #Plot the field with detected sources. 
     qp(image)
@@ -183,6 +198,7 @@ def master_synthetic_image_creator(target, image_name, seeing=2.5):
     plt.title('Synthetic image')
     plt.show()
 
+    pdb.set_trace()
     print('')
     print('')
     print('')
@@ -190,3 +206,10 @@ def master_synthetic_image_creator(target, image_name, seeing=2.5):
     hdu = fits.PrimaryHDU(synthetic_image)
     hdu.writeto(master_synthetic_path, overwrite=True)
     print('Writing master synthetic image to {}/'.format(master_synthetic_path))
+
+
+if __name__ == '__main__':
+    target = '2MASS J08312221+1538511'
+    image_name = '20210204.420_red.fits'
+    seeing = 1.5
+    master_synthetic_image_creator(target, image_name, seeing=seeing)

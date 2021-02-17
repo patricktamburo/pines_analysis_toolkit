@@ -15,10 +15,11 @@ import matplotlib.dates as mdates
 import os
 import shutil
 from copy import deepcopy
-from scipy.stats import pearsonr
+from scipy.stats import pearsonr, sigmaclip
 from pathlib import Path
+import os 
 
-def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-5, mode='night'):
+def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-5, mode='night', plots=False):
 
     '''Authors:
 		Phil Muirhead & Patrick Tamburo, Boston University, November 2020
@@ -33,7 +34,6 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-5, mo
 
 	TODO:
         Make compatible with PSF photometry.
-        Add 'global' performance. 
     '''
     print('\nRunning weighted_lightcurve().\n')
 
@@ -54,6 +54,8 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-5, mo
     ref_names = source_names[1:]
     num_refs = len(ref_names)
 
+    best_binned_std = 9999 #Initialize. 
+
     #Loop over all photometry files.
     for i in range(len(phot_files)):
 
@@ -62,6 +64,7 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-5, mo
             ap_rad = phot_file.name.split('_')[3]
         else:
             ap_rad == ''
+        print('\nAperture radius: {} pixels.'.format(ap_rad))
 
         df = pd.read_csv(phot_file)
         df.columns = df.keys().str.strip()
@@ -111,7 +114,36 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-5, mo
         #Loop over each night in the dataset.
         for j in range(num_nights):
             num_frames = len(night_inds[j])
-            inds = night_inds[j]
+            inds = np.array(night_inds[j])
+
+            #Grab the target flux and error. 
+            targ_flux = np.array(df[short_name+' Flux'][inds])
+            targ_flux_err = np.array(df[short_name+' Flux Error'][inds])
+            
+            #Normalize the target flux and error. 
+            normalization = np.sum(targ_flux/targ_flux_err**2) / np.sum(1/targ_flux_err**2)
+            targ_flux_norm = targ_flux/normalization 
+
+            #Sigmaclip the normalized target flux, in order to toss any suspect measurements. 
+            vals, lower, upper = sigmaclip(targ_flux_norm, low=3, high=3)
+            good_frames = np.where((targ_flux_norm > lower) & (targ_flux_norm < upper))[0]
+                
+            num_frames = len(good_frames)
+            inds = inds[good_frames]
+
+            #Regrab raw flux using *good* frames
+            targ_flux = np.array(df[short_name+' Flux'][inds])
+            targ_flux_err = np.array(df[short_name+' Flux Error'][inds])
+            all_nights_raw_targ_flux.append(targ_flux)
+            all_nights_raw_targ_err.append(targ_flux_err)
+            
+            #Recompute the normalization using only the good frames. 
+            good_frame_normalization = np.sum(targ_flux/targ_flux_err**2) / np.sum(1/targ_flux_err**2)
+            targ_flux_norm = targ_flux / good_frame_normalization
+            targ_flux_err_norm = targ_flux_err / good_frame_normalization
+            all_nights_norm_targ_flux.append(targ_flux_norm)
+            all_nights_norm_targ_err.append(targ_flux_err_norm)
+
             #make numpy arrays for all the stuff we need
             raw_flux =       np.zeros((num_frames,num_refs)) #units of photons
             raw_err =        np.zeros((num_frames,num_refs)) #units of photons
@@ -128,17 +160,6 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-5, mo
 
             #times = np.array([julian.from_jd(times[i], fmt='jd') for i in range(len(times))])
 
-            targ_flux = np.array(df[short_name+' Flux'][inds])
-            targ_flux_err = np.array(df[short_name+' Flux Error'][inds])
-            all_nights_raw_targ_flux.append(targ_flux)
-            all_nights_raw_targ_err.append(targ_flux_err)
-
-            normalization = np.sum(targ_flux/targ_flux_err**2) / np.sum(1/targ_flux_err**2)
-            targ_flux_norm = targ_flux/normalization 
-            targ_flux_err_norm = targ_flux_err / normalization
-            all_nights_norm_targ_flux.append(targ_flux_norm)
-            all_nights_norm_targ_err.append(targ_flux_err_norm)
-            
             #fill raw flux and err flux arrays, and normalize
             for k in np.arange(num_refs):
                 r = ref_names[k]
@@ -229,6 +250,17 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-5, mo
             all_nights_binned_corr_ref_flux.append(binned_ref_fluxes)
             all_nights_binned_corr_ref_err.append(binned_ref_flux_errs)
 
+        #Unpack the binned target flux into a list for ease of calculating stddev.    
+        all_bin_flux = []
+        for kk in range(len(all_nights_binned_corr_targ_flux)):
+            all_bin_flux.extend(all_nights_binned_corr_targ_flux[kk])
+
+        binned_std = np.std(all_bin_flux)
+        print('Stddev of binned corrected target flux: {:1.4f}'.format(binned_std))
+        if binned_std < best_binned_std:
+            print('New best lightcurve found!')
+            best_binned_std = binned_std
+            best_ap = ap_rad
 
         #Output the weighted lc data to a csv. 
         time_save = times
@@ -237,22 +269,31 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-5, mo
         output_dict = {'Time':time_save, 'Flux':flux_save, 'Flux Error':flux_err_save}
         output_df = pd.DataFrame(data=output_dict)
         if phot_type == 'aper':
-            output_filename = analysis_path/(short_name+'_weighted_lc_aper_phot_'+ap_rad+'_pix.csv')
-            print('\nSaving to {}.\n'.format(output_filename))
+            if not os.path.exists(analysis_path/('aper_phot_analysis/'+ap_rad)):
+                os.mkdir(analysis_path/('aper_phot_analysis/'+ap_rad))
+            output_filename = analysis_path/('aper_phot_analysis/'+ap_rad+'/'+short_name+'_weighted_lc_aper_phot_'+ap_rad+'_pix.csv')
+            print('Saving to {}.'.format(output_filename))
             output_df.to_csv(output_filename)
         elif phot_type == 'psf':
             print("ERROR: Need to create flux output for PSF photometry.")     
-               
 
         #TODO: Would be nice to wrap all this up in a dictionary that gets passed to the plotting programs. 
         #Plot the raw fluxes, normalized fluxes, corrected target flux, and corrected reference star fluxes. 
-        # if mode == 'night':
-        #     raw_flux_plot(all_nights_times, all_nights_raw_targ_flux, all_nights_raw_targ_err, all_nights_raw_ref_flux, all_nights_raw_ref_err, short_name, analysis_path, phot_type, ap_rad)   
-        #     normalized_flux_plot(all_nights_times, all_nights_norm_targ_flux, all_nights_norm_targ_err, all_nights_norm_ref_flux, all_nights_norm_ref_err, all_nights_alc_flux, short_name, analysis_path, phot_type, ap_rad)
-        #     corr_target_plot(all_nights_times, all_nights_corr_targ_flux, all_nights_binned_times, all_nights_binned_corr_targ_flux, all_nights_binned_corr_targ_err, short_name, analysis_path, phot_type, ap_rad)
-        #     corr_all_sources_plot(all_nights_times, all_nights_corr_targ_flux, all_nights_binned_times, all_nights_binned_corr_targ_flux, all_nights_binned_corr_targ_err, all_nights_corr_ref_flux, all_nights_binned_corr_ref_flux, all_nights_binned_corr_ref_err, short_name, analysis_path, phot_type, ap_rad, num_refs, num_nights, norm_night_weights)
-        # else:
-        #     global_raw_flux_plot(all_nights_times, all_nights_raw_targ_flux, all_nights_raw_targ_err, all_nights_raw_ref_flux, all_nights_raw_ref_err, short_name, analysis_path, phot_type, ap_rad)
-        #     global_normalized_flux_plot(all_nights_times, all_nights_norm_targ_flux, all_nights_norm_targ_err, all_nights_norm_ref_flux, all_nights_norm_ref_err, all_nights_alc_flux, short_name, analysis_path, phot_type, ap_rad)
-        #     global_corr_target_plot(all_nights_times, all_nights_corr_targ_flux, all_nights_binned_times, all_nights_binned_corr_targ_flux, all_nights_binned_corr_targ_err, short_name, analysis_path, phot_type, ap_rad)
+        if plots:
+            if mode == 'night':
+                raw_flux_plot(all_nights_times, all_nights_raw_targ_flux, all_nights_raw_targ_err, all_nights_raw_ref_flux, all_nights_raw_ref_err, short_name, analysis_path, phot_type, ap_rad)   
+                normalized_flux_plot(all_nights_times, all_nights_norm_targ_flux, all_nights_norm_targ_err, all_nights_norm_ref_flux, all_nights_norm_ref_err, all_nights_alc_flux, all_nights_alc_err, short_name, analysis_path, phot_type, ap_rad)
+                corr_target_plot(all_nights_times, all_nights_corr_targ_flux, all_nights_binned_times, all_nights_binned_corr_targ_flux, all_nights_binned_corr_targ_err, short_name, analysis_path, phot_type, ap_rad)
+                corr_all_sources_plot(all_nights_times, all_nights_corr_targ_flux, all_nights_binned_times, all_nights_binned_corr_targ_flux, all_nights_binned_corr_targ_err, all_nights_corr_ref_flux, all_nights_binned_corr_ref_flux, all_nights_binned_corr_ref_err, short_name, analysis_path, phot_type, ap_rad, num_refs, num_nights, norm_night_weights)
+            elif mode == 'global':
+                global_raw_flux_plot(all_nights_times, all_nights_raw_targ_flux, all_nights_raw_targ_err, all_nights_raw_ref_flux, all_nights_raw_ref_err, short_name, analysis_path, phot_type, ap_rad)
+                global_normalized_flux_plot(all_nights_times, all_nights_norm_targ_flux, all_nights_norm_targ_err, all_nights_norm_ref_flux, all_nights_norm_ref_err, all_nights_alc_flux, all_nights_alc_err, short_name, analysis_path, phot_type, ap_rad)
+                global_corr_target_plot(all_nights_times, all_nights_corr_targ_flux, all_nights_binned_times, all_nights_binned_corr_targ_flux, all_nights_binned_corr_targ_err, short_name, analysis_path, phot_type, ap_rad)
+                
+    #Write the best aperture to a text file.
+    print('\nBest aperture: {}.'.format(best_ap))
+    best_ap_output_path = analysis_path/('optimal_aperture.txt')
+    with open(best_ap_output_path, 'w') as f:
+        f.write(best_ap)
+    
     return

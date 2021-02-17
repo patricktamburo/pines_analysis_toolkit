@@ -25,7 +25,9 @@ if __name__ == '__main__':
     pines_dir = pines_dir_check()
     log_path = pines_dir/'Logs'
     logs = np.array(natsorted(glob(str(log_path/'*.txt'))))
-    logs = logs[6:-1]
+    logs = logs[6:-1] #Ignore first set of logs, ignore master_log
+
+
     seeings = np.zeros(len(logs))
     for i in range(len(logs)):
         log_path = logs[i]

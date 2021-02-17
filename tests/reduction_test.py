@@ -1,21 +1,18 @@
 import pines_analysis_toolkit as pat
-from pdb import set_trace as stop
+import pdb 
 
-targets = ['2MASS J06420559+4101599']
-target = targets[0]
-dates = ['20201005', '20201007'] #UT dates the targets were observed on.
-
-
-exptimes = [60.] #Exposure time of the images in seconds. 
-flat_date = '20201003' #The date that dome flat calibration data were taken for the target. 
-dark_date = '20201003' #The date that dark calibration data were taken for the target.
+targets = ['2MASS J08433323+1024470']
+dates = ['20210204'] #UT dates the targets were observed on.
+exptimes = [30., 60.] #Exposure time of the images in seconds. 
+flat_date = '20210204' #The date that dome flat calibration data were taken for the target. 
+dark_date = '20210204' #The date that dark calibration data were taken for the target.
 band = 'J'
 
 #sftp = pat.utils.pines_login()
 
-# #for exptime in exptimes:
-# #    pat.data.dark(dark_date, exptime, upload=False, delete_raw=True, sftp=sftp, dark_start=1, dark_stop=10)
-# pat.data.dome_flat_field(flat_date, band, sftp=sftp, upload=True, delete_raw=True, lights_on_start=990, lights_on_stop=1089, lights_off_start=1090, lights_off_stop=1189)
+# for exptime in exptimes:
+#     pat.data.dark(dark_date, exptime, upload=True, delete_raw=True, sftp=sftp)
+# pat.data.dome_flat_field(flat_date, band, sftp=sftp, upload=True, delete_raw=True)
 
 # for exptime in exptimes:
 #    pat.data.variable_pixels(dark_date, exptime, upload=True, sftp=sftp)
@@ -28,35 +25,47 @@ band = 'J'
 
 # for target in targets:
 #     pat.data.get_raw_science_files(sftp, target)
-#     pat.data.reduce(target, delete_raw=True, delete_reduced=False, upload=True, sftp=sftp)
+#     pat.data.reduce(target, delete_raw=True, delete_reduced=False, upload=False, sftp=sftp)
 
-# sftp.close()
+# pdb.set_trace()
 
+#Update logs with more accurate shifts.
+#for target in targets:
+#   for date in dates:
+#       pat.observing.log_updater(target, date, sftp, upload=True)
 
-#target = targets[0]
+#sftp.close()
 
-# #Update logs with more accurate shifts.
-# for target in targets:
-#     for date in dates:
-#         pat.observing.log_updater(target, date, upload=True)
-
-# stop()
-
-sources = pat.photometry.ref_star_chooser(target, restore=True, source_detect_image_ind=30, 
-            exclude_lower_left=False, dimness_tolerance=0.9, distance_from_target=300., non_linear_limit=3300, 
-            edge_tolerance=80., source_detect_plot=False)
-
-
-centroided_sources = pat.photometry.centroider(target, sources, restore=True, output_plots=False, gif=False, box_w=7)
-
-#pat.photometry.aper_phot(target, centroided_sources, [4], an_in=9)
-#pat.photometry.epsf_phot(target, centroided_sources, plots=True)
-#pat.photometry.basic_psf_phot(target, centroided_sources, plots=True)
-
-#pat.analysis.lightcurve(target, sources, centroided_sources)
-#pat.analysis.speculoos_style_lightcurve(target, sources, output_plots=True, phot_type='aper')
+# pdb.set_trace()
 
 for target in targets:
-    print(target)
-    pat.analysis.simple_lightcurve(target, sources, centroided_sources, plot_mode='separate')
-    pat.analysis.weighted_lightcurve(target, phot_type='aper', mode='night')
+
+    #Determine sources to track. 
+    sources = pat.photometry.ref_star_chooser(target, restore=True, source_detect_image_ind=30, 
+                exclude_lower_left=False, dimness_tolerance=0.75, distance_from_target=500., non_linear_limit=3300, 
+                edge_tolerance=40., source_detect_plot=False)
+
+    #Find centroids of each source in every image. 
+    centroided_sources = pat.photometry.centroider(target, sources, restore=True, output_plots=False, gif=False, box_w=7)
+
+    #Perform photometry using a variety of methods. 
+    #pat.photometry.aper_phot.fixed_aper_phot(target, centroided_sources, [3.5, 4.5], an_in=9)
+    pat.photometry.aper_phot.variable_aper_phot(target, centroided_sources)
+    #pat.photometry.epsf_phot(target, centroided_sources, plots=True)
+    #pat.photometry.basic_psf_phot(target, centroided_sources, plots=True)
+
+    #Create a lightcurve. 
+    #pat.analysis.simple_lightcurve(target, sources, centroided_sources, plot_mode='separate')
+    #pat.analysis.weighted_lightcurve(target, phot_type='aper', mode='global', plots=True)
+
+    #Generate diagnostic plots. 
+    # pat.analysis.diagnostic_plots.seeing_plot(target, centroided_sources)
+    # pat.analysis.diagnostic_plots.relative_cutout_position_plot(target, centroided_sources)
+    # pat.analysis.diagnostic_plots.absolute_image_position_plot(target, centroided_sources)
+    # pat.analysis.diagnostic_plots.background_plot(target, centroided_sources)
+
+    #Generate DV report. 
+    #pat.output.dv_report(target)
+
+    #Move all final data products to the target's output directory. 
+    pat.output.output_wrangler(target)

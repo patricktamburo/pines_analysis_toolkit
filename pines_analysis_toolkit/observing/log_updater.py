@@ -24,7 +24,7 @@ from pines_analysis_toolkit.observing.pines_logging import pines_logging
 from pines_analysis_toolkit.utils.pines_login import pines_login
 from pines_analysis_toolkit.observing.log_out_of_order_fixer import log_out_of_order_fixer
 
-def log_updater(target, date, upload=False):
+def log_updater(target, date, sftp, upload=False):
     '''
     Authors:
 		Patrick Tamburo, Boston University, January 2021
@@ -35,6 +35,7 @@ def log_updater(target, date, upload=False):
 	Inputs:
         target (str): a targets 'long' 2MASS name, e.g. '2MASS J01234567+012345678'
         date (str): the UT date of the log whose shifts you want to update in YYYYMMDD format, e.g. '20151110'
+        sftp (pysftp connection): sftp connection to the PINES server
         upload (bool): whether or not to push the updated log to the PINES server (only admins can do this)
     Outputs:
 		Writes updated log file to disk. 
@@ -50,7 +51,7 @@ def log_updater(target, date, upload=False):
     files = np.array(natsorted(glob(str(reduced_path)+'/'+date+'*.fits'))) #Get files to measure new shifts with
 
     #Begin by checking filenames, making sure they're in sequential order, and that there is only one entry for each. 
-    log_out_of_order_fixer(log_path)
+    log_out_of_order_fixer(log_path, sftp)
     
     log = pines_log_reader(log_path) #Get telescope log shifts.
     myfile = open(log_path, 'r')
@@ -64,9 +65,7 @@ def log_updater(target, date, upload=False):
         log_ind = np.where(log['Filename'] == filename.split('_')[0]+'.fits')[0][0]
 
         #Measure the shifts. 
-        measured_x_shift, measured_y_shift = shift_measurer(target, filename, short_name)
-
-
+        measured_x_shift, measured_y_shift = shift_measurer(target, filename)
 
         #Make sure the measured shifts are real values. 
         if np.isnan(measured_x_shift) or np.isnan(measured_y_shift):
@@ -106,9 +105,7 @@ def log_updater(target, date, upload=False):
                 f.write(line)
 
     if upload:
-        sftp = pines_login()
         sftp.chdir('/data/logs/')
         print('Uploading to /data/logs/{}_log.txt.'.format(date))
         sftp.put(log_path,date+'_log.txt')
-        sftp.close()
     return 
