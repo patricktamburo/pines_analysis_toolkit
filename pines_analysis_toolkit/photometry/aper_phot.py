@@ -27,11 +27,14 @@ from pines_analysis_toolkit.data.master_dark_stddev_chooser import master_dark_s
 from pines_analysis_toolkit.utils.quick_plot import quick_plot as qp 
 from astropy.modeling import models, fitting
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from pines_analysis_toolkit.utils.get_source_names import get_source_names
 
-'''Authors:
+
+def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots=False, gain=8.21, qe=0.9):
+    '''Authors:
 		Patrick Tamburo, Boston University, June 2020
 	Purpose:
-        Performs aperture photometry on a set of reduced images given dataframe of source positions.
+        Performs *fixed* aperture photometry on a set of reduced images given dataframe of source positions.
         The iraf_style_photometry, compute_phot_error, perture_stats_tbl, and calc_aperture_mmm routines are from Varun Bajaj on github:
             https://github.com/spacetelescope/wfc3_photometry/blob/master/photometry_tools/photometry_with_errors.py. 
 	Inputs:
@@ -41,12 +44,12 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
         an_in (float, optional): The inner radius of the annulus used to estimate background, in pixels. 
         an_out (float, optional): The outer radius of the annulus used to estimate background, in pixels. 
         plots (bool, optional): Whether or not to output surface plots. Images output to aper_phot directory within the object directory.
+        gain (float, optional): The gain of the detector in e-/ADU.
+        qe (float, optional): The quantum efficiency of the detector.
     Outputs:
         Saves aperture photometry csv to PINES_analysis_toolkit/Objects/short_name/aper_phot/ for each aperture.
 	TODO:
-'''
-
-def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots=False, gain=8.21, qe=0.9):
+    '''
 
     def hmsm_to_days(hour=0,min=0,sec=0,micro=0):
         """
@@ -318,7 +321,6 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
             actual_area = (~np.isnan(values)).sum()
             return (mean, median, mode, std, actual_area)
     
-    plt.ion()
     pines_path = pines_dir_check()
     short_name = short_name_creator(target)
     
@@ -331,8 +333,9 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
     reduced_filenames = natsort.natsorted([x.name for x in reduced_path.glob('*.fits')])
     reduced_files = np.array([reduced_path/i for i in reduced_filenames])
     
-    source_names = natsort.natsorted(list(set([i.replace('X','').replace('Y','').replace('Centroid Warning','').strip() for i in centroided_sources.keys()])))
-
+    #source_names = natsort.natsorted(list(set([i.replace('X','').replace('Y','').replace('Centroid Warning','').strip() for i in centroided_sources.keys() if i != 'Filename'])))
+    source_names = get_source_names(centroided_sources)
+    
     #Create output plot directories for each source.
     if plots:
         #Camera angles for surface plots
@@ -346,10 +349,6 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
             #Create folders.
             os.mkdir(source_path)
 
-    if len(source_names) != len(centroided_sources.keys())/3:
-        print('ERROR: something going wrong grabbing source names. ')
-        return
-        
     #Loop over all aperture radii. 
     for ap in ap_radii:
         print('Doing aperture photometry for {}, aperture radius = {} pix, inner annulus radius = {} pix, outer annulus radius = {} pix.'.format(target, ap, an_in, an_out))
@@ -405,7 +404,7 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
             #Get the source positions in this image.
             positions = []
             for i in range(len(source_names)):
-                positions.append((centroided_sources[source_names[i]+' X'][j], centroided_sources[source_names[i]+' Y'][j]))
+                positions.append((centroided_sources[source_names[i]+' Image X'][j], centroided_sources[source_names[i]+' Image Y'][j]))
 
             #Create an aperture centered on this position with radius = ap. 
             apertures = CircularAperture(positions, r=ap)
@@ -490,3 +489,7 @@ def aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots
                     f.write(format_string.format(ap_df[source_names[i]+' Flux'][j], ap_df[source_names[i]+' Flux Error'][j], ap_df[source_names[i]+' Background'][j], ap_df[source_names[i]+' Interpolation Flag'][j]))
     print('')
     return 
+
+def variable_aper_phot(target, centroided_sources, an_in=12., an_out=30., plots=False, gain=8.21, qe=0.9):
+    pdb.set_trace()
+    return

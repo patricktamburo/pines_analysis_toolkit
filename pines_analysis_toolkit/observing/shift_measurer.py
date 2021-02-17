@@ -18,7 +18,24 @@ from natsort import natsorted
 from glob import glob 
 import pandas as pd 
 
-def shift_measurer(target, image_name, short_name):
+def shift_measurer(target, image_name, num_sources=15, closeness_tolerance=10., shift_tolerance=100):
+    '''Authors:
+            Patrick Tamburo, Boston University, June 2020
+        Purpose:
+            Measures shifts between a particular image (a "check" image) and the master image for the field.
+        Inputs:
+            target (str): The target's full 2MASS name
+            image_name (str): The name of the reduced image whose shift you want to measure. 
+            num_sources (int): The maximum number of sources you would like to use to measure shifts. 
+            closeness_tolerance (float): The closest two identified sources can be in pixels before one is thrown out. 
+            shift_tolerance (float): The maximum measured shift that can be reported before the code breaks. 
+        Outputs:
+
+        TODO:
+            Grab logs automatically? 
+            Flag bad centroids?
+    '''
+
     def corr_shift_determination(corr):
         #Measure shift between the check and master images by fitting a 2D gaussian to corr. This gives sub-pixel accuracy. 
         y_max, x_max = np.unravel_index(np.argmax(corr), corr.shape) #Find the pixel with highest correlation, then use this as estimate for gaussian fit.
@@ -34,10 +51,10 @@ def shift_measurer(target, image_name, short_name):
         y_shift = fit_y - 1024 
         return(x_shift,y_shift)
        
-    
+    #image_name = '20201005.354_red.fits'
 
     pines_path = pines_dir_check()
-
+    short_name = short_name_creator(target)
     synthetic_filename = target.replace(' ', '')+'_master_synthetic.fits'
     synthetic_path = pines_path/('Calibrations/Master Synthetic Images/'+synthetic_filename)
 
@@ -62,16 +79,40 @@ def shift_measurer(target, image_name, short_name):
     raw_filename = image_name.split('_')[0]+'.fits'
     ind = np.where(log['Filename'] == raw_filename)[0][0]
     seeing = float(log['X seeing'][ind])
-    #seeing = 3.5
+
+    #Measured seeing values > 3.5" give poor results when applied as a daostarfinder_fwhm. Limit to 3.5".
+    if seeing > 3.5: 
+        seeing = 3.5 
 
     #Find sources in the image. 
-    sources = detect_sources(image_path, seeing, edge_tolerance=70, thresh=3.5)
+    sources = detect_sources(image_path, seeing, edge_tolerance=30, thresh=3.5)
     
-    sort_inds = np.argsort(np.array(sources['aperture_sum']))[::-1]
-    source_x = np.array(sources['xcenter'])[sort_inds[0:15]]
-    source_y = np.array(sources['ycenter'])[sort_inds[0:15]]
+    #Comb the returned sources and cut any that are too close to another one. 
+    #This can happen if the actual seeing differs from that recorded in the log. 
+    bad_inds = []
+    for i in range(len(sources)):
+        if i not in bad_inds:
+            x = sources['xcenter'][i]
+            y = sources['ycenter'][i]
+            dists = np.array(np.sqrt((sources['xcenter']-x)**2 + (sources['ycenter']-y)**2))
+            duplicate_inds = np.where((dists < closeness_tolerance) & (dists != 0))[0]
+            if len(duplicate_inds) >= 1:
+                bad_inds.extend(duplicate_inds)
+    
 
-    # if filename == '20201001.744_red.fits':
+    ap_sum = np.array(sources['aperture_sum'])
+    source_x = np.array(sources['xcenter'])
+    source_y = np.array(sources['ycenter'])
+
+    ap_sum = np.delete(ap_sum, bad_inds)
+    source_x = np.delete(source_x, bad_inds)
+    source_y = np.delete(source_y, bad_inds)
+
+    sort_inds = np.argsort(ap_sum)[::-1]
+    source_x = source_x[sort_inds[0:num_sources]]
+    source_y = source_y[sort_inds[0:num_sources]]
+
+    # if raw_filename == '20201005.354.fits':
     #     qp(check_image)
     #     plt.plot(source_x, source_y, 'rx')
     #     pdb.set_trace()
@@ -85,51 +126,7 @@ def shift_measurer(target, image_name, short_name):
     #print('(X shift, Y shift): ({:3.1f}, {:3.1f})'.format(x_shift, -y_shift))
     #print('')
 
-    if (abs(x_shift) > 256) or (abs(y_shift) > 256):
+    if (abs(x_shift) > shift_tolerance) or (abs(y_shift) > shift_tolerance):
         pdb.set_trace()
 
     return x_shift, -y_shift
-
-if __name__ == '__main__':
-    pd.options.mode.chained_assignment = None  # default='warn'
-    target = '2MASS J00242463-0158201'
-    dates = ['20201002', '20201004']
-
-    for date in dates:
-
-        log_path = '/Users/tamburo/Documents/PINES_analysis_toolkit/Logs/'+date+'_log.txt'
-        log = pines_log_reader(log_path) #Get log shifts
-        short_name = short_name_creator(target)
-        files = np.array(natsorted(glob('/Users/tamburo/Documents/PINES_analysis_toolkit/Objects/'+short_name+'/reduced/'+date+'*.fits'))) #Get files to measure new shifts with
-        x_diffs = np.zeros(len(files))
-        y_diffs = np.zeros(len(files))
-        for i in range(len(files)):
-            filename = files[i].split('/')[-1]
-            
-            log_ind = np.where(log['Filename'] == filename.split('_')[0]+'.fits')[0][0]
-            log_x_shift = float(log['X shift'][log_ind])
-            log_y_shift = float(log['Y shift'][log_ind])
-            measured_x_shift, measured_y_shift = shift_measurer(target, filename, short_name)
-
-            #Make sure the measured shifts are real values. 
-            if np.isnan(measured_x_shift) or np.isnan(measured_y_shift):
-                raise RuntimeError('Found nans for shifts!')
-                pdb.set_trace()
-                
-            x_diff = abs(log_x_shift - measured_x_shift)
-            y_diff = abs(log_y_shift - measured_y_shift)
-            x_diffs[i] = x_diff
-            y_diffs[i] = y_diff
-            print('{}, {} of {}.'.format(filename, i+1, len(files)))
-            print('x diff: {:3.2f}, y diff: {:3.2f}'.format(x_diff, y_diff))
-            print('measured x shift: {:4.1f}, measured y shift: {:4.1f}'.format(measured_x_shift, measured_y_shift))
-            print('')
-
-
-            #Overwrite the telescope's logged shifts with the new measurements. 
-            log['X shift'][log_ind] = str(np.round(measured_x_shift,1))
-            log['Y shift'][log_ind] = str(np.round(measured_y_shift,1))
-
-
-        #Write out the new log. 
-        log.to_csv(log_path, index=0)

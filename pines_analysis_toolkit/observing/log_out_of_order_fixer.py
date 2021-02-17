@@ -1,6 +1,5 @@
 from pathlib import Path
 from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
-from pines_analysis_toolkit.utils.pines_login import pines_login
 from pines_analysis_toolkit.observing.pines_logging import pines_logging
 import pdb 
 import numpy as np
@@ -19,7 +18,7 @@ def get_download_path():
     else:
         return os.path.join(os.path.expanduser('~'), 'downloads')
 
-def log_out_of_order_fixer(log_path):
+def log_out_of_order_fixer(log_path, sftp):
     '''
     Authors:
 		Patrick Tamburo, Boston University, January 2021
@@ -27,6 +26,7 @@ def log_out_of_order_fixer(log_path):
         Fixes logs with out-of-order/duplicate filenames. This is a weird bug that can sometimes happen in our observing scripts.
 	Inputs:
         log_path (pathlib.Path object): Path to the log. 
+        sftp (pysftp connection): Connection to the PINES server. 
     Outputs:
         Writes corrected log file to disk.
 	TODO:
@@ -57,7 +57,6 @@ def log_out_of_order_fixer(log_path):
     log_filenums = np.array(log_filenums)[sort_inds]
 
     num_del = 0
-    sftp_opened = False
     #Check for lack of entries, multiple entries for this file number in the log. 
 
     for i in range(0, np.max(log_filenums)):
@@ -69,10 +68,6 @@ def log_out_of_order_fixer(log_path):
         #downloading it, and reading its header. 
         if num_entries == 0:
             found = False
-            
-            if not sftp_opened:
-                sftp = pines_login()
-                sftp_opened = True
 
             missing_filename = log_path.name.split('_')[0]+'.'+str(file_num)+'.fits'
             print('{} missing from log.'.format(missing_filename))
@@ -81,12 +76,18 @@ def log_out_of_order_fixer(log_path):
             pines_raw_path = '/data/raw/mimir/'
             runs = sftp.listdir(pines_raw_path)
 
-            #The file will be in one of these three directories if its on the server
+            #The file will be in one of these directories if it's on the server
             run_guess = missing_filename[0:6]
             ind = np.where(np.array(runs) == run_guess)[0][0]
-            inds = np.arange(ind-1, ind+2)
-            runs = np.array(runs)[inds]
-            runs = [runs[1], runs[0], runs[2]] 
+
+            if ind + 1 == len(runs):
+                inds = np.arange(ind-1, ind+1)
+                runs = np.array(runs)[inds]
+                runs = [runs[1], runs[0]]
+            else:
+                inds = np.arange(ind-1, ind+2)
+                runs = np.array(runs)[inds]
+                runs = [runs[1], runs[0], runs[2]] 
 
             for jj in range(len(runs)):
                 nights = sftp.listdir(pines_raw_path+'/'+runs[jj])
@@ -101,7 +102,10 @@ def log_out_of_order_fixer(log_path):
                         sftp.get(pines_raw_path+runs[jj]+'/'+nights[kk]+'/'+missing_filename, user_download_path+'/'+missing_filename)
                         header = fits.open(user_download_path+'/'+missing_filename)[0].header
                         date = header['DATE']
-                        target_name = header['OBJECT'].split('J')[0] +' J'+ header['OBJECT'].split('J')[1]
+                        if header['OBJECT'] == 'dummy':
+                            print('ERROR: PINES_watchdog logged "dummy" for object filename; inspect the field and update its name manually.')
+                        else:
+                            target_name = header['OBJECT'].split('J')[0] +' J'+ header['OBJECT'].split('J')[1]
                         filter_name = header['FILTNME2']
                         exptime = str(header['EXPTIME'])
                         airmass = str(header['AIRMASS'])
@@ -134,10 +138,6 @@ def log_out_of_order_fixer(log_path):
         with open(log_path, 'w') as f:
             for line in lines:
                 f.write(line)
-    
-    #If an sftp connection to the PINES server was opened, close it. 
-    if sftp_opened:
-        sftp.close()
 
     return
 

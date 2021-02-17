@@ -26,6 +26,8 @@ from progressbar import ProgressBar
 from glob import glob 
 from photutils import make_source_mask, CircularAperture
 from pines_analysis_toolkit.utils.quick_plot import quick_plot as qp 
+import datetime 
+import julian 
 
 #Turn off warnings from Astropy because they're incredibly annoying. 
 warnings.simplefilter("ignore", category=AstropyUserWarning)
@@ -89,9 +91,16 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
     
     #Declare a new dataframe to hold the centroid information for all sources we want to track. 
     columns = []
+    columns.append('Filename')
+    columns.append('Seeing')
+    columns.append('Time (JD UTC)')
+
+    #Add x/y positions and cenroid flags for every tracked source
     for i in range(0, len(sources)):
-        columns.append(sources['Name'][i]+' X')
-        columns.append(sources['Name'][i]+' Y')
+        columns.append(sources['Name'][i]+' Image X')
+        columns.append(sources['Name'][i]+' Image Y')
+        columns.append(sources['Name'][i]+' Cutout X')
+        columns.append(sources['Name'][i]+' Cutout Y')
         columns.append(sources['Name'][i]+' Centroid Warning')
 
     centroid_df = pd.DataFrame(index=range(len(reduced_files)), columns=columns)
@@ -120,12 +129,19 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
             centroid_df[sources['Name'][i]+' Centroid Warning'][j] = 0
             file = reduced_files[j]
 
+            
             image = fits.open(file)[0].data
             #Get the measured image shift for this image. 
             log = pines_log_reader(log_path/(file.name.split('.')[0]+'_log.txt'))
             log_ind = np.where(log['Filename'] == file.name.split('_')[0]+'.fits' )[0][0]
             x_shift = float(log['X shift'][log_ind])
             y_shift = float(log['Y shift'][log_ind])
+
+            #Save the filename for readability. Save the seeing for use in variable aperture photometry. Save the time for diagnostic plots. 
+            if i == 0:
+                centroid_df['Filename'][j] = file.name.split('_')[0]+'.fits'
+                centroid_df['Seeing'][j] = log['X seeing'][log_ind]
+                centroid_df['Time (JD UTC)'][j] = julian.to_jd(datetime.datetime.strptime(fits.open(file)[0].header['DATE-OBS'], '%Y-%m-%dT%H:%M:%S.%f'))
 
             nan_flag = False #Flag indicating if you should not trust the log's shifts. Set to true if x_shift/y_shift are 'nan' or > 30 pixels. 
 
@@ -144,8 +160,11 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
 
             #Apply the shift. NOTE: This relies on having accurate x_shift and y_shift values from the log. 
             #If they're incorrect, the cutout will not be in the right place. 
-            x_pos = sources['Source Detect X'][i] - x_shift + extra_x_shift
-            y_pos = sources['Source Detect Y'][i] + y_shift - extra_y_shift
+            #x_pos = sources['Source Detect X'][i] - x_shift + extra_x_shift
+            #y_pos = sources['Source Detect Y'][i] + y_shift - extra_y_shift
+
+            x_pos = sources['Source Detect X'][i] - (x_shift - extra_x_shift)
+            y_pos = sources['Source Detect Y'][i] + (y_shift - extra_y_shift)
 
             #TODO: Make all this its own function. 
 
@@ -159,7 +178,6 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
             vals, lower, upper = sigmaclip(cutout, low=1.5, high=2.5) #Get sigma clipped stats on the cutout
             med = np.nanmedian(vals)
             std = np.nanstd(vals)
-
 
             try:
                 centroid_x_cutout, centroid_y_cutout = centroid_2dg(cutout - med) #Perform centroid detection on the cutout.
@@ -267,9 +285,11 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
                 centroid_y = y_pos
                 print('NaN returned from centroid algorithm, defaulting to target position in source_detct_image.')
             
-            #Record the position.
-            centroid_df[sources['Name'][i]+' X'][j] = centroid_x
-            centroid_df[sources['Name'][i]+' Y'][j] = centroid_y
+            #Record the image and relative cutout positions.
+            centroid_df[sources['Name'][i]+' Image X'][j] = centroid_x
+            centroid_df[sources['Name'][i]+' Image Y'][j] = centroid_y
+            centroid_df[sources['Name'][i]+' Cutout X'][j] = centroid_x_cutout
+            centroid_df[sources['Name'][i]+' Cutout Y'][j] = centroid_y_cutout
 
             if output_plots: 
                 #Plot
@@ -280,8 +300,8 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
                 plt.plot(centroid_x, centroid_y, 'rx')
                 ap = CircularAperture((centroid_x, centroid_y), r=5)
                 ap.plot(lw=2, color='b')
-                plt.ylim(lock_y-15,lock_y+15-1)
-                plt.xlim(lock_x-15,lock_x+15-1)
+                plt.ylim(lock_y-30,lock_y+30-1)
+                plt.xlim(lock_x-30,lock_x+30-1)
                 plt.title('CENTROID DIAGNOSTIC PLOT\n'+sources['Name'][i]+', '+reduced_files[j].name+' (image '+str(j+1)+' of '+str(len(reduced_files))+')', fontsize=10)
                 plt.text(centroid_x, centroid_y+0.5, '('+str(np.round(centroid_x,1))+', '+str(np.round(centroid_y,1))+')', color='r', ha='center')
                 plot_output_path = (pines_path/('Objects/'+short_name+'/sources/'+sources['Name'][i]+'/'+str(j).zfill(4)+'.jpg'))
@@ -303,20 +323,30 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
     print('Saving centroiding output to {}.'.format(output_filename))
     with open(output_filename, 'w') as f:
         for j in range(len(centroid_df)):
+            #Write the header line. 
             if j == 0:
+                f.write('{:<17s}, '.format('Filename'))
+                f.write('{:<15s}, '.format('Time (JD UTC)'))
+                f.write('{:<6s}, '.format('Seeing'))
                 for i in range(len(sources['Name'])):
+                    n = sources['Name'][i]
                     if i != len(sources['Name']) - 1:
-                        f.write('{:<17s}, {:<17s}, {:<34s}, '.format(sources['Name'][i]+' X', sources['Name'][i]+' Y', sources['Name'][i]+' Centroid Warning'))
+                        f.write('{:<23s}, {:<23s}, {:<24s}, {:<24s}, {:<34s}, '.format(n+' Image X', n+' Image Y', n+' Cutout X', n+' Cutout Y',  n+' Centroid Warning'))
                     else:
-                        f.write('{:<17s}, {:<17s}, {:<34s}\n'.format(sources['Name'][i]+' X', sources['Name'][i]+' Y', sources['Name'][i]+' Centroid Warning'))
-
-            for i in range(len(sources['Name'])):                    
+                        f.write('{:<23s}, {:<23s}, {:<24s}, {:<24s}, {:<34s}\n'.format(n+' Image X', n+' Image Y', n+' Cutout X', n+' Cutout Y',  n+' Centroid Warning'))
+            
+            #Write in the data lines.
+            f.write('{:<17s}, '.format(centroid_df['Filename'][j]))
+            f.write('{:<15.7f}, '.format(centroid_df['Time (JD UTC)'][j]))
+            f.write('{:<6.1f}, '.format(centroid_df['Seeing'][j]))
+            for i in range(len(sources['Name'])):
+                n = sources['Name'][i]                    
                 if i != len(sources['Name']) - 1:
-                    format_string = '{:<17.4f}, {:<17.4f}, {:<34d}, '
+                    format_string = '{:<23.4f}, {:<23.4f}, {:<24.4f}, {:<24.4f}, {:<34d}, '
                 else:
-                    format_string = '{:<17.4f}, {:<17.4f}, {:<34d}\n'
+                    format_string = '{:<23.4f}, {:<23.4f}, {:<24.4f}, {:<24.4f}, {:<34d}\n'
                 
-                f.write(format_string.format(centroid_df[sources['Name'][i]+' X'][j], centroid_df[sources['Name'][i]+' Y'][j], centroid_df[sources['Name'][i]+' Centroid Warning'][j]))
+                f.write(format_string.format(centroid_df[n+' Image X'][j], centroid_df[n+' Image Y'][j], centroid_df[n+' Cutout X'][j], centroid_df[n+' Cutout Y'][j], centroid_df[n+' Centroid Warning'][j]))
     np.seterr(divide='warn', invalid='warn') 
     print('')
     print('centroider runtime: {:.2f} minutes.'.format((time.time()-t1)/60))

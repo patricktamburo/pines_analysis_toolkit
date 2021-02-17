@@ -40,7 +40,7 @@ from astropy.visualization import ImageNormalize, ZScaleInterval
 	TODO:
 '''
 
-def ref_star_chooser(target, source_detect_image_ind=30, guess_position=(705.,386.), radius_check=6., non_linear_limit=3300., 
+def ref_star_chooser(target, source_detect_image_ind=30, guess_position=(700.,382.), radius_check=6., non_linear_limit=3300., 
                     dimness_tolerance=0.5, closeness_tolerance=12., distance_from_target=900., edge_tolerance=50., exclude_lower_left=False, restore=False,
                     source_detect_plot=False):
     plt.ion()
@@ -94,7 +94,7 @@ def ref_star_chooser(target, source_detect_image_ind=30, guess_position=(705.,38
     #source_detect_seeing = 3.5
 
     #Detect sources in the image. 
-    sources = detect_sources(source_detect_image_path, source_detect_seeing, edge_tolerance, plot=source_detect_plot, thresh=2.0)
+    sources = detect_sources(source_detect_image_path, source_detect_seeing, edge_tolerance, plot=source_detect_plot, thresh=3.0)
     
     #Identify the target in the image using guess_position. 
     target_id = target_finder(sources, guess_position)
@@ -228,8 +228,8 @@ def ref_star_chooser(target, source_detect_image_ind=30, guess_position=(705.,38
         print('Saving target/reference info to {}.'.format(source_dir/'target_and_references_source_detection.csv'))
         output_df.to_csv(source_dir/'target_and_references_source_detection.csv',index=False)
         print('')
-        print('Saving target and references image to {}.'.format(source_dir/(source_detect_image_path.name.split('.fits')[0]+'_target_and_refs.png')))
-        plt.savefig(source_dir/(source_detect_image_path.name.split('.fits')[0]+'_target_and_refs.png'))
+        print('Saving target and references image to {}.'.format(source_dir/('target_and_refs.png')))
+        plt.savefig(source_dir/('target_and_refs.png'))
         plt.close('all')
         return output_df
     elif ans =='n':
