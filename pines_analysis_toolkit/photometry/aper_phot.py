@@ -29,6 +29,276 @@ from astropy.modeling import models, fitting
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from pines_analysis_toolkit.utils.get_source_names import get_source_names
 
+def hmsm_to_days(hour=0,min=0,sec=0,micro=0):
+    """
+    Convert hours, minutes, seconds, and microseconds to fractional days.
+    
+    """
+    days = sec + (micro / 1.e6)
+    days = min + (days / 60.)
+    days = hour + (days / 60.)
+    return days / 24.
+
+def date_to_jd(year,month,day):
+    """
+    Convert a date to Julian Day.
+    
+    Algorithm from 'Practical Astronomy with your Calculator or Spreadsheet', 
+        4th ed., Duffet-Smith and Zwart, 2011.
+    
+    """
+    if month == 1 or month == 2:
+        yearp = year - 1
+        monthp = month + 12
+    else:
+        yearp = year
+        monthp = month
+    
+    # this checks where we are in relation to October 15, 1582, the beginning
+    # of the Gregorian calendar.
+    if ((year < 1582) or
+        (year == 1582 and month < 10) or
+        (year == 1582 and month == 10 and day < 15)):
+        # before start of Gregorian calendar
+        B = 0
+    else:
+        # after start of Gregorian calendar
+        A = math.trunc(yearp / 100.)
+        B = 2 - A + math.trunc(A / 4.)
+        
+    if yearp < 0:
+        C = math.trunc((365.25 * yearp) - 0.75)
+    else:
+        C = math.trunc(365.25 * yearp)
+        
+    D = math.trunc(30.6001 * (monthp + 1))
+    
+    jd = B + C + D + day + 1720994.5
+    
+    return jd
+
+def iraf_style_photometry(phot_apertures, bg_apertures, data, dark_std_data, header, seeing, bg_method='mean', epadu=1.0):
+    """Computes photometry with PhotUtils apertures, with IRAF formulae
+    Parameters
+    ----------
+    phot_apertures : photutils PixelAperture object (or subclass)
+        The PhotUtils apertures object to compute the photometry.
+        i.e. the object returned via CircularAperture.
+    bg_apertures : photutils PixelAperture object (or subclass)
+        The phoutils aperture object to measure the background in.
+        i.e. the object returned via CircularAnnulus.
+    data : array
+        The data for the image to be measured.
+    bg_method: {'mean', 'median', 'mode'}, optional
+        The statistic used to calculate the background.
+        All measurements are sigma clipped.
+        NOTE: From DAOPHOT, mode = 3 * median - 2 * mean.
+    epadu: float, optional
+        Gain in electrons per adu (only use if image units aren't e-).
+    Returns
+    -------
+    final_tbl : astropy.table.Table
+        An astropy Table with the colums X, Y, flux, flux_error, mag,
+        and mag_err measurements for each of the sources.
+    """
+    exptime = header['EXPTIME']
+
+    if bg_method not in ['mean', 'median', 'mode']:
+        raise ValueError('Invalid background method, choose either mean, median, or mode')
+    
+    #Create a list to hold the flux for each source.
+    aperture_sum = []
+    interpolation_flags = np.zeros(len(phot_apertures.positions), dtype='bool')
+
+    for i in range(len(phot_apertures.positions)):
+        pos = phot_apertures.positions[i]
+        #Cutout around the source position
+        cutout_w = 15
+        x_pos = pos[0]
+        y_pos = pos[1]
+        cutout = data[int((y_pos-cutout_w)):int(y_pos+cutout_w)+1, int(x_pos-cutout_w):int(x_pos+cutout_w)+1]
+        x_cutout = x_pos - np.floor(x_pos - cutout_w)
+        y_cutout = y_pos - np.floor(y_pos - cutout_w) 
+        ap = CircularAperture((x_cutout, y_cutout), r=phot_apertures.r)
+
+        #Cut out the pixels JUST inside the aperture, and check if there are NaNs there. If so, interpolate over NaNs in the cutout. 
+        ap_mask = ap.to_mask(method='exact')
+        ap_cut = ap_mask.cutout(cutout)
+
+        if np.sum(np.isnan(ap_cut)) > 0:
+            bads = np.where(np.isnan(cutout))
+            bad_dists = np.sqrt((bads[0] - y_cutout)**2 + (bads[1] - x_cutout)**2)
+
+            #Check if any bad pixels fall within the aperture. If so, set the interpolation flag to True for this source. 
+            if np.sum(bad_dists < phot_apertures.r+1):
+
+                # if np.sum(bad_dists < 1) == 0:
+                #     #ONLY interpolate if bad pixels lay away from centroid position by at least a pixel. 
+                #     #2D gaussian fitting approach
+                #     #Set up a 2D Gaussian model to interpolate the bad pixel values in the cutout. 
+                #     model_init = models.Const2D(amplitude=np.nanmedian(cutout))+models.Gaussian2D(amplitude=np.nanmax(cutout), x_mean=x_cutout, y_mean=y_cutout, x_stddev=seeing, y_stddev=seeing)
+                #     xx, yy = np.indices(cutout.shape) #2D grids of x and y coordinates
+                #     mask = ~np.isnan(cutout) #Find locations where the cutout has *good* values (i.e. not NaNs). 
+                #     x = xx[mask] #Only use coordinates at these good values.
+                #     y = yy[mask]
+                #     cutout_1d = cutout[mask] #Make a 1D cutout using only the good values. 
+                #     fitter = fitting.LevMarLSQFitter()
+                #     model_fit = fitter(model_init, x, y, cutout_1d) #Fit the model to the 1d cutout.
+                #     cutout[~mask] = model_fit(xx,yy)[~mask] #Interpolate the pixels in the cutout using the 2D Gaussian fit. 
+                #     pdb.set_trace()
+                #     #TODO: interpolate_replace_nans with 2DGaussianKernel probably gives better estimation of *background* pixels. 
+                # else:
+                #     interpolation_flags[i] = True
+
+                #2D gaussian fitting approach
+                #Set up a 2D Gaussian model to interpolate the bad pixel values in the cutout. 
+                model_init = models.Const2D(amplitude=np.nanmedian(cutout))+models.Gaussian2D(amplitude=np.nanmax(cutout), x_mean=x_cutout, y_mean=y_cutout, x_stddev=seeing, y_stddev=seeing)
+                xx, yy = np.indices(cutout.shape) #2D grids of x and y coordinates
+                mask = ~np.isnan(cutout) #Find locations where the cutout has *good* values (i.e. not NaNs). 
+                x = xx[mask] #Only use coordinates at these good values.
+                y = yy[mask]
+                cutout_1d = cutout[mask] #Make a 1D cutout using only the good values. 
+                fitter = fitting.LevMarLSQFitter()
+                model_fit = fitter(model_init, x, y, cutout_1d) #Fit the model to the 1d cutout.
+                cutout[~mask] = model_fit(xx,yy)[~mask] #Interpolate the pixels in the cutout using the 2D Gaussian fit. 
+                interpolation_flags[i] = True
+                
+                # #Gaussian convolution approach.
+                # cutout = interpolate_replace_nans(cutout, kernel=Gaussian2DKernel(x_stddev=0.5))
+
+
+        phot_source = aperture_photometry(cutout, ap)
+        # if np.isnan(phot_source['aperture_sum'][0]):
+        #     pdb.set_trace()
+
+        aperture_sum.append(phot_source['aperture_sum'][0])
+
+    #Add positions/fluxes to a table
+    xcenter = phot_apertures.positions[:,0]*u.pix
+    ycenter = phot_apertures.positions[:,1]*u.pix
+    phot = QTable([xcenter, ycenter, aperture_sum], names=('xcenter', 'ycenter', 'aperture_sum'))
+
+    #Now measure the background around each source. 
+    mask = make_source_mask(data, nsigma=3, npixels=5, dilate_size=7) #Make a mask to block out any sources that might show up in the annuli and bias them.
+    bg_phot = aperture_stats_tbl(~mask*data, bg_apertures, sigma_clip=True) #Pass the data with sources masked out to the bg calculator. 
+    ap_area = phot_apertures.area
+    
+    bg_method_name = 'aperture_{}'.format(bg_method)
+    background = bg_phot[bg_method_name]
+    flux = phot['aperture_sum'] - background * ap_area
+
+    # Need to use variance of the sources for Poisson noise term in error computation.
+    flux_error = compute_phot_error(flux, bg_phot, bg_method, ap_area, exptime, dark_std_data, phot_apertures, epadu)
+
+    mag = -2.5 * np.log10(flux)
+    mag_err = 1.0857 * flux_error / flux
+
+    # Make the final table
+    X, Y = phot_apertures.positions.T
+    stacked = np.stack([X, Y, flux, flux_error, mag, mag_err, background, interpolation_flags], axis=1)
+    names = ['X', 'Y', 'flux', 'flux_error', 'mag', 'mag_error', 'background', 'interpolation_flag']
+
+    final_tbl = Table(data=stacked, names=names)
+
+    #Check for nans
+    if sum(np.isnan(final_tbl['flux'])) > 0:
+        bad_locs = np.where(np.isnan(final_tbl['flux']))[0]
+        #pdb.set_trace()
+
+    return final_tbl
+    
+def compute_phot_error(flux_variance, bg_phot, bg_method, ap_area, exptime, dark_std_data, phot_apertures, epadu=1.0):
+    """Computes the flux errors using the DAOPHOT style computation.
+        Includes photon noise from the source, background terms, dark current, and read noise."""
+
+    #See eqn. 1 from Broeg et al. (2005): https://ui.adsabs.harvard.edu/abs/2005AN....326..134B/abstract
+    flux_variance_term = flux_variance / epadu #This is just the flux in photons. 
+    bg_variance_term_1 = ap_area * (bg_phot['aperture_std'])**2
+    bg_variance_term_2 = (ap_area * bg_phot['aperture_std'])**2 / bg_phot['aperture_area']
+
+    #Measure combined read noise + dark current using the dark standard deviation image. 
+    #TODO: Check that this is correct. 
+    dark_rn_term = np.zeros(len(flux_variance_term))
+    for i in range(len(phot_apertures)):
+        ap = phot_apertures[i]
+        dark_rn_ap = ap.to_mask().multiply(dark_std_data)
+        dark_rn_ap = dark_rn_ap[dark_rn_ap != 0]
+        dark_rn_term[i] = ap_area * (np.median(dark_rn_ap)**2)
+    #dark_current_variance_term = np.zeros(len(flux_variance_term)) + dark_current * exptime * ap_area
+    #read_noise_variance_term = np.zeros(len(flux_variance_term)) + (read_noise)**2*ap_area
+    variance = flux_variance_term + bg_variance_term_1 + bg_variance_term_2 + dark_rn_term
+    flux_error = variance ** .5
+    return flux_error    
+
+def aperture_stats_tbl(data, apertures, method='center', sigma_clip=True):
+    """Computes mean/median/mode/std in Photutils apertures.
+    Compute statistics for custom local background methods.
+    This is primarily intended for estimating backgrounds
+    via annulus apertures.  The intent is that this falls easily
+    into other code to provide background measurements.
+    Parameters
+    ----------
+    data : array
+        The data for the image to be measured.
+    apertures : photutils PixelAperture object (or subclass)
+        The phoutils aperture object to measure the stats in.
+        i.e. the object returned via CirularAperture,
+        CircularAnnulus, or RectangularAperture etc.
+    method: str
+        The method by which to handle the pixel overlap.
+        Defaults to computing the exact area.
+        NOTE: Currently, this will actually fully include a
+        pixel where the aperture has ANY overlap, as a median
+        is also being performed.  If the method is set to 'center'
+        the pixels will only be included if the pixel's center
+        falls within the aperture.
+    sigma_clip: bool
+        Flag to activate sigma clipping of background pixels
+    Returns
+    -------
+    stats_tbl : astropy.table.Table
+        An astropy Table with the colums X, Y, aperture_mean,
+        aperture_median, aperture_mode, aperture_std, aperture_area
+        and a row for each of the positions of the apertures.
+    """
+
+    # Get the masks that will be used to identify our desired pixels.
+    masks = apertures.to_mask(method=method)
+
+    # Compute the stats of pixels within the masks
+    aperture_stats = [calc_aperture_mmm(data, mask, sigma_clip) for mask in masks]
+
+    aperture_stats = np.array(aperture_stats)
+
+    # Place the array of the x y positions alongside the stats
+    stacked = np.hstack([apertures.positions, aperture_stats])
+    
+    # Name the columns
+    names = ['X','Y','aperture_mean','aperture_median','aperture_mode','aperture_std', 'aperture_area']
+    
+    # Make the table
+    stats_tbl = Table(data=stacked, names=names)
+
+    return stats_tbl
+
+def calc_aperture_mmm(data, mask, sigma_clip):
+    """Helper function to actually calculate the stats for pixels falling within some Photutils aperture mask on some array of data."""
+    #cutout = mask.cutout(data, fill_value=np.nan)
+    cutout = mask.multiply(data)
+    if cutout is None:
+        return (np.nan, np.nan, np.nan, np.nan, np.nan)
+    else:
+        values = cutout[cutout != 0] #Unwrap the annulus into a 1D array. 
+        values = values[~np.isnan(values)] #Ignore any NaNs in the annulus. 
+        if sigma_clip:
+            values, clow, chigh = sigmaclip(values, low=3, high=3) #Sigma clip the 1D annulus values. 
+        mean = np.nanmean(values)
+        median = np.nanmedian(values)
+        std = np.nanstd(values)
+        mode = 3 * median - 2 * mean
+        actual_area = (~np.isnan(values)).sum()
+        return (mean, median, mode, std, actual_area)
+    
 
 def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots=False, gain=8.21, qe=0.9):
     '''Authors:
@@ -51,276 +321,8 @@ def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.,
 	TODO:
     '''
 
-    def hmsm_to_days(hour=0,min=0,sec=0,micro=0):
-        """
-        Convert hours, minutes, seconds, and microseconds to fractional days.
-        
-        """
-        days = sec + (micro / 1.e6)
-        days = min + (days / 60.)
-        days = hour + (days / 60.)
-        return days / 24.
-    
-    def date_to_jd(year,month,day):
-        """
-        Convert a date to Julian Day.
-        
-        Algorithm from 'Practical Astronomy with your Calculator or Spreadsheet', 
-            4th ed., Duffet-Smith and Zwart, 2011.
-        
-        """
-        if month == 1 or month == 2:
-            yearp = year - 1
-            monthp = month + 12
-        else:
-            yearp = year
-            monthp = month
-        
-        # this checks where we are in relation to October 15, 1582, the beginning
-        # of the Gregorian calendar.
-        if ((year < 1582) or
-            (year == 1582 and month < 10) or
-            (year == 1582 and month == 10 and day < 15)):
-            # before start of Gregorian calendar
-            B = 0
-        else:
-            # after start of Gregorian calendar
-            A = math.trunc(yearp / 100.)
-            B = 2 - A + math.trunc(A / 4.)
-            
-        if yearp < 0:
-            C = math.trunc((365.25 * yearp) - 0.75)
-        else:
-            C = math.trunc(365.25 * yearp)
-            
-        D = math.trunc(30.6001 * (monthp + 1))
-        
-        jd = B + C + D + day + 1720994.5
-        
-        return jd
-    
-    def iraf_style_photometry(phot_apertures, bg_apertures, data, dark_std_data, header, seeing, bg_method='mean', epadu=1.0):
-        """Computes photometry with PhotUtils apertures, with IRAF formulae
-        Parameters
-        ----------
-        phot_apertures : photutils PixelAperture object (or subclass)
-            The PhotUtils apertures object to compute the photometry.
-            i.e. the object returned via CircularAperture.
-        bg_apertures : photutils PixelAperture object (or subclass)
-            The phoutils aperture object to measure the background in.
-            i.e. the object returned via CircularAnnulus.
-        data : array
-            The data for the image to be measured.
-        bg_method: {'mean', 'median', 'mode'}, optional
-            The statistic used to calculate the background.
-            All measurements are sigma clipped.
-            NOTE: From DAOPHOT, mode = 3 * median - 2 * mean.
-        epadu: float, optional
-            Gain in electrons per adu (only use if image units aren't e-).
-        Returns
-        -------
-        final_tbl : astropy.table.Table
-            An astropy Table with the colums X, Y, flux, flux_error, mag,
-            and mag_err measurements for each of the sources.
-        """
-        exptime = header['EXPTIME']
-
-        if bg_method not in ['mean', 'median', 'mode']:
-            raise ValueError('Invalid background method, choose either mean, median, or mode')
-        
-        #Create a list to hold the flux for each source.
-        aperture_sum = []
-        interpolation_flags = np.zeros(len(phot_apertures.positions), dtype='bool')
-
-        for i in range(len(phot_apertures.positions)):
-            pos = phot_apertures.positions[i]
-            #Cutout around the source position
-            cutout_w = 15
-            x_pos = pos[0]
-            y_pos = pos[1]
-            cutout = data[int((y_pos-cutout_w)):int(y_pos+cutout_w)+1, int(x_pos-cutout_w):int(x_pos+cutout_w)+1]
-            x_cutout = x_pos - np.floor(x_pos - cutout_w)
-            y_cutout = y_pos - np.floor(y_pos - cutout_w) 
-            ap = CircularAperture((x_cutout, y_cutout), r=phot_apertures.r)
-
-            #Cut out the pixels JUST inside the aperture, and check if there are NaNs there. If so, interpolate over NaNs in the cutout. 
-            ap_mask = ap.to_mask(method='exact')
-            ap_cut = ap_mask.cutout(cutout)
-
-            if np.sum(np.isnan(ap_cut)) > 0:
-                bads = np.where(np.isnan(cutout))
-                bad_dists = np.sqrt((bads[0] - y_cutout)**2 + (bads[1] - x_cutout)**2)
-
-                #Check if any bad pixels fall within the aperture. If so, set the interpolation flag to True for this source. 
-                if np.sum(bad_dists < phot_apertures.r+1):
-
-                    # if np.sum(bad_dists < 1) == 0:
-                    #     #ONLY interpolate if bad pixels lay away from centroid position by at least a pixel. 
-                    #     #2D gaussian fitting approach
-                    #     #Set up a 2D Gaussian model to interpolate the bad pixel values in the cutout. 
-                    #     model_init = models.Const2D(amplitude=np.nanmedian(cutout))+models.Gaussian2D(amplitude=np.nanmax(cutout), x_mean=x_cutout, y_mean=y_cutout, x_stddev=seeing, y_stddev=seeing)
-                    #     xx, yy = np.indices(cutout.shape) #2D grids of x and y coordinates
-                    #     mask = ~np.isnan(cutout) #Find locations where the cutout has *good* values (i.e. not NaNs). 
-                    #     x = xx[mask] #Only use coordinates at these good values.
-                    #     y = yy[mask]
-                    #     cutout_1d = cutout[mask] #Make a 1D cutout using only the good values. 
-                    #     fitter = fitting.LevMarLSQFitter()
-                    #     model_fit = fitter(model_init, x, y, cutout_1d) #Fit the model to the 1d cutout.
-                    #     cutout[~mask] = model_fit(xx,yy)[~mask] #Interpolate the pixels in the cutout using the 2D Gaussian fit. 
-                    #     pdb.set_trace()
-                    #     #TODO: interpolate_replace_nans with 2DGaussianKernel probably gives better estimation of *background* pixels. 
-                    # else:
-                    #     interpolation_flags[i] = True
-
-                    #2D gaussian fitting approach
-                    #Set up a 2D Gaussian model to interpolate the bad pixel values in the cutout. 
-                    model_init = models.Const2D(amplitude=np.nanmedian(cutout))+models.Gaussian2D(amplitude=np.nanmax(cutout), x_mean=x_cutout, y_mean=y_cutout, x_stddev=seeing, y_stddev=seeing)
-                    xx, yy = np.indices(cutout.shape) #2D grids of x and y coordinates
-                    mask = ~np.isnan(cutout) #Find locations where the cutout has *good* values (i.e. not NaNs). 
-                    x = xx[mask] #Only use coordinates at these good values.
-                    y = yy[mask]
-                    cutout_1d = cutout[mask] #Make a 1D cutout using only the good values. 
-                    fitter = fitting.LevMarLSQFitter()
-                    model_fit = fitter(model_init, x, y, cutout_1d) #Fit the model to the 1d cutout.
-                    cutout[~mask] = model_fit(xx,yy)[~mask] #Interpolate the pixels in the cutout using the 2D Gaussian fit. 
-                    interpolation_flags[i] = True
-                    
-                    # #Gaussian convolution approach.
-                    # cutout = interpolate_replace_nans(cutout, kernel=Gaussian2DKernel(x_stddev=0.5))
 
 
-            phot_source = aperture_photometry(cutout, ap)
-            # if np.isnan(phot_source['aperture_sum'][0]):
-            #     pdb.set_trace()
-
-            aperture_sum.append(phot_source['aperture_sum'][0])
-
-        #Add positions/fluxes to a table
-        xcenter = phot_apertures.positions[:,0]*u.pix
-        ycenter = phot_apertures.positions[:,1]*u.pix
-        phot = QTable([xcenter, ycenter, aperture_sum], names=('xcenter', 'ycenter', 'aperture_sum'))
-
-        #Now measure the background around each source. 
-        mask = make_source_mask(data, nsigma=3, npixels=5, dilate_size=7) #Make a mask to block out any sources that might show up in the annuli and bias them.
-        bg_phot = aperture_stats_tbl(~mask*data, bg_apertures, sigma_clip=True) #Pass the data with sources masked out to the bg calculator. 
-        ap_area = phot_apertures.area
-        
-        bg_method_name = 'aperture_{}'.format(bg_method)
-        background = bg_phot[bg_method_name]
-        flux = phot['aperture_sum'] - background * ap_area
-
-        # Need to use variance of the sources for Poisson noise term in error computation.
-        flux_error = compute_phot_error(flux, bg_phot, bg_method, ap_area, exptime, dark_std_data, phot_apertures, epadu)
-
-        mag = -2.5 * np.log10(flux)
-        mag_err = 1.0857 * flux_error / flux
-
-        # Make the final table
-        X, Y = phot_apertures.positions.T
-        stacked = np.stack([X, Y, flux, flux_error, mag, mag_err, background, interpolation_flags], axis=1)
-        names = ['X', 'Y', 'flux', 'flux_error', 'mag', 'mag_error', 'background', 'interpolation_flag']
-
-        final_tbl = Table(data=stacked, names=names)
-
-        #Check for nans
-        if sum(np.isnan(final_tbl['flux'])) > 0:
-            bad_locs = np.where(np.isnan(final_tbl['flux']))[0]
-            #pdb.set_trace()
-
-        return final_tbl
-        
-    def compute_phot_error(flux_variance, bg_phot, bg_method, ap_area, exptime, dark_std_data, phot_apertures, epadu=1.0):
-        """Computes the flux errors using the DAOPHOT style computation.
-            Includes photon noise from the source, background terms, dark current, and read noise."""
-
-        #See eqn. 1 from Broeg et al. (2005): https://ui.adsabs.harvard.edu/abs/2005AN....326..134B/abstract
-        flux_variance_term = flux_variance / epadu #This is just the flux in photons. 
-        bg_variance_term_1 = ap_area * (bg_phot['aperture_std'])**2
-        bg_variance_term_2 = (ap_area * bg_phot['aperture_std'])**2 / bg_phot['aperture_area']
-
-        #Measure combined read noise + dark current using the dark standard deviation image. 
-        #TODO: Check that this is correct. 
-        dark_rn_term = np.zeros(len(flux_variance_term))
-        for i in range(len(phot_apertures)):
-            ap = phot_apertures[i]
-            dark_rn_ap = ap.to_mask().multiply(dark_std_data)
-            dark_rn_ap = dark_rn_ap[dark_rn_ap != 0]
-            dark_rn_term[i] = ap_area * (np.median(dark_rn_ap)**2)
-        #dark_current_variance_term = np.zeros(len(flux_variance_term)) + dark_current * exptime * ap_area
-        #read_noise_variance_term = np.zeros(len(flux_variance_term)) + (read_noise)**2*ap_area
-        variance = flux_variance_term + bg_variance_term_1 + bg_variance_term_2 + dark_rn_term
-        flux_error = variance ** .5
-        return flux_error    
-    
-    def aperture_stats_tbl(data, apertures, method='center', sigma_clip=True):
-        """Computes mean/median/mode/std in Photutils apertures.
-        Compute statistics for custom local background methods.
-        This is primarily intended for estimating backgrounds
-        via annulus apertures.  The intent is that this falls easily
-        into other code to provide background measurements.
-        Parameters
-        ----------
-        data : array
-            The data for the image to be measured.
-        apertures : photutils PixelAperture object (or subclass)
-            The phoutils aperture object to measure the stats in.
-            i.e. the object returned via CirularAperture,
-            CircularAnnulus, or RectangularAperture etc.
-        method: str
-            The method by which to handle the pixel overlap.
-            Defaults to computing the exact area.
-            NOTE: Currently, this will actually fully include a
-            pixel where the aperture has ANY overlap, as a median
-            is also being performed.  If the method is set to 'center'
-            the pixels will only be included if the pixel's center
-            falls within the aperture.
-        sigma_clip: bool
-            Flag to activate sigma clipping of background pixels
-        Returns
-        -------
-        stats_tbl : astropy.table.Table
-            An astropy Table with the colums X, Y, aperture_mean,
-            aperture_median, aperture_mode, aperture_std, aperture_area
-            and a row for each of the positions of the apertures.
-        """
-
-        # Get the masks that will be used to identify our desired pixels.
-        masks = apertures.to_mask(method=method)
-
-        # Compute the stats of pixels within the masks
-        aperture_stats = [calc_aperture_mmm(data, mask, sigma_clip) for mask in masks]
-
-        aperture_stats = np.array(aperture_stats)
-
-        # Place the array of the x y positions alongside the stats
-        stacked = np.hstack([apertures.positions, aperture_stats])
-        
-        # Name the columns
-        names = ['X','Y','aperture_mean','aperture_median','aperture_mode','aperture_std', 'aperture_area']
-        
-        # Make the table
-        stats_tbl = Table(data=stacked, names=names)
-
-        return stats_tbl
-    
-    def calc_aperture_mmm(data, mask, sigma_clip):
-        """Helper function to actually calculate the stats for pixels falling within some Photutils aperture mask on some array of data."""
-        #cutout = mask.cutout(data, fill_value=np.nan)
-        cutout = mask.multiply(data)
-        if cutout is None:
-            return (np.nan, np.nan, np.nan, np.nan, np.nan)
-        else:
-            values = cutout[cutout != 0] #Unwrap the annulus into a 1D array. 
-            values = values[~np.isnan(values)] #Ignore any NaNs in the annulus. 
-            if sigma_clip:
-                values, clow, chigh = sigmaclip(values, low=3, high=3) #Sigma clip the 1D annulus values. 
-            mean = np.nanmean(values)
-            median = np.nanmedian(values)
-            std = np.nanstd(values)
-            mode = 3 * median - 2 * mean
-            actual_area = (~np.isnan(values)).sum()
-            return (mean, median, mode, std, actual_area)
-    
     pines_path = pines_dir_check()
     short_name = short_name_creator(target)
     
@@ -351,8 +353,7 @@ def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.,
 
     #Loop over all aperture radii. 
     for ap in ap_radii:
-        print('Doing aperture photometry for {}, aperture radius = {} pix, inner annulus radius = {} pix, outer annulus radius = {} pix.'.format(target, ap, an_in, an_out))
-        print('')
+        print('Doing fixed aperture photometry for {}, aperture radius = {} pix, inner annulus radius = {} pix, outer annulus radius = {} pix.'.format(target, ap, an_in, an_out))
 
         #Declare a new dataframe to hold the information for all targets for this aperture. 
         columns = ['Filename', 'Time UT', 'Time JD', 'Airmass', 'Seeing']
@@ -363,7 +364,7 @@ def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.,
             columns.append(source_names[i]+' Interpolation Flag')
 
         ap_df = pd.DataFrame(index=range(len(reduced_files)), columns=columns)
-        output_filename = pines_path/('Objects/'+short_name+'/aper_phot/'+short_name+'_aper_phot_'+str(float(ap))+'_pix_radius.csv')
+        output_filename = pines_path/('Objects/'+short_name+'/aper_phot/'+short_name+'_fixed_aper_phot_'+str(float(ap))+'_pix_radius.csv')
 
         #Loop over all images.
         pbar = ProgressBar()
@@ -490,6 +491,130 @@ def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.,
     print('')
     return 
 
-def variable_aper_phot(target, centroided_sources, an_in=12., an_out=30., plots=False, gain=8.21, qe=0.9):
-    pdb.set_trace()
+def variable_aper_phot(target, centroided_sources, multiplicative_factors, an_in=12., an_out=30., plots=False, gain=8.21, qe=0.9, plate_scale=0.579):
+    pines_path = pines_dir_check()
+    short_name = short_name_creator(target)
+    
+    #Remove any leading/trailing spaces in the column names. 
+    centroided_sources.columns = centroided_sources.columns.str.lstrip()
+    centroided_sources.columns = centroided_sources.columns.str.rstrip()
+
+    #Get list of reduced files for target. 
+    reduced_path = pines_path/('Objects/'+short_name+'/reduced')
+    reduced_filenames = natsort.natsorted([x.name for x in reduced_path.glob('*.fits')])
+    reduced_files = np.array([reduced_path/i for i in reduced_filenames])
+    
+    #Get source names. 
+    source_names = get_source_names(centroided_sources)
+    
+    #Get seeing.
+    seeing = np.array(centroided_sources['Seeing'])
+
+    #Loop over multiplicative factors 
+    for i in range(len(multiplicative_factors)):
+        fact = multiplicative_factors[i]
+        print('Doing variable aperture photometry for {}, multiplicative seeing factor = {}, inner annulus radius = {} pix, outer annulus radius = {} pix.'.format(target, fact, an_in, an_out))
+
+        #Declare a new dataframe to hold the information for all targets for this aperture. 
+        columns = ['Filename', 'Time UT', 'Time JD', 'Airmass', 'Seeing']
+        for j in range(0, len(source_names)):
+            columns.append(source_names[j]+' Flux')
+            columns.append(source_names[j]+' Flux Error')
+            columns.append(source_names[j]+' Background')
+            columns.append(source_names[j]+' Interpolation Flag')
+
+        var_df = pd.DataFrame(index=range(len(reduced_files)), columns=columns)
+        output_filename = pines_path/('Objects/'+short_name+'/aper_phot/'+short_name+'_variable_aper_phot_'+str(float(fact))+'_seeing_factor.csv')
+
+        #Loop over all images.
+        pbar = ProgressBar()
+        for j in pbar(range(len(reduced_files))):
+            data = fits.open(reduced_files[j])[0].data
+            #Read in some supporting information.
+            log_path = pines_path/('Logs/'+reduced_files[j].name.split('.')[0]+'_log.txt')
+            log = pines_log_reader(log_path)
+            header = fits.open(reduced_files[j])[0].header
+            date_obs = header['DATE-OBS']
+            #Catch a case that can cause datetime strptime to crash; Mimir headers sometimes have DATE-OBS with seconds specified as 010.xx seconds, when it should be 10.xx seconds. 
+            if len(date_obs.split(':')[-1].split('.')[0]) == 3:
+                date_obs = date_obs.split(':')[0] + ':' + date_obs.split(':')[1] + ':' + date_obs.split(':')[-1][1:]
+            
+            if date_obs.split(':')[-1] == '60.00':
+                date_obs = date_obs.split(':')[0]+':'+str(int(date_obs.split(':')[1])+1)+':00.00'
+            #Keep a try/except clause here in case other unknown DATE-OBS formats pop up. 
+            try:
+                date = datetime.datetime.strptime(date_obs, '%Y-%m-%dT%H:%M:%S.%f')
+            except:
+                print('Header DATE-OBS format does not match the format code in strptime! Inspect/correct the DATE-OBS value.')
+                pdb.set_trace()
+            
+            #Get the closest date master_dark_stddev image for this exposure time.
+            #We'll use this to measure read noise and dark current. 
+            date_str = date_obs.split('T')[0].replace('-','')
+            master_dark_stddev = master_dark_stddev_chooser(pines_path/('Calibrations/Darks/Master Darks Stddev/'), header)
+        
+            days = date.day + hmsm_to_days(date.hour,date.minute,date.second,date.microsecond)
+            jd = date_to_jd(date.year,date.month,days)
+            var_df['Filename'][j] = reduced_files[j].name
+            var_df['Time UT'][j] = header['DATE-OBS']
+            var_df['Time JD'][j] = jd
+            var_df['Airmass'][j] = header['AIRMASS']
+            var_df['Seeing'][j] = log['X seeing'][np.where(log['Filename'] == reduced_files[j].name.split('_')[0]+'.fits')[0][0]]
+            
+            #Get the source positions in this image.
+            positions = []
+            for k in range(len(source_names)):
+                positions.append((centroided_sources[source_names[k]+' Image X'][j], centroided_sources[source_names[k]+' Image Y'][j]))
+
+            #Create an aperture centered on this position with radius (in pixels) of (seeing*multiplicative_factor[j])/plate_scale. 
+            apertures = CircularAperture(positions, r=(seeing[j]*fact)/plate_scale)
+
+            #Create an annulus centered on this position. 
+            annuli = CircularAnnulus(positions, r_in=an_in, r_out=an_out)
+
+            photometry_tbl = iraf_style_photometry(apertures, annuli, data*gain, master_dark_stddev*gain, header, var_df['Seeing'][j])
+
+            for k in range(len(photometry_tbl)):
+                var_df[source_names[k]+' Flux'][j] = photometry_tbl['flux'][k] 
+                var_df[source_names[k]+' Flux Error'][j] = photometry_tbl['flux_error'][k]
+                var_df[source_names[k]+' Background'][j] = photometry_tbl['background'][k]
+                var_df[source_names[k]+' Interpolation Flag'][j] = int(photometry_tbl['interpolation_flag'][k])
+        
+        #Write output to file. 
+        print('Saving multiplicative factor = {} variable aperture photometry output to {}.'.format(fact,output_filename))
+        print('')
+        with open(output_filename, 'w') as f:
+            for j in range(len(var_df)):
+                #Write in the header. 
+                if j == 0:
+                    f.write('{:>21s}, {:>22s}, {:>17s}, {:>7s}, {:>7s}, '.format('Filename', 'Time UT', 'Time JD', 'Airmass', 'Seeing'))
+                    for k in range(len(source_names)):
+                        if k != len(source_names) - 1:
+                            f.write('{:>22s}, {:>28s}, {:>28s}, {:>34s}, '.format(source_names[k]+' Flux', source_names[k]+' Flux Error', source_names[k]+' Background', source_names[k]+' Interpolation Flag'))
+                        else:
+                            f.write('{:>22s}, {:>28s}, {:>28s}, {:>34s}\n'.format(source_names[k]+' Flux', source_names[k]+' Flux Error', source_names[k]+' Background', source_names[k]+' Interpolation Flag'))
+
+
+                #Write in Filename, Time UT, Time JD, Airmass, Seeing values.
+                format_string = '{:21s}, {:22s}, {:17.9f}, {:7.2f}, {:7.1f}, '
+                #If the seeing value for this image is 'nan' (a string), convert it to a float. 
+                #TODO: Not sure why it's being read in as a string, fix that. 
+                if type(var_df['Seeing'][j]) == str:
+                    var_df['Seeing'][j] = float(var_df['Seeing'][j])
+
+                #Do a try/except clause for writeout, in case it breaks in the future. 
+                try:
+                    f.write(format_string.format(var_df['Filename'][j], var_df['Time UT'][j], var_df['Time JD'][j], var_df['Airmass'][j], var_df['Seeing'][j]))
+                except:
+                    print('Writeout failed! Inspect quantities you are trying to write out.')
+                    pdb.set_trace()
+
+                #Write in Flux, Flux Error, and Background values for every source. 
+                for k in range(len(source_names)):                    
+                    if k != len(source_names) - 1:
+                        format_string = '{:22.5f}, {:28.5f}, {:28.5f}, {:34d}, '
+                    else:
+                        format_string = '{:22.5f}, {:28.5f}, {:28.5f}, {:34d}\n'
+                    f.write(format_string.format(var_df[source_names[k]+' Flux'][j], var_df[source_names[k]+' Flux Error'][j], var_df[source_names[k]+' Background'][j], var_df[source_names[k]+' Interpolation Flag'][j]))
+        print('')
     return

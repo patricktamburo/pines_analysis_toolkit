@@ -49,23 +49,28 @@ for target in targets:
     centroided_sources = pat.photometry.centroider(target, sources, restore=True, output_plots=False, gif=False, box_w=7)
 
     #Perform photometry using a variety of methods. 
-    #pat.photometry.aper_phot.fixed_aper_phot(target, centroided_sources, [3.5, 4.5], an_in=9)
-    pat.photometry.aper_phot.variable_aper_phot(target, centroided_sources)
+    #pat.photometry.aper_phot.fixed_aper_phot(target, centroided_sources, [4.2, 4.3, 4.4], an_in=9, an_out=30)
+    #pat.photometry.aper_phot.variable_aper_phot(target, centroided_sources, [0.5,0.6,0.7,0.8,0.9,1.0,1.1,1.2,1.3])
     #pat.photometry.epsf_phot(target, centroided_sources, plots=True)
     #pat.photometry.basic_psf_phot(target, centroided_sources, plots=True)
 
     #Create a lightcurve. 
     #pat.analysis.simple_lightcurve(target, sources, centroided_sources, plot_mode='separate')
-    #pat.analysis.weighted_lightcurve(target, phot_type='aper', mode='global', plots=True)
+    #pat.analysis.weighted_lightcurve(target, phot_type='aper', mode='night', plots=False)
+    #pat.analysis.weighted_lightcurve(target, phot_type='aper', mode='global', plots=False)
 
     #Generate diagnostic plots. 
-    # pat.analysis.diagnostic_plots.seeing_plot(target, centroided_sources)
-    # pat.analysis.diagnostic_plots.relative_cutout_position_plot(target, centroided_sources)
-    # pat.analysis.diagnostic_plots.absolute_image_position_plot(target, centroided_sources)
-    # pat.analysis.diagnostic_plots.background_plot(target, centroided_sources)
-
+    #pat.analysis.diagnostic_plots.relative_cutout_position_plot(target, centroided_sources)
+    #pat.analysis.diagnostic_plots.absolute_image_position_plot(target, centroided_sources)
+    #pat.analysis.diagnostic_plots.background_plot(target, centroided_sources) #TODO FIX reading photometry in. 
+    #pat.analysis.diagnostic_plots.seeing_plot(target, centroided_sources)
+    #pat.analysis.diagnostic_plots.airmass_plot(target, centroided_sources)
+    
+    #Create plots of corrected reference star fluxes. 
+    #pat.analysis.analysis_plots.corr_all_sources_plot(target)
+    
     #Generate DV report. 
-    #pat.output.dv_report(target)
+    pat.output.dv_report(target)
 
     #Move all final data products to the target's output directory. 
-    pat.output.output_wrangler(target)
+    #pat.output.output_wrangler(target)
