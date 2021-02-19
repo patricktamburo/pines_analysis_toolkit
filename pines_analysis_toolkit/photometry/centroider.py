@@ -94,6 +94,7 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
     columns.append('Filename')
     columns.append('Seeing')
     columns.append('Time (JD UTC)')
+    columns.append('Airmass')
 
     #Add x/y positions and cenroid flags for every tracked source
     for i in range(0, len(sources)):
@@ -142,7 +143,7 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
                 centroid_df['Filename'][j] = file.name.split('_')[0]+'.fits'
                 centroid_df['Seeing'][j] = log['X seeing'][log_ind]
                 centroid_df['Time (JD UTC)'][j] = julian.to_jd(datetime.datetime.strptime(fits.open(file)[0].header['DATE-OBS'], '%Y-%m-%dT%H:%M:%S.%f'))
-
+                centroid_df['Airmass'][j] = log['Airmass'][log_ind]
             nan_flag = False #Flag indicating if you should not trust the log's shifts. Set to true if x_shift/y_shift are 'nan' or > 30 pixels. 
 
             if np.isnan(x_shift) or np.isnan(y_shift):
@@ -328,6 +329,7 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
                 f.write('{:<17s}, '.format('Filename'))
                 f.write('{:<15s}, '.format('Time (JD UTC)'))
                 f.write('{:<6s}, '.format('Seeing'))
+                f.write('{:<7s}, '.format('Airmass'))
                 for i in range(len(sources['Name'])):
                     n = sources['Name'][i]
                     if i != len(sources['Name']) - 1:
@@ -339,6 +341,8 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
             f.write('{:<17s}, '.format(centroid_df['Filename'][j]))
             f.write('{:<15.7f}, '.format(centroid_df['Time (JD UTC)'][j]))
             f.write('{:<6.1f}, '.format(centroid_df['Seeing'][j]))
+            f.write('{:<7.2f}, '.format(centroid_df['Airmass'][j]))
+
             for i in range(len(sources['Name'])):
                 n = sources['Name'][i]                    
                 if i != len(sources['Name']) - 1:
