@@ -66,24 +66,28 @@ def make_calibrations(sftp, exptimes, bands, dark_dates, flat_dates, dark=True, 
         for i in range(len(exptimes)):
             dark_date = dark_dates[i]
             exptime = float(exptimes[i])
-            vpm_path = calibration_path/('Variable Pixel Masks/vpm'+str(exptime)+'_s_'+dark_date+'.fits')
+            vpm_path = calibration_path/('Variable Pixel Masks/vpm_'+str(exptime)+'_s_'+dark_date+'.fits')
             if vpm_path.exists():
                 print('{} already exists in {}, skipping.'.format(vpm_path.name, calibration_path))
             else:
                 print('Making variable pixel mask for {}-s exposure time on {}.'.format(exptime, dark_date))
                 pat.data.variable_pixels(dark_date, exptime, upload=True, sftp=sftp)
 
+    print('')
+
     #Hot pixel masks. 
     if hot_pixels:
         for i in range(len(exptimes)):
             dark_date = dark_dates[i]
             exptime = float(exptimes[i])
-            hpm_path = calibration_path/('Hot Pixel Masks/hpm'+str(exptime)+'_s_'+dark_date+'.fits')
+            hpm_path = calibration_path/('Hot Pixel Masks/hpm_'+str(exptime)+'_s_'+dark_date+'.fits')
             if hpm_path.exists():
                 print('{} already exists in {}, skipping.'.format(hpm_path.name, calibration_path))
             else:
                 print('Making hot pixel mask for {}-s exposure time on {}.'.format(exptime, dark_date))
                 pat.data.hot_pixels(dark_date, exptime, box_l=5, upload=True, sftp=sftp)
+
+    print('')
 
     #Dead pixel masks
     if dead_pixels:
@@ -97,16 +101,18 @@ def make_calibrations(sftp, exptimes, bands, dark_dates, flat_dates, dark=True, 
                 print('Making dead pixel mask for {}-band exposure time on {}.'.format(band, dark_date))
                 pat.data.dead_pixels(flat_date, band, upload=True, sftp=sftp)
     
+    print('')
+    
     #Bad pixel masks. 
     if bpm:
         for i in range(len(exptimes)):
             dark_date = dark_dates[i]
-            exptime = exptimes[i]
+            exptime = float(exptimes[i])
             for j in range(len(bands)):
                 flat_date = flat_dates[j]
                 band = bands[j]
                 bpm_path = calibration_path/('Bad Pixel Masks/bpm_'+band+'_'+str(exptime)+'_s_'+flat_date+'.fits')
-                if bpm.path.exists():
+                if bpm_path.exists():
                     print('{} already exists in {}, skipping.'.format(bpm_path.name, calibration_path))
                 else:
                     print('Making dead pixel mask for {}-band, {}-s exposure time on {}.'.format(band, exptime, flat_date))
