@@ -24,7 +24,7 @@ from pines_analysis_toolkit.observing.pines_logging import pines_logging
 from pines_analysis_toolkit.utils.pines_login import pines_login
 from pines_analysis_toolkit.observing.log_out_of_order_fixer import log_out_of_order_fixer
 
-def log_updater(target, date, sftp, upload=False):
+def log_updater(date, sftp, upload=False):
     '''
     Authors:
 		Patrick Tamburo, Boston University, January 2021
@@ -33,7 +33,6 @@ def log_updater(target, date, sftp, upload=False):
         we use *half* resolution images (to save time between exposures). By measuring on full-res images, we get more accurate shifts, which allows 
         us to determine centroids more easily.
 	Inputs:
-        target (str): a targets 'long' 2MASS name, e.g. '2MASS J01234567+012345678'
         date (str): the UT date of the log whose shifts you want to update in YYYYMMDD format, e.g. '20151110'
         sftp (pysftp connection): sftp connection to the PINES server
         upload (bool): whether or not to push the updated log to the PINES server (only admins can do this)
@@ -45,10 +44,7 @@ def log_updater(target, date, sftp, upload=False):
     '''
 
     pines_path = pines_dir_check()
-    short_name = short_name_creator(target)
     log_path = pines_path/('Logs/'+date+'_log.txt')
-    reduced_path = pines_path/('Objects/'+short_name+'/reduced/')
-    files = np.array(natsorted(glob(str(reduced_path)+'/'+date+'*.fits'))) #Get files to measure new shifts with
 
     #Begin by checking filenames, making sure they're in sequential order, and that there is only one entry for each. 
     log_out_of_order_fixer(log_path, sftp)
@@ -58,51 +54,59 @@ def log_updater(target, date, sftp, upload=False):
     lines = myfile.readlines()
     myfile.close()
 
-    #Now loop over all files for this target in the log, measure shifts in each file and update the line in the log. 
-    for i in range(len(files)):
-        filename = files[i].split('/')[-1]
-        #Figure out which file you're looking at and its position in the log. 
-        log_ind = np.where(log['Filename'] == filename.split('_')[0]+'.fits')[0][0]
+    #Now loop over all files in the log, measure shifts in each file and update the line in the log. 
+    for i in range(len(log)):
+        if (log['Target'][i] != 'Flat') & (log['Target'][i] != 'Dark') & (log['Target'][i] != 'Bias'):
+            filename = log['Filename'][i].split('.fits')[0]+'_red.fits'
+            target = log['Target'][i]
+            short_name = short_name_creator(target)
+            image_path = pines_path/('Objects/'+short_name+'/reduced/'+filename)
 
-        #Measure the shifts. 
-        measured_x_shift, measured_y_shift = shift_measurer(target, filename)
+            #Figure out which file you're looking at and its position in the log. 
+            log_ind = np.where(log['Filename'] == filename.split('_')[0]+'.fits')[0][0]
 
-        #Make sure the measured shifts are real values. 
-        if np.isnan(measured_x_shift) or np.isnan(measured_y_shift):
-            raise RuntimeError('Found nans for shifts!')
-            pdb.set_trace()
+            #Measure the shifts. 
+            measured_x_shift, measured_y_shift = shift_measurer(target, filename, shift_tolerance=160)
+
+            #Make sure the measured shifts are real values. 
+            if np.isnan(measured_x_shift) or np.isnan(measured_y_shift):
+                raise RuntimeError('Found nans for shifts!')
+                pdb.set_trace()
+                
+            print('Log line {} of {}.'.format(i+1, len(log)))
+            print('Measured x shift: {:4.1f}, measured y shift: {:4.1f}'.format(measured_x_shift, measured_y_shift))
+            print('')
             
-        print('{}, {} of {}.'.format(filename, i+1, len(files)))
-        print('measured x shift: {:4.1f}, measured y shift: {:4.1f}'.format(measured_x_shift, measured_y_shift))
-        print('')
-        
-        #Overwrite the telescope's logged shifts with the new measurements. 
-        log['X shift'][log_ind] = str(np.round(measured_x_shift,1))
-        log['Y shift'][log_ind] = str(np.round(measured_y_shift,1))
+            #Overwrite the telescope's logged shifts with the new measurements. 
+            log['X shift'][log_ind] = str(np.round(measured_x_shift,1))
+            log['Y shift'][log_ind] = str(np.round(measured_y_shift,1))
 
-        #Grab entries for log line.
-        filename = log['Filename'][log_ind]
-        log_date = log['Date'][log_ind]
-        target_name = log['Target'][log_ind]
-        filter_name = log['Filt.'][log_ind]
-        exptime = log['Exptime'][log_ind]
-        airmass = log['Airmass'][log_ind]
-        x_shift = log['X shift'][log_ind]
-        y_shift = log['Y shift'][log_ind]
-        x_seeing = log['X seeing'][log_ind]
-        y_seeing = log['Y seeing'][log_ind]
-        
-        #Generate line of log text following the PINES telescope log format. 
-        log_text = pines_logging(filename, log_date, target_name, filter_name, exptime, airmass, x_shift, y_shift, x_seeing, y_seeing)
+            #Grab entries for log line.
+            filename = log['Filename'][log_ind]
+            log_date = log['Date'][log_ind]
+            target_name = log['Target'][log_ind]
+            filter_name = log['Filt.'][log_ind]
+            exptime = log['Exptime'][log_ind]
+            airmass = log['Airmass'][log_ind]
+            x_shift = log['X shift'][log_ind]
+            y_shift = log['Y shift'][log_ind]
+            x_seeing = log['X seeing'][log_ind]
+            y_seeing = log['Y seeing'][log_ind]
+            
+            #Generate line of log text following the PINES telescope log format. 
+            log_text = pines_logging(filename, log_date, target_name, filter_name, exptime, airmass, x_shift, y_shift, x_seeing, y_seeing)
 
-        #Overwrite the line with the new shifts.
-        line_ind = log_ind + 1
-        lines[line_ind] = log_text
+            #Overwrite the line with the new shifts.
+            line_ind = log_ind + 1
+            lines[line_ind] = log_text
 
-        #Update the log on disk.
-        with open(log_path, 'w') as f:
-            for line in lines:
-                f.write(line)
+            #Update the log on disk.
+            with open(log_path, 'w') as f:
+                for line in lines:
+                    f.write(line)
+        else:
+            print('{} not a science target, skipping. {} of {}.'.format(filename, i+1, len(log)))
+            print('')
 
     if upload:
         sftp.chdir('/data/logs/')

@@ -5,3 +5,4 @@ from pines_analysis_toolkit.observing.pines_logging import pines_logging
 from pines_analysis_toolkit.observing.log_updater import log_updater
 from pines_analysis_toolkit.observing.master_synthetic_image_maker import master_synthetic_image_creator
 from pines_analysis_toolkit.observing.bad_shift_identifier import bad_shift_identifier
+from pines_analysis_toolkit.observing.observed_sample_plots import observed_sample_plots

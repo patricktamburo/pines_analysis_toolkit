@@ -39,7 +39,7 @@ def master_synthetic_image_creator(target, image_name, seeing=2.5, sigma_above_b
     '''
 
 
-    def mimir_source_finder(image_path,sigma_above_bg,fwhm):
+    def mimir_source_finder(image_path,sigma_above_bg,fwhm, exclude_lower_left=False):
         """Find sources in Mimir images."""
         
         np.seterr(all='ignore') #Ignore invalids (i.e. divide by zeros)
@@ -76,13 +76,14 @@ def master_synthetic_image_creator(target, image_name, seeing=2.5, sigma_above_b
         fluxes = fluxes[use_sharp]
         peaks = peaks[use_sharp]
 
-        #Cut sources in the lower left, if bars are present.
-        use_ll =  np.where((x_centroids > 512) | (y_centroids > 512))
-        x_centroids  = x_centroids [use_ll]
-        y_centroids  = y_centroids [use_ll]
-        sharpness = sharpness[use_ll]
-        fluxes = fluxes[use_ll]
-        peaks = peaks[use_ll]
+        if exclude_lower_left:
+            #Cut sources in the lower left, if bars are present.
+            use_ll =  np.where((x_centroids > 512) | (y_centroids > 512))
+            x_centroids  = x_centroids [use_ll]
+            y_centroids  = y_centroids [use_ll]
+            sharpness = sharpness[use_ll]
+            fluxes = fluxes[use_ll]
+            peaks = peaks[use_ll]
         
         #Cut targets whose y centroids are near y = 512. These are usually bad.
         use_512 = np.where(np.logical_or((y_centroids < 510),(y_centroids > 514)))[0]
@@ -114,6 +115,7 @@ def master_synthetic_image_creator(target, image_name, seeing=2.5, sigma_above_b
         x_centroids = phot_table['xcenter'].value
         y_centroids = phot_table['ycenter'].value
 
+        pdb.set_trace()
         return(x_centroids,y_centroids)
 
     def synthetic_image_maker(x_centroids,y_centroids,fwhm):
@@ -209,7 +211,7 @@ def master_synthetic_image_creator(target, image_name, seeing=2.5, sigma_above_b
 
 
 if __name__ == '__main__':
-    target = '2MASS J08312221+1538511'
-    image_name = '20210204.420_red.fits'
-    seeing = 1.5
-    master_synthetic_image_creator(target, image_name, seeing=seeing)
+    target = '2MASS J10292165+1626526'
+    image_name = '20210303.197_red.fits'
+    seeing = 2.3
+    master_synthetic_image_creator(target, image_name, seeing=seeing, sigma_above_bg=10)

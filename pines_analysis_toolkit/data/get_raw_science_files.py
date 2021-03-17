@@ -16,7 +16,7 @@ import numpy as np
 import time
 import pysftp
 from astropy.io import fits
-
+import paramiko
 '''Authors: 
         Patrick Tamburo, Boston University, June 2020
    Purpose: 
@@ -91,6 +91,13 @@ def get_raw_science_files(sftp, target_name):
             night_check = night_dirs[j]
             if night_check in dates:
                 sftp.chdir(night_check)
+
+                #Check that this night's log is in the /data/logs/ folder. If not, move a copy there.
+                log_name = night_check+'_log.txt'
+                if not log_name in sftp.listdir('/data/logs/'): 
+                    sftp.get(log_name, pines_path/('Logs/'+log_name))
+                    sftp.put(pines_path/('Logs/'+log_name), '/data/logs/'+log_name)
+                
                 date_holder_ind = np.where(np.array(dates) == night_check)[0][0]
                 files = date_holder[date_holder_ind]
                 for k in range(len(files)):
@@ -108,6 +115,7 @@ def get_raw_science_files(sftp, target_name):
     sftp.chdir('/data/logs')
     for i in range(len(dates)):
         log_name = dates[i]+'_log.txt'
+        
         print('Downloading {} to {}.'.format(log_name, pines_path/('Logs/'+log_name)))
         sftp.get(log_name, pines_path/('Logs/'+log_name))
 

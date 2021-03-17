@@ -40,6 +40,7 @@ if not os.path.exists(default_pines_dir):
     os.mkdir(default_pines_dir/'Calibrations/Kokopelli Mask/')
     os.mkdir(default_pines_dir/'Calibrations/Master Synthetic Images/')
     os.mkdir(default_pines_dir/'Logs/')
+    os.mkdir(default_pines_dir/'Misc/')
     os.mkdir(default_pines_dir/'Objects/')
 else:
     print(default_pines_dir,'already exists, skipping.')

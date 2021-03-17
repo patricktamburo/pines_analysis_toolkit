@@ -11,6 +11,7 @@ from astropy.convolution import Gaussian2DKernel, interpolate_replace_nans
 from pines_analysis_toolkit.data.bpm_chooser import bpm_chooser
 from astropy.visualization import ImageNormalize, ZScaleInterval, SquaredStretch, SqrtStretch, LinearStretch
 from pines_analysis_toolkit.data.bg_2d import bg_2d
+from pines_analysis_toolkit.utils.quick_plot import quick_plot as qp
 plt.ion() 
 
 '''Authors:
@@ -30,8 +31,7 @@ plt.ion()
 '''
 
 def detect_sources(image_path, seeing_fwhm, edge_tolerance, thresh=6.0, plot=False):
-    fwhm = seeing_fwhm*0.579
-    
+    fwhm = seeing_fwhm/0.579 #FIXED
     ap_rad = 4 #Radius of aperture in pixels for doing quick photometry on detected sources.
     
     #Read in the image. 
@@ -63,10 +63,10 @@ def detect_sources(image_path, seeing_fwhm, edge_tolerance, thresh=6.0, plot=Fal
     print('Finding sources in {}.'.format(image_path.name))
 
     #Detect sources using DAOStarFinder.
-    daofind = DAOStarFinder(fwhm=fwhm, threshold=thresh*std)  
+    daofind = DAOStarFinder(fwhm=fwhm, threshold=thresh*std, sharplo=0.2)  
 
     initial_sources = daofind(image - med)
-
+    
     #Do a cut based on source sharpness to get rid of some false detections.
     initial_sources.sort('sharpness')        
     bad_sharpness_locs = np.where(initial_sources['sharpness'] < 0.3)[0]
@@ -79,8 +79,12 @@ def detect_sources(image_path, seeing_fwhm, edge_tolerance, thresh=6.0, plot=Fal
     initial_sources.remove_rows(bad_y)
 
     #Cut sources near y = 512, these are frequently bad. 
-    bad_512 = np.where((initial_sources['ycentroid'] > 508) & (initial_sources['ycentroid'] < 516))
+    bad_512 = np.where((initial_sources['ycentroid'] > 506) & (initial_sources['ycentroid'] < 518))
     initial_sources.remove_rows(bad_512)
+
+    #Cut sources near the top and bottom edges to avoid issues with the Mimir "ski jump" feature that can sometimes occur. 
+    bad_ski_jump = np.where((initial_sources['ycentroid'] < 100) | (initial_sources['ycentroid'] > 924))
+    initial_sources.remove_rows(bad_ski_jump)
 
     #Do quick photometry on the remaining sources. 
     positions = [(initial_sources['xcentroid'][i], initial_sources['ycentroid'][i]) for i in range(len(initial_sources))]
@@ -102,4 +106,3 @@ def detect_sources(image_path, seeing_fwhm, edge_tolerance, thresh=6.0, plot=Fal
     #print('Found {} sources.'.format(len(phot_table)))
     sources = phot_table[::-1].to_pandas() #Resort remaining sources so that the brightest are listed firsts. 
     return sources
-    

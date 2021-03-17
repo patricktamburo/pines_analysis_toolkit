@@ -6,7 +6,7 @@ from pines_analysis_toolkit.utils.short_name_creator import short_name_creator
 import pdb 
 import numpy as np 
 from natsort import natsorted
-from datetime import date
+from datetime import date, datetime
 import os 
 
 def dv_report(target, pat_version='1.0'):
@@ -14,9 +14,11 @@ def dv_report(target, pat_version='1.0'):
     def page_header():
         today = date.today()
         date_str = today.strftime('%b %d, %Y')
+        time = datetime.now()
+        time_str = time.strftime('%H:%M')
         canvas.setFont('Times-Italic', 8) #Font for captions
         canvas.setFillColor('Grey')
-        header_text = short_name+' DV Report, Compiled on '+date_str+' with PINES Analysis Toolkit V. '+str(pat_version)
+        header_text = short_name+' DV Report, Compiled on '+date_str+' at '+time_str+' with PINES Analysis Toolkit V. '+str(pat_version)
         canvas.drawCentredString(612*0.5, 792-15, header_text)
 
     def page_footer():

@@ -4,6 +4,7 @@ import pdb
 import glob 
 import matplotlib.pyplot as plt
 from astropy.stats import sigma_clipped_stats
+from scipy.stats import sigmaclip
 import os
 import time
 from pines_analysis_toolkit.utils.pines_dir_check import pines_dir_check
@@ -191,6 +192,7 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
     print('-------------------------------------------------')
     print('ID   Mean               Stddev         Max    Min')
     print('-------------------------------------------------')
+    lights_on_std_devs = np.zeros(num_images)
     for j in range(len(lights_on_files)):
         image_data = fits.open(dome_flat_raw_path/lights_on_files[j])[0].data[0:1024,:]
         header = fits.open(dome_flat_raw_path/lights_on_files[j])[0].header
@@ -198,8 +200,18 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
             print('ERROR: {} taken in filter other than {}. Double check your date, try specifying start/stop file numbers, etc.'.format(lights_on_files[j], band))
             return
         flat_lights_on_cube_raw[j,:,:] = image_data #This line trims off the top two rows of the image, which are overscan.
+        lights_on_std_devs[j] = np.std(image_data) #Save standard deviation of flat images to identify flats with "ski jump" horizontal bars issue.
         print(str(j+1)+'    '+str(np.mean(image_data))+'    '+str(np.std(image_data))+'    '+ str(np.std(image_data))+'    '+str(np.amin(image_data)))
-
+    
+    #Identify bad lights-on flat images (usually have bright horizontal bands at the top/bottom of images.)
+    vals, lo, hi = sigmaclip(lights_on_std_devs)
+    bad_locs = np.where((lights_on_std_devs < lo) | (lights_on_std_devs > hi))[0]
+    good_locs = np.where((lights_on_std_devs > lo) & (lights_on_std_devs < hi))[0]
+    if len(bad_locs > 0):
+        print('Found {} bad lights-on flats: {}.\nExcluding from combination step.\n'.format(len(bad_locs), np.array(lights_on_files)[bad_locs]))
+        time.sleep(2)
+    flat_lights_on_cube_raw = flat_lights_on_cube_raw[good_locs]
+    
     #For each pixel, calculate the mean, median, and standard deviation "through the stack" of lights on flat images.
     lights_on_cube_shape = np.shape(flat_lights_on_cube_raw)
     master_flat_lights_on = np.zeros((lights_on_cube_shape[1], lights_on_cube_shape[2]), dtype='float32')
@@ -229,6 +241,7 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
     num_images = len(lights_off_files)
     print('Reading in ', num_images,' lights-off flat images.')
     flat_lights_off_cube_raw = np.zeros([len(lights_off_files),1024,1024]) 
+    lights_off_std_devs = np.zeros(num_images)
     print('')
     print('Flat frame information')
     print('-------------------------------------------------')
@@ -241,8 +254,17 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
             print('ERROR: {} taken in filter other than {}. Double check your date, try specifying start/stop file numbers, etc.'.format(lights_off_files[j], band))
             return
         flat_lights_off_cube_raw[j,:,:] = image_data #This line trims off the top two rows of the image, which are overscan.
+        lights_off_std_devs[j] = np.std(image_data) #Save standard deviation of flat images to identify flats with "ski jump" horizontal bars issue.
         print(str(j+1)+'    '+str(np.mean(image_data))+'    '+str(np.std(image_data))+'    '+ str(np.std(image_data))+'    '+str(np.amin(image_data)))
-    time.sleep(1)
+
+    #Identify bad lights-on flat images (usually have bright horizontal bands at the top/bottom of images.)
+    vals, lo, hi = sigmaclip(lights_off_std_devs)
+    bad_locs = np.where((lights_off_std_devs < lo) | (lights_off_std_devs > hi))[0]
+    good_locs = np.where((lights_off_std_devs > lo) & (lights_off_std_devs < hi))[0]
+    if len(bad_locs > 0):
+        print('Found {} bad lights-off flats: {}.\nExcluding from combination step.\n'.format(len(bad_locs), np.array(lights_off_files)[bad_locs]))
+        time.sleep(2)
+    flat_lights_off_cube_raw = flat_lights_off_cube_raw[good_locs]
 
     #For each pixel, calculate the mean, median, and standard deviation "through the stack" of lights off flat images.
     lights_off_cube_shape = np.shape(flat_lights_off_cube_raw)
@@ -288,39 +310,39 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
     print('')
     print('Writing the file to {}'.format(output_filename))
     #Check to see if other files of this name exist
-    if os.path.exists(output_filename):
-        print('')
-        print('WARNING: This will overwrite {}!'.format(output_filename))
-        flat_check = input('Do you want to continue? y/n: ')
-        if flat_check == 'y':
-            hdu.writeto(output_filename,overwrite=True)
-            print('Wrote to {}!'.format(output_filename))
-        else:
-            print('Not overwriting!')
-    else:
-        hdu.writeto(output_filename,overwrite=True)
+    # if os.path.exists(output_filename):
+    #     print('')
+    #     print('WARNING: This will overwrite {}!'.format(output_filename))
+    #     flat_check = input('Do you want to continue? y/n: ')
+    #     if flat_check == 'y':
+    #         hdu.writeto(output_filename,overwrite=True)
+    #         print('Wrote to {}!'.format(output_filename))
+    #     else:
+    #         print('Not overwriting!')
+    # else:
+    hdu.writeto(output_filename,overwrite=True)
+    print('Wrote to {}!'.format(output_filename))
     print('')
 
     
     if upload:
         print('Beginning upload process to pines.bu.edu...')
         print('Note, only PINES admins will be able to upload.')
-        time.sleep(2)
         print('')
         sftp.chdir('/')
         sftp.chdir('data/calibrations/Flats/Domeflats/'+band)
         upload_name = 'master_flat_'+band+'_'+date+'.fits'
-        if upload_name in sftp.listdir():
-            print('WARNING: This will overwrite {} in pines.bu.edu:data/calibrations/Flats/Domeflats/{}/'.format(upload_name,band))
-            upload_check = input('Do you want to continue? y/n: ')
-            if upload_check == 'y':
-                sftp.put(output_filename,upload_name)
-                print('Uploaded to pines.bu.edu:data/calibrations/Flats/Domeflats/{}/ !'.format(band))
-            else:
-                print('Skipping upload!')
-        else:
-            sftp.put(output_filename,upload_name)
-            print('Uploaded {} to pines.bu.edu:data/calibrations/Flats/Domeflats/{}/!'.format(upload_name, band))
+        # if upload_name in sftp.listdir():
+        #     print('WARNING: This will overwrite {} in pines.bu.edu:data/calibrations/Flats/Domeflats/{}/'.format(upload_name,band))
+        #     upload_check = input('Do you want to continue? y/n: ')
+        #     if upload_check == 'y':
+        #         sftp.put(output_filename,upload_name)
+        #         print('Uploaded to pines.bu.edu:data/calibrations/Flats/Domeflats/{}/ !'.format(band))
+        #     else:
+        #         print('Skipping upload!')
+        # else:
+        sftp.put(output_filename,upload_name)
+        print('Uploaded {} to pines.bu.edu:data/calibrations/Flats/Domeflats/{}/!'.format(upload_name, band))
 
 
     output_filename = pines_path/('Calibrations/Flats/Domeflats/'+band+'/Master Flats Stddev/master_flat_stddev_'+band+'_'+date+'.fits')
@@ -332,17 +354,18 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
     print('')
     print('Writing the file to {}'.format(output_filename))
     #Check to see if other files of this name exist
-    if os.path.exists(output_filename):
-        print('')
-        print('WARNING: This will overwrite {}!'.format(output_filename))
-        flat_check = input('Do you want to continue? y/n: ')
-        if flat_check == 'y':
-            hdu.writeto(output_filename,overwrite=True)
-            print('Wrote to {}!'.format(output_filename))
-        else:
-            print('Not overwriting!')
-    else:
-        hdu.writeto(output_filename,overwrite=True)
+    # if os.path.exists(output_filename):
+    #     print('')
+    #     print('WARNING: This will overwrite {}!'.format(output_filename))
+    #     flat_check = input('Do you want to continue? y/n: ')
+    #     if flat_check == 'y':
+    #         hdu.writeto(output_filename,overwrite=True)
+    #         print('Wrote to {}!'.format(output_filename))
+    #     else:
+    #         print('Not overwriting!')
+    # else:
+    hdu.writeto(output_filename,overwrite=True)
+    print('Wrote to {}!'.format(output_filename))
     print('')
 
     
@@ -354,17 +377,17 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
         sftp.chdir('/')
         sftp.chdir('data/calibrations/Flats Stddev/Domeflats/'+band)
         upload_name = 'master_flat_'+band+'_'+date+'.fits'
-        if upload_name in sftp.listdir():
-            print('WARNING: This will overwrite {} in pines.bu.edu:data/calibrations/Flats/Domeflats/{}/'.format(upload_name,band))
-            upload_check = input('Do you want to continue? y/n: ')
-            if upload_check == 'y':
-                sftp.put(output_filename,upload_name)
-                print('Uploaded to pines.bu.edu:data/calibrations/Flats Stddev/Domeflats/{}/ !'.format(band))
-            else:
-                print('Skipping upload!')
-        else:
-            sftp.put(output_filename,upload_name)
-            print('Uploaded {} to pines.bu.edu:data/calibrations/Flats Stddev/Domeflats/{}/!'.format(upload_name, band))
+        # if upload_name in sftp.listdir():
+        #     print('WARNING: This will overwrite {} in pines.bu.edu:data/calibrations/Flats/Domeflats/{}/'.format(upload_name,band))
+        #     upload_check = input('Do you want to continue? y/n: ')
+        #     if upload_check == 'y':
+        #         sftp.put(output_filename,upload_name)
+        #         print('Uploaded to pines.bu.edu:data/calibrations/Flats Stddev/Domeflats/{}/ !'.format(band))
+        #     else:
+        #         print('Skipping upload!')
+        # else:
+        sftp.put(output_filename,upload_name)
+        print('Uploaded {} to pines.bu.edu:data/calibrations/Flats Stddev/Domeflats/{}/!'.format(upload_name, band))
     print('')
     if delete_raw:
         files_to_delete = glob.glob(os.path.join(dome_flat_raw_path/'*.fits'))

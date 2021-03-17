@@ -73,7 +73,7 @@ def dead_pixels(date, band, clip_lvl=4.5, box_l=3, upload=False, sftp=''):
         box_plus = int(box_l/2) + 1
         targ_pix_ind = int(box_l**2/2)
 
-        while (num_flagged != 0): 
+        while (num_flagged > 1): 
             num_flagged = 0
             pbar = ProgressBar()
             for xx in pbar(range(int(box_l/2), shape[0]-int(box_l/2))):
@@ -107,36 +107,36 @@ def dead_pixels(date, band, clip_lvl=4.5, box_l=3, upload=False, sftp=''):
     print('Writing the file to '+output_filename)
 
     #Check to see if other files of this name exist.
-    if os.path.exists(output_path):
-        print('')
-        print('WARNING: This will overwrite {}!'.format(output_path))
-        dark_check = input('Do you want to continue? y/n: ')
-        if dark_check == 'y':
-            hdu.writeto(output_path,overwrite=True)
-            print('Wrote to {}!'.format(output_path))
-        else:
-            print('Not overwriting!')
-    else:
-        hdu.writeto(output_path,overwrite=True)
+    # if os.path.exists(output_path):
+    #     print('')
+    #     print('WARNING: This will overwrite {}!'.format(output_path))
+    #     dark_check = input('Do you want to continue? y/n: ')
+    #     if dark_check == 'y':
+    #         hdu.writeto(output_path,overwrite=True)
+    #         print('Wrote to {}!'.format(output_path))
+    #     else:
+    #         print('Not overwriting!')
+    # else:
+    hdu.writeto(output_path,overwrite=True)
+    print('Wrote to {}!'.format(output_path))
     print('')
 
     #Upload the master dark to PINES server.
     if upload:
         print('Beginning upload process to pines.bu.edu...')
         print('Note, only PINES admins will be able to upload.')
-        time.sleep(2)
         print('')
         sftp.chdir('/')
         sftp.chdir('data/calibrations/Dead Pixel Masks')
         upload_name = output_filename
-        if upload_name in sftp.listdir():
-            print('WARNING: This will overwrite {} in pines.bu.edu:data/calibrations/Dead Pixel Masks/'.format(upload_name))
-            upload_check = input('Do you want to continue? y/n: ')
-            if upload_check == 'y':
-                sftp.put(output_path,upload_name)
-                print('Uploaded to pines.bu.edu:data/calibrations/Dead Pixel Masks/!')
-            else:
-                print('Skipping upload!')
-        else:
-            sftp.put(output_path,upload_name)
-            print('Uploaded {} to pines.bu.edu:data/calibrations/Dead Pixel Masks/!'.format(upload_name))
+        # if upload_name in sftp.listdir():
+        #     print('WARNING: This will overwrite {} in pines.bu.edu:data/calibrations/Dead Pixel Masks/'.format(upload_name))
+        #     upload_check = input('Do you want to continue? y/n: ')
+        #     if upload_check == 'y':
+        #         sftp.put(output_path,upload_name)
+        #         print('Uploaded to pines.bu.edu:data/calibrations/Dead Pixel Masks/!')
+        #     else:
+        #         print('Skipping upload!')
+        # else:
+        sftp.put(output_path,upload_name)
+        print('Uploaded {} to pines.bu.edu:data/calibrations/Dead Pixel Masks/!'.format(upload_name))

@@ -41,7 +41,7 @@ from astropy.visualization import ImageNormalize, ZScaleInterval
 '''
 
 def ref_star_chooser(target, source_detect_image_ind=30, guess_position=(700.,382.), radius_check=6., non_linear_limit=3300., 
-                    dimness_tolerance=0.5, closeness_tolerance=12., distance_from_target=900., edge_tolerance=50., exclude_lower_left=False, restore=False,
+                    dimness_tolerance=0.5, brightness_tolerance=10., closeness_tolerance=12., distance_from_target=900., edge_tolerance=50., exclude_lower_left=False, restore=False,
                     source_detect_plot=False):
     plt.ion()
 
@@ -139,6 +139,7 @@ def ref_star_chooser(target, source_detect_image_ind=30, guess_position=(700.,38
 
             non_linear_flag = len(np.where(sub_image > non_linear_limit)[0]) == 0 #Check if potential ref is near non-linear regime.
             dimness_flag = ((aperture_photometry(image, ap)['aperture_sum'] - bg_estimate * ap.area) > dimness_tolerance*targ_flux_estimate)[0] #Check if potential ref is bright enough. 
+            brightness_flag = ((aperture_photometry(image, ap)['aperture_sum'] - bg_estimate * ap.area) < brightness_tolerance*targ_flux_estimate)[0]
             closeness_flag = (len(np.where(dists[np.where(dists != 0)] < closeness_tolerance)[0]) == 0)
             proximity_flag = (np.sqrt((sources['xcenter'][target_id]-sources['xcenter'][i])**2+(sources['ycenter'][target_id]-sources['ycenter'][i])**2) < distance_from_target)
             if exclude_lower_left:
@@ -149,7 +150,7 @@ def ref_star_chooser(target, source_detect_image_ind=30, guess_position=(700.,38
             else:
                 lower_left_flag = True
 
-            if (non_linear_flag) & (dimness_flag) & (closeness_flag) & (proximity_flag) & (lower_left_flag):
+            if (non_linear_flag) & (dimness_flag) & (brightness_flag) & (closeness_flag) & (proximity_flag) & (lower_left_flag):
                 suitable_ref_ids.append(i)
             else:
                 bad_ref_ids.append(i)
@@ -181,7 +182,7 @@ def ref_star_chooser(target, source_detect_image_ind=30, guess_position=(700.,38
     ax.plot(output_df['Source Detect X'][0], output_df['Source Detect Y'][0], marker='o', color='m', mew=2, ms=12, ls='', mfc='None', label='Target')
     for i in range(1,len(output_df)):
         ax.plot(output_df['Source Detect X'][i], output_df['Source Detect Y'][i], marker='o', color='b', mew=2, ms=12, ls='', mfc='None', label='Reference')
-        ax.text(output_df['Source Detect X'][i]+5, output_df['Source Detect Y'][i]+5, str(i), fontsize=14, color='r')
+        ax.text(output_df['Source Detect X'][i]+7, output_df['Source Detect Y'][i]+5, str(i), fontsize=14, color='r')
     handles, labels = ax.get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     ax.legend(by_label.values(), by_label.keys(), bbox_to_anchor=(1.1, 1.1))
@@ -216,7 +217,7 @@ def ref_star_chooser(target, source_detect_image_ind=30, guess_position=(700.,38
         ax.plot(output_df['Source Detect X'][0], output_df['Source Detect Y'][0], marker='o', color='m', mew=2, ms=12, ls='', mfc='None', label='Target')
         for i in range(1,len(output_df)):
             ax.plot(output_df['Source Detect X'][i], output_df['Source Detect Y'][i], marker='o', color='b', mew=2, ms=12, ls='', mfc='None', label='Reference')
-            ax.text(output_df['Source Detect X'][i]+5, output_df['Source Detect Y'][i]+5, str(i), fontsize=14)
+            ax.text(output_df['Source Detect X'][i]+7, output_df['Source Detect Y'][i]+5, str(i), color='r', fontsize=14)
         handles, labels = ax.get_legend_handles_labels()
         by_label = dict(zip(labels, handles))
         ax.legend(by_label.values(), by_label.keys(), bbox_to_anchor=(1.1, 1.1))

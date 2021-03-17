@@ -122,7 +122,7 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
         x_pos = sources['Source Detect X'][i] 
         y_pos = sources['Source Detect Y'][i] 
         print('')
-        print('Getting centroids for {}, source {} of {}.'.format(sources['Name'][i],i+1,len(sources)))
+        print('Getting centroids for {}, ({:3.1f}, {:3.1f}) in source detection image. Source {} of {}.'.format(sources['Name'][i], x_pos, y_pos, i+1,len(sources)))
         if output_plots:
             print('Saving centroid plots to {}.'.format(pines_path/('Objects/'+short_name+'/sources/'+sources['Name'][i]+'/')))
         pbar = ProgressBar()
@@ -294,8 +294,8 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
 
             if output_plots: 
                 #Plot
-                lock_x = int(centroid_df[sources['Name'][i]+' X'][0])
-                lock_y = int(centroid_df[sources['Name'][i]+' Y'][0])
+                lock_x = int(centroid_df[sources['Name'][i]+' Image X'][0])
+                lock_y = int(centroid_df[sources['Name'][i]+' Image Y'][0])
                 norm = ImageNormalize(data=cutout, interval=ZScaleInterval(), stretch=SquaredStretch())
                 plt.imshow(image, origin='lower', norm=norm)
                 plt.plot(centroid_x, centroid_y, 'rx')

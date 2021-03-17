@@ -80,12 +80,8 @@ def shift_measurer(target, image_name, num_sources=15, closeness_tolerance=10., 
     ind = np.where(log['Filename'] == raw_filename)[0][0]
     seeing = float(log['X seeing'][ind])
 
-    #Measured seeing values > 3.5" give poor results when applied as a daostarfinder_fwhm. Limit to 3.5".
-    if seeing > 3.5: 
-        seeing = 3.5 
-
     #Find sources in the image. 
-    sources = detect_sources(image_path, seeing, edge_tolerance=30, thresh=3.5)
+    sources = detect_sources(image_path, seeing, edge_tolerance=10, thresh=3.5)
     
     #Comb the returned sources and cut any that are too close to another one. 
     #This can happen if the actual seeing differs from that recorded in the log. 
@@ -127,6 +123,8 @@ def shift_measurer(target, image_name, num_sources=15, closeness_tolerance=10., 
     #print('')
 
     if (abs(x_shift) > shift_tolerance) or (abs(y_shift) > shift_tolerance):
+        print('Shift greater than {} pixels measured for {} in {}.'.format(shift_tolerance, short_name, image_path.name))
+        print('Inspect manually.')
         pdb.set_trace()
 
     return x_shift, -y_shift

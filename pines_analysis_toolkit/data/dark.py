@@ -184,24 +184,24 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
     print('Writing the file to master_dark_'+str(exptime)+'_s_'+date+'.fits')
 
     #Check to see if other files of this name exist.
-    if os.path.exists(output_filename):
-        print('')
-        print('WARNING: This will overwrite {}!'.format(output_filename))
-        dark_check = input('Do you want to continue? y/n: ')
-        if dark_check == 'y':
-            hdu.writeto(output_filename,overwrite=True)
-            print('Wrote to {}!'.format(output_filename))
-        else:
-            print('Not overwriting!')
-    else:
-        hdu.writeto(output_filename,overwrite=True)
+    # if os.path.exists(output_filename):
+    #     print('')
+    #     print('WARNING: This will overwrite {}!'.format(output_filename))
+    #     dark_check = input('Do you want to continue? y/n: ')
+    #     if dark_check == 'y':
+    #         hdu.writeto(output_filename,overwrite=True)
+    #         print('Wrote to {}!'.format(output_filename))
+    #     else:
+    #         print('Not overwriting!')
+    # else:
+    hdu.writeto(output_filename,overwrite=True)
+    print('Wrote to {}!'.format(output_filename))
     print('')
     
     #Upload the master dark to PINES server.
     if upload:
         print('Beginning upload process to pines.bu.edu...')
         print('Note, only PINES admins will be able to upload.')
-        time.sleep(2)
         print('')
         sftp.chdir('..')
         sftp.chdir('..')
@@ -209,17 +209,17 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
         sftp.chdir('..')
         sftp.chdir('calibrations/Darks')
         upload_name = 'master_dark_'+str(exptime)+'_s_'+date+'.fits'
-        if upload_name in sftp.listdir():
-            print('WARNING: This will overwrite {} in pines.bu.edu:data/calibrations/Darks/'.format(upload_name))
-            upload_check = input('Do you want to continue? y/n: ')
-            if upload_check == 'y':
-                sftp.put(output_filename,upload_name)
-                print('Uploaded to pines.bu.edu:data/calibrations/Darks/!')
-            else:
-                print('Skipping upload!')
-        else:
-            sftp.put(output_filename,upload_name)
-            print('Uploaded {} to pines.bu.edu:data/calibrations/Darks/!'.format(upload_name))
+        # if upload_name in sftp.listdir():
+        #     print('WARNING: This will overwrite {} in pines.bu.edu:data/calibrations/Darks/'.format(upload_name))
+        #     upload_check = input('Do you want to continue? y/n: ')
+        #     if upload_check == 'y':
+        #         sftp.put(output_filename,upload_name)
+        #         print('Uploaded to pines.bu.edu:data/calibrations/Darks/!')
+        #     else:
+        #         print('Skipping upload!')
+        # else:
+        sftp.put(output_filename,upload_name)
+        print('Uploaded {} to pines.bu.edu:data/calibrations/Darks/!'.format(upload_name))
 
         sftp.chdir('..')
 
@@ -237,38 +237,38 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
     print('Writing the file to master_dark_stddev_'+str(exptime)+'_s_'+date+'.fits')
 
     #Check to see if other files of this name exist.
-    if os.path.exists(output_filename):
-        print('')
-        print('WARNING: This will overwrite {}!'.format(output_filename))
-        dark_check = input('Do you want to continue? y/n: ')
-        if dark_check == 'y':
-            hdu.writeto(output_filename,overwrite=True)
-            print('Wrote to {}!'.format(output_filename))
-        else:
-            print('Not overwriting!')
-    else:
-        hdu.writeto(output_filename,overwrite=True)
+    # if os.path.exists(output_filename):
+    #     print('')
+    #     print('WARNING: This will overwrite {}!'.format(output_filename))
+    #     dark_check = input('Do you want to continue? y/n: ')
+    #     if dark_check == 'y':
+    #         hdu.writeto(output_filename,overwrite=True)
+    #         print('Wrote to {}!'.format(output_filename))
+    #     else:
+    #         print('Not overwriting!')
+    # else:
+    hdu.writeto(output_filename,overwrite=True)
+    print('Wrote to {}!'.format(output_filename))
     print('')
     
     #Upload the master dark to PINES server.
     if upload:
         print('Beginning upload process to pines.bu.edu...')
         print('Note, only PINES admins will be able to upload.')
-        time.sleep(2)
         print('')
         sftp.chdir('Darks Stddev')
         upload_name = 'master_dark_stddev_'+str(exptime)+'_s_'+date+'.fits'
-        if upload_name in sftp.listdir():
-            print('WARNING: This will overwrite {} in pines.bu.edu:data/calibrations/Darks Stddev/'.format(upload_name))
-            upload_check = input('Do you want to continue? y/n: ')
-            if upload_check == 'y':
-                sftp.put(output_filename,upload_name)
-                print('Uploaded to pines.bu.edu:data/calibrations/Darks Stddev/!')
-            else:
-                print('Skipping upload!')
-        else:
-            sftp.put(output_filename,upload_name)
-            print('Uploaded {} to pines.bu.edu:data/calibrations/Darks Stddev/!'.format(upload_name))
+        # if upload_name in sftp.listdir():
+        #     print('WARNING: This will overwrite {} in pines.bu.edu:data/calibrations/Darks Stddev/'.format(upload_name))
+        #     upload_check = input('Do you want to continue? y/n: ')
+        #     if upload_check == 'y':
+        #         sftp.put(output_filename,upload_name)
+        #         print('Uploaded to pines.bu.edu:data/calibrations/Darks Stddev/!')
+        #     else:
+        #         print('Skipping upload!')
+        # else:
+        sftp.put(output_filename,upload_name)
+        print('Uploaded {} to pines.bu.edu:data/calibrations/Darks Stddev/!'.format(upload_name))
 
     print('')
     #Delete raw dark images from disk.

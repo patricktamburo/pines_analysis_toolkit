@@ -88,7 +88,7 @@ def raw_flux_plot(times, raw_targ_flux, raw_targ_err, raw_ref_flux, raw_ref_err,
         ax.errorbar(times[i], raw_targ_flux[i], raw_targ_err[i], marker='o', linestyle='-', label='Target', mfc='none', mew=2, color='tab:orange')
 
         if i == num_nights - 1:
-            ax.legend(bbox_to_anchor=(1.03, 1), fontsize=12)
+            ax.legend(bbox_to_anchor=(1.03, 1.1), fontsize=10)
         
         ax.set_xlim(np.mean(times[i])-standard_time_range/2, np.mean(times[i])+standard_time_range/2)
         ax.grid(alpha=0.2)
@@ -150,7 +150,7 @@ def global_raw_flux_plot(times, raw_targ_flux, raw_targ_err, raw_ref_flux, raw_r
     ax.errorbar(times, raw_targ_flux[0], raw_targ_err[0], marker='o', linestyle='-', label='Target', mfc='none', mew=2, color='tab:orange')
 
     #ax.legend(bbox_to_anchor=(1.01, 1), fontsize=14)
-    ax.legend(bbox_to_anchor=(1.11, 1), fontsize=12)
+    ax.legend(bbox_to_anchor=(1.11, 1.1), fontsize=10)
 
     ax.grid(alpha=0.2)
 
@@ -455,6 +455,7 @@ def global_corr_target_plot(times, targ_flux_corr, binned_times, binned_flux, bi
 
 #def corr_all_sources_plot(times, targ_flux_corr, binned_times, binned_flux, binned_errs, corr_flux, binned_ref_fluxes, binned_ref_flux_errs, short_name, analysis_path, phot_type, ap_rad, num_refs, num_nights, norm_night_weights):
 def corr_all_sources_plot(target):
+    print('Generating corrected flux plots for all sources...\n')
     pines_path = pines_dir_check()
     short_name = short_name_creator(target)
     analysis_path = pines_path/('Objects/'+short_name+'/analysis/')
@@ -537,5 +538,5 @@ def corr_all_sources_plot(target):
             ax[j].set_title(title, fontsize=20, color=color)
             
         plt.savefig(output_path/output_name, dpi=300)
-        
+        plt.close()
     

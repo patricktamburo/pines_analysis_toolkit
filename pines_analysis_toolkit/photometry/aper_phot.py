@@ -321,8 +321,6 @@ def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.,
 	TODO:
     '''
 
-
-
     pines_path = pines_dir_check()
     short_name = short_name_creator(target)
     

@@ -66,37 +66,37 @@ def bpm_maker(flat_date, dark_date, exptime, band, upload=False, sftp=''):
     print('Writing the file to '+output_filename)
 
     #Check to see if other files of this name exist.
-    if os.path.exists(output_path):
-        print('')
-        print('WARNING: This will overwrite {}!'.format(output_path))
-        dark_check = input('Do you want to continue? y/n: ')
-        if dark_check == 'y':
-            hdu.writeto(output_path,overwrite=True)
-            print('Wrote to {}!'.format(output_path))
-        else:
-            print('Not overwriting!')
-    else:
-        hdu.writeto(output_path,overwrite=True)
+    # if os.path.exists(output_path):
+    #     print('')
+    #     print('WARNING: This will overwrite {}!'.format(output_path))
+    #     dark_check = input('Do you want to continue? y/n: ')
+    #     if dark_check == 'y':
+    #         hdu.writeto(output_path,overwrite=True)
+    #         print('Wrote to {}!'.format(output_path))
+    #     else:
+    #         print('Not overwriting!')
+    # else:
+    hdu.writeto(output_path,overwrite=True)
+    print('Wrote to {}!'.format(output_path))
     print('')
 
     #Upload the master dark to PINES server.
     if upload:
         print('Beginning upload process to pines.bu.edu...')
         print('Note, only PINES admins will be able to upload.')
-        time.sleep(2)
         print('')
         sftp.chdir('/')
         sftp.chdir('data/calibrations/Bad Pixel Masks')
         upload_name = output_filename
-        if upload_name in sftp.listdir():
-            print('WARNING: This will overwrite {} in pines.bu.edu:data/calibrations/Bad Pixel Masks/'.format(upload_name))
-            upload_check = input('Do you want to continue? y/n: ')
-            if upload_check == 'y':
-                sftp.put(output_path,upload_name)
-                print('Uploaded to pines.bu.edu:data/calibrations/Bad Pixel Masks/!')
-            else:
-                print('Skipping upload!')
-        else:
-            sftp.put(output_path,upload_name)
-            print('Uploaded {} to pines.bu.edu:data/calibrations/Bad Pixel Masks/!'.format(upload_name))
+        # if upload_name in sftp.listdir():
+        #     print('WARNING: This will overwrite {} in pines.bu.edu:data/calibrations/Bad Pixel Masks/'.format(upload_name))
+        #     upload_check = input('Do you want to continue? y/n: ')
+        #     if upload_check == 'y':
+        #         sftp.put(output_path,upload_name)
+        #         print('Uploaded to pines.bu.edu:data/calibrations/Bad Pixel Masks/!')
+        #     else:
+        #         print('Skipping upload!')
+        # else:
+        sftp.put(output_path,upload_name)
+        print('Uploaded {} to pines.bu.edu:data/calibrations/Bad Pixel Masks/!'.format(upload_name))
    
