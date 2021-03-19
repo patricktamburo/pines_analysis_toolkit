@@ -351,8 +351,6 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
     hdu.header['HIERARCH DATE CREATED'] = datetime.utcnow().strftime('%Y-%m-%d')+'T'+datetime.utcnow().strftime('%H:%M:%S')
 
     #Now save to a file on your local machine. 
-    print('')
-    print('Writing the file to {}'.format(output_filename))
     #Check to see if other files of this name exist
     # if os.path.exists(output_filename):
     #     print('')
@@ -366,14 +364,10 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
     # else:
     hdu.writeto(output_filename,overwrite=True)
     print('Wrote to {}!'.format(output_filename))
-    print('')
 
     
     if upload:
-        print('Beginning upload process to pines.bu.edu...')
-        print('Note, only PINES admins will be able to upload.')
-        time.sleep(2)
-        print('')
+        print('Uploading to pines.bu.edu...')
         sftp.chdir('/')
         sftp.chdir('data/calibrations/Flats Stddev/Domeflats/'+band)
         upload_name = 'master_flat_'+band+'_'+date+'.fits'

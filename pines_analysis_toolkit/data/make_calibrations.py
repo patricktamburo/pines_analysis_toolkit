@@ -1,7 +1,8 @@
 import pines_analysis_toolkit as pat 
 import pdb 
 
-def make_calibrations(sftp, exptimes, bands, dark_dates, flat_dates, dark=True, flat=True, variable_pixels=True, 
+def make_calibrations(sftp, exptimes, bands, dark_dates, flat_dates, dark_starts=[], dark_stops=[], lights_on_starts=[],
+                      lights_on_stops=[], lights_off_starts=[], lights_off_stops=[], dark=True, flat=True, variable_pixels=True, 
                       hot_pixels=True, dead_pixels=True, bpm=True):
     '''Authors: 
         Patrick Tamburo, Boston University, March 2021
@@ -14,6 +15,12 @@ def make_calibrations(sftp, exptimes, bands, dark_dates, flat_dates, dark=True, 
         bands (list of str): list of all bands for this target (e.g., ['J', 'H'] if observed in both J and H bands).
         dark_dates (list of str): list of UT dates on which darks were taken (order matches order of exptimes!).
         flat_dates (list of str): list of UT dates on which flats were taken (order matches order of bands!)
+        dark_starts (list of int): list of the start filenumbers for darks (order matches order of exptimes!)
+        dark_stops (list of int): list of the stop filenumbers for darks (order matches order of exptimes!)
+        lights_on_starts (list of int): list of the start filenumbers for lights on flats (order matches order of bands!)
+        lights_on_stops (list of int): list of the stop filenumbers for lights on flats (order matches order of bands!)
+        lights_off_starts (list of int): list of the start filenumbers for lights off flats (order matches order of bands!)
+        lights_off_stops (list of int): list of the stop filenumbers for lights off flats (order matches order of bands!)
         dark (bool): Whether or not to make the master darks. 
         flat (bool): Whether or not to make the master flats. 
         variable_pixels (bool): Whether or not to make the variable pixel masks. 
@@ -43,7 +50,13 @@ def make_calibrations(sftp, exptimes, bands, dark_dates, flat_dates, dark=True, 
                 print('{} already exists in {}, skipping.'.format(dark_path.name, calibration_path))
             else:
                 print('Making master dark for {}-s exposure time on {}.'.format(exptime, dark_date))
-                pat.data.dark(dark_date, exptime, upload=True, delete_raw=True, sftp=sftp, dark_start=0, dark_stop=0)
+                if len(dark_starts) == 0:
+                    dark_start = 0
+                    dark_stop  = 0
+                else:
+                    dark_start = dark_starts[i]
+                    dark_stop  = dark_stops[i]
+                pat.data.dark(dark_date, exptime, upload=True, delete_raw=True, sftp=sftp, dark_start=dark_start, dark_stop=dark_stop)
 
     print('')
 
@@ -57,7 +70,19 @@ def make_calibrations(sftp, exptimes, bands, dark_dates, flat_dates, dark=True, 
                 print('{} already exists in {}, skipping.'.format(flat_path.name, calibration_path))
             else:
                 print('Making master flat for {}-band on {}.'.format(band, dark_date))
-                pat.data.dome_flat_field(flat_date, band, sftp=sftp, upload=True, delete_raw=True, lights_on_start=0, lights_on_stop=0, lights_off_start=0, lights_off_stop=0)
+
+                if len(lights_on_starts) == 0:
+                    lights_on_start  = 0
+                    lights_on_stop   = 0
+                    lights_off_start = 0
+                    lights_off_stop  = 0
+                else:
+                    lights_on_start  = lights_on_starts[i]
+                    lights_on_stop   = lights_on_stops[i]
+                    lights_off_start = lights_off_starts[i]
+                    lights_off_stop  = lights_off_stops[i]
+
+                pat.data.dome_flat_field(flat_date, band, sftp=sftp, upload=True, delete_raw=True, lights_on_start=lights_on_start, lights_on_stop=lights_on_stop, lights_off_start=lights_off_start, lights_off_stop=lights_off_stop)
 
     print('')
 

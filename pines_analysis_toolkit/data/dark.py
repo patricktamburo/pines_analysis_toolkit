@@ -65,7 +65,7 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
             print('ERROR: specified date not found in any run on pines.bu.edu:data/raw/mimir/\n')
             return
         else:
-            #If the file start/stop numbers are specfied, grab those files.
+            #If the file start/stop numbers are specified, grab those files.
             if (dark_stop != 0):
                 files_in_dir = sftp.listdir()
                 dark_filenums = np.arange(dark_start, dark_stop+1, step=1)
@@ -86,12 +86,13 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
                         dark_files.append(file_name)
                     else:
                         print('{} not found in directory, skipping.'.format(file_name))        
+                pdb.set_trace()
             else:
                 #Otherwise, find the files automatically using the night's log. 
                 log_path = pines_path/'Logs'
                 #Check if you already have the log for this date, if not, download it. 
                 if not (log_path/(date+'_log.txt')).exists():
-                    print('Donwloading {}_log.txt to {}\n'.format(date,log_path))
+                    print('Downloading {}_log.txt to {}\n'.format(date,log_path))
                     sftp.get(date+'_log.txt',log_path/(date+'_log.txt'))
                 
                 #Read in the log from this date.
@@ -180,9 +181,6 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
     hdu.header['HIERARCH DATE CREATED'] = datetime.utcnow().strftime('%Y-%m-%d')+'T'+datetime.utcnow().strftime('%H:%M:%S')
 
     #Now save to a file on your local machine. 
-    print('')
-    print('Writing the file to master_dark_'+str(exptime)+'_s_'+date+'.fits')
-
     #Check to see if other files of this name exist.
     # if os.path.exists(output_filename):
     #     print('')
@@ -196,13 +194,10 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
     # else:
     hdu.writeto(output_filename,overwrite=True)
     print('Wrote to {}!'.format(output_filename))
-    print('')
     
     #Upload the master dark to PINES server.
     if upload:
-        print('Beginning upload process to pines.bu.edu...')
-        print('Note, only PINES admins will be able to upload.')
-        print('')
+        print('Uploading to pines.bu.edu...')
         sftp.chdir('..')
         sftp.chdir('..')
         sftp.chdir('..')
@@ -234,7 +229,6 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
 
     #Now save to a file on your local machine. 
     print('')
-    print('Writing the file to master_dark_stddev_'+str(exptime)+'_s_'+date+'.fits')
 
     #Check to see if other files of this name exist.
     # if os.path.exists(output_filename):
@@ -249,13 +243,10 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
     # else:
     hdu.writeto(output_filename,overwrite=True)
     print('Wrote to {}!'.format(output_filename))
-    print('')
     
     #Upload the master dark to PINES server.
     if upload:
-        print('Beginning upload process to pines.bu.edu...')
-        print('Note, only PINES admins will be able to upload.')
-        print('')
+        print('Uploading to pines.bu.edu...')
         sftp.chdir('Darks Stddev')
         upload_name = 'master_dark_stddev_'+str(exptime)+'_s_'+date+'.fits'
         # if upload_name in sftp.listdir():

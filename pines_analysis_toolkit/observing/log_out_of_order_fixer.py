@@ -95,7 +95,7 @@ def log_out_of_order_fixer(log_path, sftp):
                 for kk in range(len(nights)):
                     server_files = sftp.listdir(pines_raw_path+runs[jj]+'/'+nights[kk])
                     if missing_filename in server_files:
-                        print('File found: {}'.format(pines_raw_path+runs[jj]+'/'+nights[kk]))
+                        print('File found: {}'.format(pines_raw_path+runs[jj]+'/'+nights[kk]+'/'+missing_filename))
                         found = True
                         #Download the file and grab relevant parameters from the header. 
                         user_download_path = get_download_path()

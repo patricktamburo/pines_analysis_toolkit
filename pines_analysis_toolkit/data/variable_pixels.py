@@ -56,8 +56,6 @@ def variable_pixels(date, exptime, clip_lvl=5, upload=False, sftp=''):
 
     #Now save to a file on your local machine. 
     print('')
-    print('Writing the file to '+output_filename)
-
     # #Check to see if other files of this name exist.
     # if os.path.exists(output_path):
     #     print('')
@@ -71,13 +69,10 @@ def variable_pixels(date, exptime, clip_lvl=5, upload=False, sftp=''):
     # else:
     hdu.writeto(output_path,overwrite=True)
     print('Wrote to {}!'.format(output_path))
-    print('')
 
     #Upload the master dark to PINES server.
     if upload:
-        print('Beginning upload process to pines.bu.edu...')
-        print('Note, only PINES admins will be able to upload.')
-        print('')
+        print('Uploading to pines.bu.edu...')
         sftp.chdir('/')
         sftp.chdir('data/calibrations/Variable Pixel Masks')
         upload_name = output_filename
