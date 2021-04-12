@@ -7,3 +7,4 @@ from pines_analysis_toolkit.utils.quick_plot import quick_plot
 from pines_analysis_toolkit.utils.gif_utils import gif_maker
 from pines_analysis_toolkit.utils.update_header import update_header
 from pines_analysis_toolkit.utils.get_source_names import get_source_names
+from pines_analysis_toolkit.utils.profile_reader import profile_reader

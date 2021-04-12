@@ -129,12 +129,13 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
         for j in pbar(range(len(reduced_files))):
             centroid_df[sources['Name'][i]+' Centroid Warning'][j] = 0
             file = reduced_files[j]
-
-            
             image = fits.open(file)[0].data
             #Get the measured image shift for this image. 
             log = pines_log_reader(log_path/(file.name.split('.')[0]+'_log.txt'))
             log_ind = np.where(log['Filename'] == file.name.split('_')[0]+'.fits' )[0][0]
+
+            
+
             x_shift = float(log['X shift'][log_ind])
             y_shift = float(log['Y shift'][log_ind])
 
@@ -144,7 +145,12 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
                 centroid_df['Seeing'][j] = log['X seeing'][log_ind]
                 centroid_df['Time (JD UTC)'][j] = julian.to_jd(datetime.datetime.strptime(fits.open(file)[0].header['DATE-OBS'], '%Y-%m-%dT%H:%M:%S.%f'))
                 centroid_df['Airmass'][j] = log['Airmass'][log_ind]
+            
             nan_flag = False #Flag indicating if you should not trust the log's shifts. Set to true if x_shift/y_shift are 'nan' or > 30 pixels. 
+
+            #If bad shifts were measured for this image, skip. 
+            if log['Shift quality flag'][log_ind] == 1:
+                continue
 
             if np.isnan(x_shift) or np.isnan(y_shift):
                 x_shift = 0
@@ -338,10 +344,13 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
                         f.write('{:<23s}, {:<23s}, {:<24s}, {:<24s}, {:<34s}\n'.format(n+' Image X', n+' Image Y', n+' Cutout X', n+' Cutout Y',  n+' Centroid Warning'))
             
             #Write in the data lines.
-            f.write('{:<17s}, '.format(centroid_df['Filename'][j]))
-            f.write('{:<15.7f}, '.format(centroid_df['Time (JD UTC)'][j]))
-            f.write('{:<6.1f}, '.format(centroid_df['Seeing'][j]))
-            f.write('{:<7.2f}, '.format(centroid_df['Airmass'][j]))
+            try:
+                f.write('{:<17s}, '.format(centroid_df['Filename'][j]))
+                f.write('{:<15.7f}, '.format(centroid_df['Time (JD UTC)'][j]))
+                f.write('{:<6.1f}, '.format(float(centroid_df['Seeing'][j])))
+                f.write('{:<7.2f}, '.format(centroid_df['Airmass'][j]))
+            except:
+                pdb.set_trace()
 
             for i in range(len(sources['Name'])):
                 n = sources['Name'][i]                    

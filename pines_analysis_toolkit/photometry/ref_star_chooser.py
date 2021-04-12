@@ -24,7 +24,7 @@ from astropy.visualization import ImageNormalize, ZScaleInterval
         Chooses suitable reference stars for a target.
 	Inputs:
         target (str): The target's full 2MASS name
-        source_detect_image_ind (int, optional): The number of the reduced file to use for source detection. By default, the program will use the 30th image for the target (don't want to use first image because background is usually still pretty high)
+        source_detect_image (str): The name of the reduced file to use for source detection.
         seeing_fwhm (float, optional): Seeing in arcsec for the source detection.
         radius_check (float, optional): The radius (in pixels) of an aperture that will be placed around potential reference stars to see if there are non-linear pixels.
         non_linear_limit (float, optional): If a potential reference star has a pixel within an aperture of radius radius_check with a value greater than non_linear_limit, it will not be used.
@@ -40,7 +40,7 @@ from astropy.visualization import ImageNormalize, ZScaleInterval
 	TODO:
 '''
 
-def ref_star_chooser(target, source_detect_image_ind=30, guess_position=(700.,382.), radius_check=6., non_linear_limit=3300., 
+def ref_star_chooser(target, source_detect_image, guess_position=(700.,382.), radius_check=6., non_linear_limit=3300., 
                     dimness_tolerance=0.5, brightness_tolerance=10., closeness_tolerance=12., distance_from_target=900., edge_tolerance=50., exclude_lower_left=False, restore=False,
                     source_detect_plot=False):
     plt.ion()
@@ -70,7 +70,7 @@ def ref_star_chooser(target, source_detect_image_ind=30, guess_position=(700.,38
     #Set path to source directory. 
     source_dir = pines_path/('Objects/'+short_name+'/sources/')
 
-
+    source_detect_image_ind = np.where([i.name == source_detect_image for i in reduced_files])[0][0]
     source_detect_image_path = reduced_files[source_detect_image_ind]
     source_frame = source_detect_image_path.name.split('_')[0]+'.fits'
     log_name = source_frame.split('.')[0]+'_log.txt'
