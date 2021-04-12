@@ -61,6 +61,7 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
                 sftp.chdir(date)
                 break
             sftp.chdir('..')
+    
         if data_path == '':
             print('ERROR: specified date not found in any run on pines.bu.edu:data/raw/mimir/\n')
             return
@@ -91,9 +92,10 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
                 #Otherwise, find the files automatically using the night's log. 
                 log_path = pines_path/'Logs'
                 #Check if you already have the log for this date, if not, download it. 
+                #Download from the /data/logs/ directory on PINES.
                 if not (log_path/(date+'_log.txt')).exists():
                     print('Downloading {}_log.txt to {}\n'.format(date,log_path))
-                    sftp.get(date+'_log.txt',log_path/(date+'_log.txt'))
+                    sftp.get('/data/logs/'+date+'_log.txt',log_path/(date+'_log.txt'))
                 
                 #Read in the log from this date.
                 log = pines_log_reader(log_path/(date+'_log.txt'))

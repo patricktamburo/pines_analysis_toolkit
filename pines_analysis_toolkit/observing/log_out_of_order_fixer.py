@@ -47,7 +47,7 @@ def log_out_of_order_fixer(log_path, sftp):
     #Sort everything based on file number. 
     log_filenums = []
     for i in range(len(lines)):
-        if lines[i][0] == '#':
+        if lines[i].strip()[0] == '#':
             log_filenums.append(0)
         else:
             log_filenums.append(int(lines[i].split(',')[0].split('.')[1]))
@@ -70,59 +70,60 @@ def log_out_of_order_fixer(log_path, sftp):
             found = False
 
             missing_filename = log_path.name.split('_')[0]+'.'+str(file_num)+'.fits'
-            print('{} missing from log.'.format(missing_filename))
-            print('Searching for file on PINES server...')
+            if missing_filename != '20200206.607.fits': #corrupt file
+                print('{} missing from log.'.format(missing_filename))
+                print('Searching for file on PINES server...')
 
-            pines_raw_path = '/data/raw/mimir/'
-            runs = sftp.listdir(pines_raw_path)
+                pines_raw_path = '/data/raw/mimir/'
+                runs = sftp.listdir(pines_raw_path)
 
-            #The file will be in one of these directories if it's on the server
-            run_guess = missing_filename[0:6]
-            ind = np.where(np.array(runs) == run_guess)[0][0]
+                #The file will be in one of these directories if it's on the server
+                run_guess = missing_filename[0:6]
+                ind = np.where(np.array(runs) == run_guess)[0][0]
 
-            if ind + 1 == len(runs):
-                inds = np.arange(ind-1, ind+1)
-                runs = np.array(runs)[inds]
-                runs = [runs[1], runs[0]]
-            else:
-                inds = np.arange(ind-1, ind+2)
-                runs = np.array(runs)[inds]
-                runs = [runs[1], runs[0], runs[2]] 
+                if ind + 1 == len(runs):
+                    inds = np.arange(ind-1, ind+1)
+                    runs = np.array(runs)[inds]
+                    runs = [runs[1], runs[0]]
+                else:
+                    inds = np.arange(ind-1, ind+2)
+                    runs = np.array(runs)[inds]
+                    runs = [runs[1], runs[0], runs[2]] 
 
-            for jj in range(len(runs)):
-                nights = sftp.listdir(pines_raw_path+'/'+runs[jj])
-                nights = [i for i in nights if i[0] == '2']
-                for kk in range(len(nights)):
-                    server_files = sftp.listdir(pines_raw_path+runs[jj]+'/'+nights[kk])
-                    if missing_filename in server_files:
-                        print('File found: {}'.format(pines_raw_path+runs[jj]+'/'+nights[kk]+'/'+missing_filename))
-                        found = True
-                        #Download the file and grab relevant parameters from the header. 
-                        user_download_path = get_download_path()
-                        sftp.get(pines_raw_path+runs[jj]+'/'+nights[kk]+'/'+missing_filename, user_download_path+'/'+missing_filename)
-                        header = fits.open(user_download_path+'/'+missing_filename)[0].header
-                        date = header['DATE']
-                        if header['OBJECT'] == 'dummy':
-                            print('ERROR: PINES_watchdog logged "dummy" for object filename; inspect the field and update its name manually.')
-                        else:
-                            target_name = header['OBJECT'].split('J')[0] +' J'+ header['OBJECT'].split('J')[1]
-                        filter_name = header['FILTNME2']
-                        exptime = str(header['EXPTIME'])
-                        airmass = str(header['AIRMASS'])
-                        #Use these guesses for shifts/seeings. Will be updated at a later step.
-                        x_shift = str(0.0)
-                        y_shift = str(0.0)
-                        x_seeing = str(2.5)
-                        y_seeing = str(2.5)
+                for jj in range(len(runs)):
+                    nights = sftp.listdir(pines_raw_path+'/'+runs[jj])
+                    nights = [i for i in nights if i[0] == '2']
+                    for kk in range(len(nights)):
+                        server_files = sftp.listdir(pines_raw_path+runs[jj]+'/'+nights[kk])
+                        if missing_filename in server_files:
+                            print('File found: {}'.format(pines_raw_path+runs[jj]+'/'+nights[kk]+'/'+missing_filename))
+                            found = True
+                            #Download the file and grab relevant parameters from the header. 
+                            user_download_path = get_download_path()
+                            sftp.get(pines_raw_path+runs[jj]+'/'+nights[kk]+'/'+missing_filename, user_download_path+'/'+missing_filename)
+                            header = fits.open(user_download_path+'/'+missing_filename)[0].header
+                            date = header['DATE']
+                            if header['OBJECT'] == 'dummy':
+                                print('ERROR: PINES_watchdog logged "dummy" for object filename; inspect the field and update its name manually.')
+                            else:
+                                target_name = header['OBJECT'].split('J')[0] +' J'+ header['OBJECT'].split('J')[1]
+                            filter_name = header['FILTNME2']
+                            exptime = str(header['EXPTIME'])
+                            airmass = str(header['AIRMASS'])
+                            #Use these guesses for shifts/seeings. Will be updated at a later step.
+                            x_shift = str(0.0)
+                            y_shift = str(0.0)
+                            x_seeing = str(2.5)
+                            y_seeing = str(2.5)
 
-                        #Add the line to the log.
-                        line = pines_logging(missing_filename, date, target_name, filter_name, exptime, airmass, x_shift, y_shift, x_seeing, y_seeing)
-                        lines.insert(i+1, line)
+                            #Add the line to the log.
+                            line = pines_logging(missing_filename, date, target_name, filter_name, exptime, airmass, x_shift, y_shift, x_seeing, y_seeing)
+                            lines.insert(i+1, line)
 
-                        #Delete the file from the Downloads folder. 
-                        os.remove(user_download_path+'/'+missing_filename)
-                        break
-            
+                            #Delete the file from the Downloads folder. 
+                            os.remove(user_download_path+'/'+missing_filename)
+                            break
+                
             if not found:
                 print('{} not found in any raw directories on the PINES server... inspect manually.'.format(missing_filename))
                 pdb.set_trace()

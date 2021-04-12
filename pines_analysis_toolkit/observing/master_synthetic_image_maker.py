@@ -21,6 +21,7 @@ from astropy.convolution import Gaussian2DKernel, interpolate_replace_nans
 from pines_analysis_toolkit.utils.pines_dir_check import pines_dir_check
 from pines_analysis_toolkit.utils.short_name_creator import short_name_creator
 from pines_analysis_toolkit.utils.quick_plot import quick_plot as qp 
+from astropy.visualization import ImageNormalize, ZScaleInterval
 
 def master_synthetic_image_creator(target, image_name, seeing=2.5, sigma_above_bg=5):
     '''Authors:
@@ -115,7 +116,6 @@ def master_synthetic_image_creator(target, image_name, seeing=2.5, sigma_above_b
         x_centroids = phot_table['xcenter'].value
         y_centroids = phot_table['ycenter'].value
 
-        pdb.set_trace()
         return(x_centroids,y_centroids)
 
     def synthetic_image_maker(x_centroids,y_centroids,fwhm):
@@ -176,6 +176,7 @@ def master_synthetic_image_creator(target, image_name, seeing=2.5, sigma_above_b
     print('')
     print('')
 
+    
     #Prompt the user to remove any false detections.
     ids = input('Enter ids of sources to be removed separated by commas (i.e., 4,18,22). If none to remove, hit enter. To break, ctrl + D. ')
     if ids != '':

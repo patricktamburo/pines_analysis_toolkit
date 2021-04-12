@@ -9,9 +9,9 @@ def average_seeing(log_path):
     try:
         df = pines_log_reader(log_path)
         if 'X seeing' in df.keys():
-            seeing = np.array(df['X seeing'][df['X seeing'] != 0])
-            seeing = np.array(seeing[seeing != 'nan'], dtype=float)
-            seeing = seeing[np.where(seeing > 0.9)[0]]
+            seeing = np.array(df['X seeing'], dtype=float)
+            seeing = np.array(seeing[np.where(~np.isnan(seeing))], dtype=float)
+            seeing = seeing[np.where((seeing > 1.2) & (seeing < 7.0))[0]]
             mean_seeing = np.nanmean(seeing)
             std_seeing = np.nanstd(seeing)
             print('Average seeing for {}: {:1.1f} +/- {:1.1f}"'.format(log_path.split('/')[-1].split('_')[0], mean_seeing, std_seeing))
@@ -25,14 +25,18 @@ if __name__ == '__main__':
     pines_dir = pines_dir_check()
     log_path = pines_dir/'Logs'
     logs = np.array(natsorted(glob(str(log_path/'*.txt'))))
-    logs = logs[6:-1] #Ignore first set of logs, ignore master_log
 
+    #Remove one bad log 
+    bad_loc = np.where(np.array([logs[i].split('/')[-1] for i in range(len(logs))]) == '20201003_log.txt')[0][0]
+    logs = np.delete(logs, bad_loc)
+    #logs = logs[6:-1] #Ignore first set of logs, ignore master_log
 
+    
     seeings = np.zeros(len(logs))
     for i in range(len(logs)):
         log_path = logs[i]
         seeings[i] = average_seeing(log_path)
     
     seeings = seeings[seeings < 5] #Cut some bad values. 
-    print('Global average seeing: {:1.1f}.'.format(np.nanmean(seeings)))
+    print('Global average seeing: {:1.1f} +/- {:1.1f}.'.format(np.nanmean(seeings), np.nanstd(seeings)))
     pdb.set_trace()

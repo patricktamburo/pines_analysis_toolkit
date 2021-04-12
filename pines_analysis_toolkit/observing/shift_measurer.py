@@ -3,6 +3,7 @@ from pines_analysis_toolkit.utils.short_name_creator import short_name_creator
 from pines_analysis_toolkit.utils.pines_dir_check import pines_dir_check
 from pines_analysis_toolkit.data.get_master_synthetic_image import get_master_synthetic_image
 from pines_analysis_toolkit.utils.pines_login import pines_login
+from pines_analysis_toolkit.data.reduce import reduce
 from astropy.io import fits 
 from pines_analysis_toolkit.utils.quick_plot import quick_plot as qp 
 from astropy.convolution import Gaussian2DKernel, interpolate_replace_nans
@@ -18,7 +19,7 @@ from natsort import natsorted
 from glob import glob 
 import pandas as pd 
 
-def shift_measurer(target, image_name, num_sources=15, closeness_tolerance=10., shift_tolerance=100):
+def shift_measurer(target, image_name, sftp, num_sources=15, closeness_tolerance=10.):
     '''Authors:
             Patrick Tamburo, Boston University, June 2020
         Purpose:
@@ -28,7 +29,6 @@ def shift_measurer(target, image_name, num_sources=15, closeness_tolerance=10., 
             image_name (str): The name of the reduced image whose shift you want to measure. 
             num_sources (int): The maximum number of sources you would like to use to measure shifts. 
             closeness_tolerance (float): The closest two identified sources can be in pixels before one is thrown out. 
-            shift_tolerance (float): The maximum measured shift that can be reported before the code breaks. 
         Outputs:
 
         TODO:
@@ -61,11 +61,39 @@ def shift_measurer(target, image_name, num_sources=15, closeness_tolerance=10., 
     image_path = pines_path/('Objects/'+short_name+'/reduced/'+image_name)
     #Check for the appropriate master synthetic image on disk. If it's not there, get from PINES server. 
     if not synthetic_path.exists():
-        sftp = pines_login()
         get_master_synthetic_image(sftp, target)
-        sftp.close()
 
     master_synthetic_image = fits.open(synthetic_path)[0].data
+    
+    #If the reduced image doesn't exist, download raw from PINES server and reduce it. 
+    if not image_path.exists():
+        missing_filename = image_path.name.split('_')[0]+'.fits'
+        sftp.chdir('/data/raw/mimir/')
+        runs = sftp.listdir()
+        run_guess = missing_filename[0:6]
+        ind = np.where(np.array(runs) == run_guess)[0][0]
+
+        if ind + 1 == len(runs):
+            inds = np.arange(ind-1, ind+1)
+            runs = np.array(runs)[inds]
+            runs = [runs[1], runs[0]]
+        else:
+            inds = np.arange(ind-1, ind+2)
+            runs = np.array(runs)[inds]
+            runs = [runs[1], runs[0], runs[2]] 
+
+        for jj in range(len(runs)):
+            nights = sftp.listdir('/data/raw/mimir/'+runs[jj])
+            nights = [i for i in nights if i[0] == '2']
+            for kk in range(len(nights)):
+                server_files = sftp.listdir('/data/raw/mimir/'+runs[jj]+'/'+nights[kk])
+                if missing_filename in server_files:
+                    print('File found: {}'.format('/data/raw/mimir/'+runs[jj]+'/'+nights[kk]+'/'+missing_filename))
+                    found = True
+                    #Download the file and grab relevant parameters from the header. 
+                    sftp.get('/data/raw/mimir/'+runs[jj]+'/'+nights[kk]+'/'+missing_filename, pines_path/('Objects/'+short_name+'/raw/'+missing_filename))
+                    break
+        reduce(target)
 
     #Read in the check image and interpolate/background subtract to make source detection easier. 
     check_image = fits.open(image_path)[0].data
@@ -79,6 +107,14 @@ def shift_measurer(target, image_name, num_sources=15, closeness_tolerance=10., 
     raw_filename = image_name.split('_')[0]+'.fits'
     ind = np.where(log['Filename'] == raw_filename)[0][0]
     seeing = float(log['X seeing'][ind])
+
+    if (seeing <= 1.0) or (seeing >= 7.0) or (np.isnan(seeing)):
+        if ind >= 5:
+            seeing = np.nanmedian(np.array(log['X seeing'][ind-5:ind], dtype='float'))
+        else:
+            seeing = 2.6
+    
+
 
     #Find sources in the image. 
     sources = detect_sources(image_path, seeing, edge_tolerance=10, thresh=3.5)
@@ -122,9 +158,6 @@ def shift_measurer(target, image_name, num_sources=15, closeness_tolerance=10., 
     #print('(X shift, Y shift): ({:3.1f}, {:3.1f})'.format(x_shift, -y_shift))
     #print('')
 
-    if (abs(x_shift) > shift_tolerance) or (abs(y_shift) > shift_tolerance):
-        print('Shift greater than {} pixels measured for {} in {}.'.format(shift_tolerance, short_name, image_path.name))
-        print('Inspect manually.')
-        pdb.set_trace()
 
-    return x_shift, -y_shift
+
+    return (x_shift, -y_shift, source_x, source_y, check_image)

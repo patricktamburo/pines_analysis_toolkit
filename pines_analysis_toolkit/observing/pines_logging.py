@@ -1,7 +1,7 @@
 import numpy as np 
 import pdb 
 
-def pines_logging(filename, date, target_name, filter_name, exptime, airmass, x_shift, y_shift, x_seeing, y_seeing):
+def pines_logging(filename, date, target_name, filter_name, exptime, airmass, x_shift, y_shift, x_seeing, y_seeing, post_processing_flag,   shift_quality_flag):
     '''
     Authors:
 		Patrick Tamburo, Boston University, January 2021
@@ -18,6 +18,8 @@ def pines_logging(filename, date, target_name, filter_name, exptime, airmass, x_
         y_shift (str): y pixel shift
         x_seeing (str): x seeing in arcsec
         y_seeing (str): y seeing in arcsec
+        post_processing_flag (int): 0 (not yet post-processed) or 1 (post-processed)
+        shift_quality_flag (int): 0 (good shifts) or 1 (bad shifts)
     Outputs:
         log_text (str): a line of log text with the same spacing as those in the PINES telescope logs.
 	TODO:
@@ -25,12 +27,14 @@ def pines_logging(filename, date, target_name, filter_name, exptime, airmass, x_
     '''
 
     try:
-        log_text = ' {:<19}, {:<20}, {:<30}, {:<6}, {:<8}, {:<8}, {:<8}, {:<8}, {:<9}, {:<9}\n'.format(filename, date, target_name, 
+        log_text = ' {:<19}, {:<20}, {:<30}, {:<6}, {:<8}, {:<8}, {:<8}, {:<8}, {:<9}, {:<7}, {:<21}, {:<20}\n'.format(filename, date, target_name, 
                                                                                                         filter_name,str(exptime),
                                                                                                         str(airmass),str(x_shift),
                                                                                                         str(y_shift),
                                                                                                         str(x_seeing),
-                                                                                                        str(y_seeing))
+                                                                                                        str(y_seeing),
+                                                                                                        str(post_processing_flag),
+                                                                                                        str(shift_quality_flag))
     except:
         pdb.set_trace()
 

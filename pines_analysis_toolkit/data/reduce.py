@@ -87,7 +87,10 @@ def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sf
 		hdulist = fits.open(raw_files[i])
 		header = hdulist[0].header
 
-		frame_raw = fits.open(raw_files[i])[0].data
+		try:
+			frame_raw = fits.open(raw_files[i])[0].data
+		except:
+			pdb.set_trace()
 
 
 		frame_raw = frame_raw[0:1024,:] #Cuts off 2 rows of overscan (?) pixels
@@ -157,16 +160,17 @@ def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sf
 			fits.writeto(target_filename, frame_red, header)
 			#print("Reducing {}: {} of {}, band = {}, exptime = {} s, dark = {}, flat = {}".format(raw_files[i].name, str(i+1), str(np.size(raw_files)), header['FILTNME2'], header['EXPTIME'], master_dark_name, master_flat_name))
 				
-	print('')
 	if upload:
-		print('Beginning upload process to pines.bu.edu...')
-		print('Note, only PINES admins will be able to upload.')
-		print('WARNING: This will overwrite data already on the PINES server!')
 		print('')
-		time.sleep(3)
+		print('Beginning upload process to pines.bu.edu...')
+		print('NOTE:    Only PINES admins are able to upload.')
+		print('WARNING: If these reduced images already exist on the PINES server, they will be overwritten!')
+		time.sleep(1)
 		sftp.chdir('/data/reduced/mimir/')
 		files_to_upload = np.array(natsort.natsorted(np.array([x for x in reduced_path.glob('*.fits')])))
-		for i in range(len(files_to_upload)):
+		print('Uploading reduced {} data to the PINES server!'.format(target_name))
+		pbar = ProgressBar()
+		for i in pbar(range(len(files_to_upload))):
 			file = files_to_upload[i]
 			night_name = files_to_upload[i].name.split('.')[0]
 			for dir_change in sftp.listdir():
@@ -180,7 +184,7 @@ def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sf
 				print('ERROR: the date of the file you want to upload does not match the date directory where the program wants to upload it.')
 				pdb.set_trace()
 			
-			print('Uploading to {}/{}, {} of {}'.format(sftp.getcwd(),nights[ind]+'/'+file.name, i+1,len(files_to_upload)))
+			#print('Uploading to {}/{}, {} of {}'.format(sftp.getcwd(),nights[ind]+'/'+file.name, i+1,len(files_to_upload)))
 			sftp.put(file,nights[ind]+'/'+file.name)
 			sftp.chdir('..')
 			
@@ -194,7 +198,3 @@ def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sf
 		files_to_delete = glob.glob(os.path.join(reduced_path/'*.fits'))
 		for j in range(len(files_to_delete)):
 			os.remove(files_to_delete[j])
-
-	print('reduce runtime: ', round((time.time()-t1)/60,1), ' minutes.')
-	print('Reduction script has completed.')
-	print('')

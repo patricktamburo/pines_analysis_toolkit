@@ -17,6 +17,8 @@ import time
 import pysftp
 from astropy.io import fits
 import paramiko
+from progressbar import ProgressBar
+
 '''Authors: 
         Patrick Tamburo, Boston University, June 2020
    Purpose: 
@@ -54,7 +56,6 @@ def get_raw_science_files(sftp, target_name):
     get_master_log(sftp, pines_path)
 
     #Let's grab all of the available calibration data on pines.bu.edu.
-    print('')
     get_calibrations(sftp, pines_path)
     print('Calibrations up to date!')
     print('')
@@ -64,7 +65,6 @@ def get_raw_science_files(sftp, target_name):
     df = pines_log_reader(pines_path/('Logs/master_log.txt'))
     targ_inds = np.where(np.array(df['Target']) == target_name)
     file_names = np.array(df['Filename'])[targ_inds]
-    print('')
     print('Searching pines.bu.edu for raw science files for {}.'.format(target_name))
     #Get list of dates that data are from, in chronological order. 
     dates = [int(i) for i in list(set([str.split(file_names[i],'.')[0] for i in range(len(file_names))]))]
@@ -77,7 +77,6 @@ def get_raw_science_files(sftp, target_name):
         print(date,': ',len(np.where(comp_dates == date)[0]),' files.')
         date_holder[i].extend(file_names[np.where(comp_dates == date)[0]])
         time.sleep(0.5)
-    print('')
 
     dates = [str(i) for i in dates]
     #Now download the identified data. 
@@ -100,18 +99,20 @@ def get_raw_science_files(sftp, target_name):
                 
                 date_holder_ind = np.where(np.array(dates) == night_check)[0][0]
                 files = date_holder[date_holder_ind]
-                for k in range(len(files)):
+                print('Downloading {} data for {} to {}!'.format(night_check, target_name, raw_data_path))
+                pbar = ProgressBar()
+                for k in pbar(range(len(files))):
                     if not (raw_data_path/files[k]).exists():
-                        print('Downloading to {}, {} of {}'.format(raw_data_path/files[k],file_num,len(file_names)))
+                        #print('Downloading to {}, {} of {}'.format(raw_data_path/files[k],file_num,len(file_names)))
                         sftp.get(files[k],raw_data_path/files[k])
-                    else:
-                        print('{} already in {}, skipping download.'.format(files[k],raw_data_path))
+                    #else:
+                        #print('{} already in {}, skipping download.'.format(files[k],raw_data_path))
                     file_num += 1
                 sftp.chdir('..')
         sftp.chdir('..')
     
     print('')
-    #Now grab the logs.
+    #Now grab the logs from /data/logs/ on the PINES server.
     sftp.chdir('/data/logs')
     for i in range(len(dates)):
         log_name = dates[i]+'_log.txt'
@@ -119,6 +120,7 @@ def get_raw_science_files(sftp, target_name):
         print('Downloading {} to {}.'.format(log_name, pines_path/('Logs/'+log_name)))
         sftp.get(log_name, pines_path/('Logs/'+log_name))
 
+        
     # sftp.chdir('/data/raw/mimir')
     # print('')
     # for i in range(len(run_dirs)):
@@ -138,7 +140,3 @@ def get_raw_science_files(sftp, target_name):
     #                         print('{} already in {}, skipping download.'.format(log_name,pines_path/'Logs/'))
     #                 sftp.chdir('..')
     #         sftp.chdir('..')
-    
-    print('')
-    print('get_raw_science_files runtime: ', np.round((time.time()-t1)/60,1), ' minutes.')
-    print('Done!')

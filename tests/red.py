@@ -1,7 +1,6 @@
 import pines_analysis_toolkit as pat 
 
-targets = ['2MASS J11394192-0310039', '2MASS J11491231-0153003',
-           '2MASS J11555389+0559577', '2MASS J11582077+0435014']
+targets = ['2MASS J04384965+4349164']
 
 sftp = pat.utils.pines_login()
 
@@ -11,3 +10,4 @@ for target in targets:
 
 sftp.close()
 
+ 

@@ -31,6 +31,8 @@ plt.ion()
 '''
 
 def detect_sources(image_path, seeing_fwhm, edge_tolerance, thresh=6.0, plot=False):
+    
+
     fwhm = seeing_fwhm/0.579 #FIXED
     ap_rad = 4 #Radius of aperture in pixels for doing quick photometry on detected sources.
     
@@ -63,7 +65,10 @@ def detect_sources(image_path, seeing_fwhm, edge_tolerance, thresh=6.0, plot=Fal
     print('Finding sources in {}.'.format(image_path.name))
 
     #Detect sources using DAOStarFinder.
-    daofind = DAOStarFinder(fwhm=fwhm, threshold=thresh*std, sharplo=0.2)  
+    try:
+        daofind = DAOStarFinder(fwhm=fwhm, threshold=thresh*std, sharplo=0.2)  
+    except:
+        pdb.set_trace()
 
     initial_sources = daofind(image - med)
     

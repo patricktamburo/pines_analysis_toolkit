@@ -119,9 +119,10 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
             else:
                 log_path = pines_path/'Logs'
                 #Check if you already have the log for this date, if not, download it. 
+                #Download from the /data/logs/ directory on PINES.
                 if not (log_path/(date+'_log.txt')).exists():
                     print('Downloading {}_log.txt to {}'.format(date,log_path))
-                    sftp.get(date+'_log.txt',log_path/(date+'_log.txt'))
+                    sftp.get('/data/logs/'+date+'_log.txt',log_path/(date+'_log.txt'))
 
                 log = pines_log_reader(log_path/(date+'_log.txt'))
                 
@@ -370,7 +371,7 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
         print('Uploading to pines.bu.edu...')
         sftp.chdir('/')
         sftp.chdir('data/calibrations/Flats Stddev/Domeflats/'+band)
-        upload_name = 'master_flat_'+band+'_'+date+'.fits'
+        upload_name = 'master_flat_stddev_'+band+'_'+date+'.fits'
         # if upload_name in sftp.listdir():
         #     print('WARNING: This will overwrite {} in pines.bu.edu:data/calibrations/Flats/Domeflats/{}/'.format(upload_name,band))
         #     upload_check = input('Do you want to continue? y/n: ')
