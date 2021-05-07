@@ -30,7 +30,6 @@ def bpm_chooser(bpm_path, header):
         if len(possible_bpms) == 0:
             print('ERROR: no suitable BPMs found inspect manually.')
             return
-
     possible_bpm_dates = [datetime.strptime(i.name.split('_')[-1].split('.')[0],'%Y%m%d') for i in possible_bpms]
     bpm_date_distances = [abs(possible_bpm_dates[i]-obs_date) for i in range(len(possible_bpm_dates))]
     bpm_ind = np.where(np.array(bpm_date_distances) == min(np.array(bpm_date_distances)))[0][0]

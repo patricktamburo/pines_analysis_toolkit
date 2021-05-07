@@ -28,6 +28,8 @@ from pines_analysis_toolkit.utils.quick_plot import quick_plot as qp
 from astropy.modeling import models, fitting
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from pines_analysis_toolkit.utils.get_source_names import get_source_names
+import matplotlib
+matplotlib.use('TkAgg')
 
 def hmsm_to_days(hour=0,min=0,sec=0,micro=0):
     """
@@ -160,7 +162,24 @@ def iraf_style_photometry(phot_apertures, bg_apertures, data, dark_std_data, hea
                 cutout_1d = cutout[mask] #Make a 1D cutout using only the good values. 
                 fitter = fitting.LevMarLSQFitter()
                 model_fit = fitter(model_init, x, y, cutout_1d) #Fit the model to the 1d cutout.
+
+                # #Uncomment this block to show inerpolation plots.
+                # norm = ImageNormalize(cutout, interval=ZScaleInterval())
+                # plt.ion()
+                # fig, ax = plt.subplots(1, 4, figsize=(10,4), sharex=True, sharey=True)
+                # ax[0].imshow(cutout, origin='lower', norm=norm)
+                # ax[0].set_title('Data')
+                # ax[1].imshow(model_fit(xx,yy), origin='lower', norm=norm)
+                # ax[1].set_title('2D Gaussian Model')
+
                 cutout[~mask] = model_fit(xx,yy)[~mask] #Interpolate the pixels in the cutout using the 2D Gaussian fit. 
+
+                # ax[2].imshow(cutout, origin='lower', norm=norm)
+                # ax[2].set_title('Data w/ Bad\nPixels Replaced')
+                # ax[3].imshow(cutout-model_fit(xx,yy), origin='lower')
+                # ax[3].set_title('Residuals')
+                # pdb.set_trace()
+
                 interpolation_flags[i] = True
                 
                 # #Gaussian convolution approach.
@@ -351,7 +370,7 @@ def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.,
 
     #Loop over all aperture radii. 
     for ap in ap_radii:
-        print('Doing fixed aperture photometry for {}, aperture radius = {} pix, inner annulus radius = {} pix, outer annulus radius = {} pix.'.format(target, ap, an_in, an_out))
+        print('Doing fixed aperture photometry for {}, aperture radius = {:1.1f} pix, inner annulus radius = {} pix, outer annulus radius = {} pix.'.format(target, ap, an_in, an_out))
 
         #Declare a new dataframe to hold the information for all targets for this aperture. 
         columns = ['Filename', 'Time UT', 'Time JD', 'Airmass', 'Seeing']
@@ -362,7 +381,7 @@ def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.,
             columns.append(source_names[i]+' Interpolation Flag')
 
         ap_df = pd.DataFrame(index=range(len(reduced_files)), columns=columns)
-        output_filename = pines_path/('Objects/'+short_name+'/aper_phot/'+short_name+'_fixed_aper_phot_'+str(float(ap))+'_pix_radius.csv')
+        output_filename = pines_path/('Objects/'+short_name+'/aper_phot/'+short_name+'_fixed_aper_phot_{:1.1f}_pix_radius.csv'.format(float(ap)))
 
         #Loop over all images.
         pbar = ProgressBar()
@@ -372,6 +391,10 @@ def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.,
             #Read in some supporting information.
             log_path = pines_path/('Logs/'+reduced_files[j].name.split('.')[0]+'_log.txt')
             log = pines_log_reader(log_path)
+            log_ind = np.where(log['Filename'] == reduced_files[j].name.split('_')[0]+'.fits')[0][0]
+
+            
+
             header = fits.open(reduced_files[j])[0].header
             date_obs = header['DATE-OBS']
             #Catch a case that can cause datetime strptime to crash; Mimir headers sometimes have DATE-OBS with seconds specified as 010.xx seconds, when it should be 10.xx seconds. 
@@ -398,15 +421,22 @@ def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.,
             ap_df['Time UT'][j] = header['DATE-OBS']
             ap_df['Time JD'][j] = jd
             ap_df['Airmass'][j] = header['AIRMASS']
-            ap_df['Seeing'][j] = log['X seeing'][np.where(log['Filename'] == reduced_files[j].name.split('_')[0]+'.fits')[0][0]]
+            ap_df['Seeing'][j] = log['X seeing'][log_ind]
             
+            #If the shift quality has been flagged, skip this image. 
+            if log['Shift quality flag'].iloc[log_ind] == 1:
+                continue
+
             #Get the source positions in this image.
             positions = []
             for i in range(len(source_names)):
-                positions.append((centroided_sources[source_names[i]+' Image X'][j], centroided_sources[source_names[i]+' Image Y'][j]))
+                positions.append((float(centroided_sources[source_names[i]+' Image X'][j]), float(centroided_sources[source_names[i]+' Image Y'][j])))
 
             #Create an aperture centered on this position with radius = ap. 
-            apertures = CircularAperture(positions, r=ap)
+            try:
+                apertures = CircularAperture(positions, r=ap)
+            except:
+                pdb.set_trace()
 
             #Create an annulus centered on this position. 
             annuli = CircularAnnulus(positions, r_in=an_in, r_out=an_out)
@@ -451,7 +481,7 @@ def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.,
                     plt.close()
            
         #Write output to file. 
-        print('Saving ap = {} aperture photometry output to {}.'.format(ap,output_filename))
+        print('Saving ap = {:1.1f} aperture photometry output to {}.'.format(ap,output_filename))
         print('')
         with open(output_filename, 'w') as f:
             for j in range(len(ap_df)):
@@ -485,7 +515,15 @@ def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.,
                         format_string = '{:22.5f}, {:28.5f}, {:28.5f}, {:34d}, '
                     else:
                         format_string = '{:22.5f}, {:28.5f}, {:28.5f}, {:34d}\n'
-                    f.write(format_string.format(ap_df[source_names[i]+' Flux'][j], ap_df[source_names[i]+' Flux Error'][j], ap_df[source_names[i]+' Background'][j], ap_df[source_names[i]+' Interpolation Flag'][j]))
+                    try:
+                        f.write(format_string.format(ap_df[source_names[i]+' Flux'][j], ap_df[source_names[i]+' Flux Error'][j], ap_df[source_names[i]+' Background'][j], ap_df[source_names[i]+' Interpolation Flag'][j]))
+                    except:
+                        if i != len(source_names) - 1:
+                            format_string = '{:22.5f}, {:28.5f}, {:28.5f}, {:34f}, '
+                        else:
+                            format_string = '{:22.5f}, {:28.5f}, {:28.5f}, {:34f}\n'
+                        f.write(format_string.format(ap_df[source_names[i]+' Flux'][j], ap_df[source_names[i]+' Flux Error'][j], ap_df[source_names[i]+' Background'][j], ap_df[source_names[i]+' Interpolation Flag'][j]))
+
     print('')
     return 
 

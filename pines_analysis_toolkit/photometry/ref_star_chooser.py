@@ -17,7 +17,8 @@ from astropy.convolution import Gaussian2DKernel, interpolate_replace_nans
 from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
 import time
 from natsort import natsorted
-from astropy.visualization import ImageNormalize, ZScaleInterval
+from astropy.visualization import ImageNormalize, ZScaleInterval, SquaredStretch, SqrtStretch, PercentileInterval, AsymmetricPercentileInterval
+
 '''Authors:
 		Patrick Tamburo, Boston University, June 2020
 	Purpose:
@@ -95,7 +96,7 @@ def ref_star_chooser(target, source_detect_image, guess_position=(700.,382.), ra
 
     #Detect sources in the image. 
     sources = detect_sources(source_detect_image_path, source_detect_seeing, edge_tolerance, plot=source_detect_plot, thresh=3.0)
-    
+
     #Identify the target in the image using guess_position. 
     target_id = target_finder(sources, guess_position)
 
@@ -118,7 +119,7 @@ def ref_star_chooser(target, source_detect_image, guess_position=(700.,382.), ra
     bg_estimate = np.median(vals)
     targ_flux_estimate = aperture_photometry(image, target_ap)['aperture_sum'] - bg_estimate * target_ap.area
     
-    for i in range(len(sources)):
+    for i in range(len(sources)):  
         if i != target_id:
             potential_ref_loc = (sources['xcenter'][i], sources['ycenter'][i])
             ap = CircularAperture(potential_ref_loc, r=radius_check)
@@ -175,14 +176,19 @@ def ref_star_chooser(target, source_detect_image, guess_position=(700.,382.), ra
     stats = sigma_clipped_stats(image)
     fig, ax = plt.subplots(figsize=(10,9))
     ax.set_aspect('equal')
-    im = ax.imshow(image, origin='lower', vmin=stats[1], vmax=stats[1]+7*stats[2], cmap='Greys')
+    im = ax.imshow(image, vmin=stats[1], vmax=stats[1]+7*stats[2], origin='lower', cmap='Greys')
     cax = fig.add_axes([0.87, 0.15, 0.035, 0.7])
     fig.colorbar(im, cax=cax, orientation='vertical', label='ADU')
     ax.set_title(source_detect_image_path.name)
     ax.plot(output_df['Source Detect X'][0], output_df['Source Detect Y'][0], marker='o', color='m', mew=2, ms=12, ls='', mfc='None', label='Target')
+    #Plot selected references
     for i in range(1,len(output_df)):
         ax.plot(output_df['Source Detect X'][i], output_df['Source Detect Y'][i], marker='o', color='b', mew=2, ms=12, ls='', mfc='None', label='Reference')
         ax.text(output_df['Source Detect X'][i]+7, output_df['Source Detect Y'][i]+5, str(i), fontsize=14, color='r')
+    #Plot detected sources
+    for i in range(len(sources)):
+        ax.plot(sources['xcenter'], sources['ycenter'], 'rx', label='Detected sources', alpha=0.6, ms=3)
+
     handles, labels = ax.get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     ax.legend(by_label.values(), by_label.keys(), bbox_to_anchor=(1.1, 1.1))

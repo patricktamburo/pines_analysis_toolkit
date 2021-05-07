@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt 
 import pdb 
 import numpy as np 
@@ -96,8 +98,8 @@ def relative_cutout_position_plot(target, centroided_sources):
     standard_x = standard_x_range(times_nights)
 
     #Get the box size (I don't like that this is being determined by using the mean of the data...output it from centroider?)    
-    box_w = int(np.round(2*np.mean(np.array(centroided_sources['Reference 1 Cutout X'])),0))
-
+    box_w = int(np.round(2*np.nanmean(np.array(centroided_sources['Reference 1 Cutout X'], dtype='float')),0))
+        
     fig, ax = plt.subplots(nrows=2, ncols=num_nights, figsize=(17,9), sharey=True)
     plt.subplots_adjust(left=0.07, hspace=0.05, wspace=0.05, top=0.92, bottom=0.17)
     markers = ['+', 'x', '*', 'X']
@@ -108,8 +110,8 @@ def relative_cutout_position_plot(target, centroided_sources):
             ax[1,j].set_ylabel('Cutout Y Position', fontsize=axis_title_size)
 
         for i in range(len(source_names)):
-            cutout_x = np.array(centroided_sources[source_names[i]+' Cutout X'][inds])
-            cutout_y = np.array(centroided_sources[source_names[i]+' Cutout Y'][inds])
+            cutout_x = np.array(centroided_sources[source_names[i]+' Cutout X'][inds], dtype='float')
+            cutout_y = np.array(centroided_sources[source_names[i]+' Cutout Y'][inds], dtype='float')
 
             if i == 0:
                 marker = 'o'
@@ -169,8 +171,8 @@ def absolute_image_position_plot(target, centroided_sources):
 
         inds = night_inds[j]
         times = times_nights[j]
-        absolute_x = np.array(centroided_sources[source+' Image X'][inds])
-        absolute_y = np.array(centroided_sources[source+' Image Y'][inds])
+        absolute_x = np.array(centroided_sources[source+' Image X'][inds], dtype='float')
+        absolute_y = np.array(centroided_sources[source+' Image Y'][inds], dtype='float')
         ax[0,j].plot(times, absolute_x, marker='.', linestyle='', alpha=0.3, color='tab:blue', label='Raw x')
         ax[1,j].plot(times, absolute_y, marker='.', linestyle='', alpha=0.3, color='tab:orange', label='Raw y')
 
@@ -182,11 +184,14 @@ def absolute_image_position_plot(target, centroided_sources):
         block_y = np.zeros(len(block_inds))
         block_y_err = np.zeros(len(block_inds))
         for k in range(len(block_inds)):
-            block_times[k] = np.mean(times[block_inds[k]])
-            block_x[k] = np.mean(absolute_x[block_inds[k]])
-            block_x_err[k] = np.std(absolute_x[block_inds[k]]) / np.sqrt(len(absolute_x[block_inds[k]]))
-            block_y[k] = np.mean(absolute_y[block_inds[k]])
-            block_y_err[k] = np.std(absolute_y[block_inds[k]]) / np.sqrt(len(absolute_y[block_inds[k]]))
+            try:
+                block_times[k] = np.nanmean(times[block_inds[k]])
+            except:
+                pdb.set_trace()
+            block_x[k] = np.nanmean(absolute_x[block_inds[k]])
+            block_x_err[k] = np.nanstd(absolute_x[block_inds[k]]) / np.sqrt(len(absolute_x[block_inds[k]]))
+            block_y[k] = np.nanmean(absolute_y[block_inds[k]])
+            block_y_err[k] = np.nanstd(absolute_y[block_inds[k]]) / np.sqrt(len(absolute_y[block_inds[k]]))
 
         ax[0,j].errorbar(block_times, block_x, block_x_err, marker='o', linestyle='', color='tab:blue', ms=8, mfc='none', mew=2, label='Bin x')
         ax[1,j].errorbar(block_times, block_y, block_y_err, marker='o', linestyle='', color='tab:orange', ms=8, mfc='none', mew=2, label='Bin y')
@@ -240,8 +245,8 @@ def background_plot(target, centroided_sources, gain=8.21):
     phot_file = phot_files[best_ap_ind]
     phot_df = pines_log_reader(phot_file)
 
-    backgrounds = np.array(phot_df[short_name+' Background'])/gain
-    times_full = np.array(phot_df['Time JD'])
+    backgrounds = np.array(phot_df[short_name+' Background'], dtype='float')/gain
+    times_full = np.array(phot_df['Time JD'], dtype='float')
     night_inds = night_splitter(times_full)
     num_nights = len(night_inds)
     times_nights = [times_full[night_inds[i]] for i in range(num_nights)]
@@ -265,9 +270,9 @@ def background_plot(target, centroided_sources, gain=8.21):
         block_y = np.zeros(len(block_inds))
         block_y_err = np.zeros(len(block_inds))
         for j in range(len(block_inds)):
-            block_x[j] = np.mean(times_full[inds][block_inds[j]])
-            block_y[j] = np.mean(backgrounds[inds][block_inds[j]])
-            block_y_err[j] = np.std(backgrounds[inds][block_inds[j]]) / np.sqrt(len(backgrounds[inds][block_inds[j]]))
+            block_x[j] = np.nanmean(times_full[inds][block_inds[j]])
+            block_y[j] = np.nanmean(backgrounds[inds][block_inds[j]])
+            block_y_err[j] = np.nanstd(backgrounds[inds][block_inds[j]]) / np.sqrt(len(backgrounds[inds][block_inds[j]]))
 
         ax[i].errorbar(block_x, block_y, block_y_err, marker='o', linestyle='', color='tab:orange', ms=8, mfc='none', mew=2, label='Bin bkg.')
         

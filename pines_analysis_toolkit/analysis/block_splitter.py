@@ -22,6 +22,7 @@ def block_splitter(times, bad_vals=[]):
     
     num_blocks = int(1 + len(block_boundaries) / 2)
     block_inds = [[] for x in range(num_blocks)]
+
     #Hopping observations.
     for j in range(num_blocks):
         if j == 0:

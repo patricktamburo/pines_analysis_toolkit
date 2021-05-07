@@ -113,7 +113,7 @@ def make_calibrations(sftp, exptimes, bands, dark_dates, flat_dates, dark_starts
                 pat.data.hot_pixels(dark_date, exptime, box_l=5, upload=True, sftp=sftp)
 
     print('')
-
+    
     #Dead pixel masks
     if dead_pixels:
         for i in range(len(bands)):

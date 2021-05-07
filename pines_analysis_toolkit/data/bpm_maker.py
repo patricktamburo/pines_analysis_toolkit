@@ -47,6 +47,7 @@ def bpm_maker(flat_date, dark_date, exptime, band, upload=False, sftp=''):
     bad_locs = np.where((kokopelli_mask == 1) | (variable_mask == 1) | (hot_mask == 1) | (dead_mask == 1))
     bpm[bad_locs] = 1
     
+    pdb.set_trace()
     num_bad = len(np.where(bpm ==1)[0])
     frac_bad = num_bad / 1024**2
 

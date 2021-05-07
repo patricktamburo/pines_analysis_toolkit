@@ -9,3 +9,4 @@ from pines_analysis_toolkit.analysis.weighted_lightcurve import weighted_lightcu
 #from pines_analysis_toolkit.analysis.pines_lc_plot import pines_lc_plot
 from pines_analysis_toolkit.analysis.analysis_plots import *
 from pines_analysis_toolkit.analysis.diagnostic_plots import *
+from pines_analysis_toolkit.analysis.regression import regression

@@ -143,7 +143,15 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
             if i == 0:
                 centroid_df['Filename'][j] = file.name.split('_')[0]+'.fits'
                 centroid_df['Seeing'][j] = log['X seeing'][log_ind]
-                centroid_df['Time (JD UTC)'][j] = julian.to_jd(datetime.datetime.strptime(fits.open(file)[0].header['DATE-OBS'], '%Y-%m-%dT%H:%M:%S.%f'))
+                time_str = fits.open(file)[0].header['DATE-OBS']
+                
+                #Correct some formatting issues that can occur in Mimir time stamps. 
+                if time_str.split(':')[-1] == '60.00':
+                    time_str = time_str[0:14]+str(int(time_str.split(':')[-2])+1)+':00.00'
+                elif time_str.split(':')[-1] == '010.00':
+                    time_str = time_str[0:17]+time_str.split(':')[-1][1:]
+
+                centroid_df['Time (JD UTC)'][j] = julian.to_jd(datetime.datetime.strptime(time_str, '%Y-%m-%dT%H:%M:%S.%f'))
                 centroid_df['Airmass'][j] = log['Airmass'][log_ind]
             
             nan_flag = False #Flag indicating if you should not trust the log's shifts. Set to true if x_shift/y_shift are 'nan' or > 30 pixels. 
@@ -302,7 +310,7 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
                 #Plot
                 lock_x = int(centroid_df[sources['Name'][i]+' Image X'][0])
                 lock_y = int(centroid_df[sources['Name'][i]+' Image Y'][0])
-                norm = ImageNormalize(data=cutout, interval=ZScaleInterval(), stretch=SquaredStretch())
+                norm = ImageNormalize(data=cutout, interval=ZScaleInterval())
                 plt.imshow(image, origin='lower', norm=norm)
                 plt.plot(centroid_x, centroid_y, 'rx')
                 ap = CircularAperture((centroid_x, centroid_y), r=5)

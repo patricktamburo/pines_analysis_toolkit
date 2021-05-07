@@ -82,6 +82,9 @@ def dead_pixels(date, band, clip_lvl=4.5, box_l=3, upload=False, sftp=''):
                         box_2d = master_flat[yy-box_minus:yy+box_plus,xx-box_minus:xx+box_plus] #2d cutout surrounding the target pixel.
                         box_1d = box_2d[~np.isnan(box_2d)].ravel() #Unraveled box, ignoring any NaNs. 
                         neighbor_vals = np.delete(box_1d, targ_pix_ind) #Remove the target pixel from the 1d array. 
+
+                        if yy == 404 and xx == 570: 
+                            pdb.set_trace()
                         #neighbor_vals = sigmaclip(n, low=3.5, high=3.5)[0] #Clip away other bad pixels in the box to avoid biasing the mean/standard deviation.                   
                         if master_flat[yy,xx] < (np.mean(neighbor_vals) - clip_lvl*np.std(neighbor_vals)): #Flag pixel as hot if it is more than clip_lvl sigma higher than the mean of its neighbors.
                             dead_pixel_mask[yy,xx] = 1

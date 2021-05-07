@@ -226,10 +226,10 @@ def normalized_flux_plot(times, norm_targ_flux, norm_targ_err, norm_ref_flux, no
         ax.set_xlabel('Time (JD$_{UTC}$)', fontsize=20)
 
         #Plot the target. 
-        ax.errorbar(times[i], norm_targ_flux[i], norm_targ_err[i], color='tab:orange', mfc='none', marker='.', ms=7, lw=1.5, linestyle='', label='Target', mew=2, zorder=1)
+        ax.errorbar(times[i], norm_targ_flux[i], norm_targ_err[i], color='tab:orange', mfc='none', marker='.', ms=7, lw=1.5, linestyle='-', label='Target', mew=2, zorder=1)
         
         #Plot the ALC. 
-        ax.errorbar(times[i], alc_flux[i], alc_err[i], color='tab:blue', lw=2, marker='.', linestyle='', label='ALC', zorder=2, mfc='none', mew=2, ms=5)
+        ax.errorbar(times[i], alc_flux[i], alc_err[i], color='tab:blue', lw=2, marker='.', linestyle='-', label='ALC', zorder=2, mfc='none', mew=2, ms=5)
         
         if i == num_nights - 1:
             #ax.legend(bbox_to_anchor=(1.03, 1), fontsize=14)
@@ -238,7 +238,7 @@ def normalized_flux_plot(times, norm_targ_flux, norm_targ_err, norm_ref_flux, no
         ax.set_xlim(np.mean(times[i])-standard_time_range/2, np.mean(times[i])+standard_time_range/2)
         ax.set_ylim(1-standard_y, 1+standard_y)
         ax.grid(alpha=0.2)
-
+    
     plt.suptitle(short_name+' Nightly Normalized Flux', fontsize=20)
 
     #Save the figure. 
@@ -529,14 +529,15 @@ def corr_all_sources_plot(target):
                 binned_flux.append(np.nanmean(flux[inds][block_inds[k]]))
                 binned_err.append(np.nanstd(flux[inds][block_inds[k]])/np.sqrt(len(block_inds[k])))
 
-            ax[j].plot(times[inds], flux[inds], color=color, linestyle='', marker='.', alpha=0.5)
-            ax[j].errorbar(binned_time, binned_flux, binned_err, color=color, linestyle='', marker='o')
+            ax[j].plot(times[inds], flux[inds], color=color, linestyle='', marker='.', alpha=0.25)
+            ax[j].errorbar(binned_time, binned_flux, binned_err, color=color, linestyle='', marker='o', ms=10, mfc='none', mew=2)
             ax[j].set_xlabel('Time (JD UTC)', fontsize=20)
             ax[j].tick_params(labelsize=16)
             ax[j].axhline(1, color='k', alpha=0.7, lw=1, zorder=0)
             ax[j].grid(alpha=0.2)
             ax[j].set_title(title, fontsize=20, color=color)
-            
+            ax[j].set_ylim(0.9,1.1)
+
         plt.savefig(output_path/output_name, dpi=300)
         plt.close()
     
