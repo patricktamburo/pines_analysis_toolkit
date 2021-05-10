@@ -5,7 +5,7 @@ from pines_analysis_toolkit.utils import pines_dir_check, short_name_creator
 from pines_analysis_toolkit.analysis.night_splitter import night_splitter
 from pines_analysis_toolkit.analysis.block_splitter import block_splitter
 from pines_analysis_toolkit.analysis.analysis_plots import raw_flux_plot, global_raw_flux_plot, normalized_flux_plot, global_normalized_flux_plot, corr_target_plot, global_corr_target_plot, corr_all_sources_plot
-from pines_analysis_toolkit.analysis.regression import regression
+from pines_analysis_toolkit.analysis.regression import *
 from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
 from glob import glob
 from natsort import natsorted
@@ -335,7 +335,7 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
                     #Perform a regression of the corrected flux against various parameters. 
                     regression_dict = {'airmass':airmass, 'centroid_x':centroid_x, 'centroid_y':centroid_y, 'pwv':pwv}
                     regressed_corr_flux[:,k] = regression(corr_flux[:,k], regression_dict)
-
+                
                     #Calculate stddevs from the regressed corrected flux.
                     old_stddev[k] = new_stddev[k]
                     new_stddev[k] = np.nanstd(regressed_corr_flux[:,k])
@@ -403,9 +403,11 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
             targ_flux_corr = targ_flux_norm/alc_final_flux
             targ_flux_corr_err = np.sqrt( (targ_flux_err_norm/alc_final_flux)**2 + (targ_flux_norm*alc_final_err/(alc_final_flux**2))**2)
             
-            #Run the corrected target flux through the regression.
+            #Run the corrected target flux through the "leave one out" regression.
             regression_dict = {'airmass':airmass, 'centroid_x':centroid_x, 'centroid_y':centroid_y, 'pwv':pwv}
-            regressed_targ_flux_corr = regression(targ_flux_corr, regression_dict, verbose=False)
+            #regressed_targ_flux_corr = regression(targ_flux_corr, regression_dict, verbose=False)
+            regressed_targ_flux_corr = leave_one_out_regression(times, targ_flux_corr, targ_flux_corr_err, regression_dict, verbose=False)
+            pdb.set_trace()
 
             # plt.ion()
             # fig, ax = plt.subplots(2,1,figsize=(12,7))
