@@ -29,8 +29,8 @@ for target in targets:
     #pat.photometry.basic_psf_phot(target, centroided_sources, plots=True)
 
     #Create a lightcurve. 
-    pat.analysis.weighted_lightcurve(target, phot_type='aper', mode='night', plots=True, use_pwv=False)
-    pat.analysis.weighted_lightcurve(target, phot_type='aper', mode='global', plots=True, use_pwv=False)
+    pat.analysis.weighted_lightcurve(target, phot_type='aper', mode='night', plots=True, use_pwv=True)
+    pat.analysis.weighted_lightcurve(target, phot_type='aper', mode='global', plots=True, use_pwv=True)
 
     # #Generate diagnostic plots. 
     pat.analysis.diagnostic_plots.relative_cutout_position_plot(target, centroided_sources)

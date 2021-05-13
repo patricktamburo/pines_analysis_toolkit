@@ -208,7 +208,6 @@ def iraf_style_photometry(phot_apertures, bg_apertures, data, dark_std_data, hea
     background = bg_phot[bg_method_name]
     flux = phot['aperture_sum'] - background * ap_area
 
-    pdb.set_trace()
     # Need to use variance of the sources for Poisson noise term in error computation.
     flux_error = compute_phot_error(flux, bg_phot, bg_method, ap_area, exptime, dark_std_data, phot_apertures, epadu)
 
@@ -247,7 +246,6 @@ def compute_phot_error(flux, bg_phot, bg_method, ap_area, exptime, dark_std_data
         dark_rn_ap = dark_rn_ap[dark_rn_ap != 0]
         dark_rn_term[i] = ap_area * (np.median(dark_rn_ap)**2)
     
-    pdb.set_trace()
     variance = flux_variance_term + bg_variance_term_1 + bg_variance_term_2 + dark_rn_term
     flux_error = variance ** .5
     return flux_error    
