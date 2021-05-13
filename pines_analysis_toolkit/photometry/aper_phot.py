@@ -127,7 +127,9 @@ def iraf_style_photometry(phot_apertures, bg_apertures, data, dark_std_data, hea
         ap_mask = ap.to_mask(method='exact')
         ap_cut = ap_mask.cutout(cutout)
 
-        if np.sum(np.isnan(ap_cut)) > 0:
+        bad_sum = np.sum(np.isnan(ap_cut))
+
+        if bad_sum > 0:
             bads = np.where(np.isnan(cutout))
             bad_dists = np.sqrt((bads[0] - y_cutout)**2 + (bads[1] - x_cutout)**2)
 
@@ -206,6 +208,7 @@ def iraf_style_photometry(phot_apertures, bg_apertures, data, dark_std_data, hea
     background = bg_phot[bg_method_name]
     flux = phot['aperture_sum'] - background * ap_area
 
+    pdb.set_trace()
     # Need to use variance of the sources for Poisson noise term in error computation.
     flux_error = compute_phot_error(flux, bg_phot, bg_method, ap_area, exptime, dark_std_data, phot_apertures, epadu)
 
@@ -226,12 +229,12 @@ def iraf_style_photometry(phot_apertures, bg_apertures, data, dark_std_data, hea
 
     return final_tbl
     
-def compute_phot_error(flux_variance, bg_phot, bg_method, ap_area, exptime, dark_std_data, phot_apertures, epadu=1.0):
+def compute_phot_error(flux, bg_phot, bg_method, ap_area, exptime, dark_std_data, phot_apertures, epadu=1.0):
     """Computes the flux errors using the DAOPHOT style computation.
         Includes photon noise from the source, background terms, dark current, and read noise."""
 
     #See eqn. 1 from Broeg et al. (2005): https://ui.adsabs.harvard.edu/abs/2005AN....326..134B/abstract
-    flux_variance_term = flux_variance / epadu #This is just the flux in photons. 
+    flux_variance_term = flux / epadu #This is just the flux in photons. 
     bg_variance_term_1 = ap_area * (bg_phot['aperture_std'])**2
     bg_variance_term_2 = (ap_area * bg_phot['aperture_std'])**2 / bg_phot['aperture_area']
 
@@ -243,8 +246,8 @@ def compute_phot_error(flux_variance, bg_phot, bg_method, ap_area, exptime, dark
         dark_rn_ap = ap.to_mask().multiply(dark_std_data)
         dark_rn_ap = dark_rn_ap[dark_rn_ap != 0]
         dark_rn_term[i] = ap_area * (np.median(dark_rn_ap)**2)
-    #dark_current_variance_term = np.zeros(len(flux_variance_term)) + dark_current * exptime * ap_area
-    #read_noise_variance_term = np.zeros(len(flux_variance_term)) + (read_noise)**2*ap_area
+    
+    pdb.set_trace()
     variance = flux_variance_term + bg_variance_term_1 + bg_variance_term_2 + dark_rn_term
     flux_error = variance ** .5
     return flux_error    
@@ -297,7 +300,7 @@ def aperture_stats_tbl(data, apertures, method='center', sigma_clip=True):
     
     # Make the table
     stats_tbl = Table(data=stacked, names=names)
-
+    
     return stats_tbl
 
 def calc_aperture_mmm(data, mask, sigma_clip):

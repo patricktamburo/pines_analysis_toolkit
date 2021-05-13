@@ -186,12 +186,12 @@ def absolute_image_position_plot(target, centroided_sources):
         for k in range(len(block_inds)):
             try:
                 block_times[k] = np.nanmean(times[block_inds[k]])
+                block_x[k] = np.nanmean(absolute_x[block_inds[k]])
+                block_x_err[k] = np.nanstd(absolute_x[block_inds[k]]) / np.sqrt(len(absolute_x[block_inds[k]]))
+                block_y[k] = np.nanmean(absolute_y[block_inds[k]])
+                block_y_err[k] = np.nanstd(absolute_y[block_inds[k]]) / np.sqrt(len(absolute_y[block_inds[k]]))
             except:
                 pdb.set_trace()
-            block_x[k] = np.nanmean(absolute_x[block_inds[k]])
-            block_x_err[k] = np.nanstd(absolute_x[block_inds[k]]) / np.sqrt(len(absolute_x[block_inds[k]]))
-            block_y[k] = np.nanmean(absolute_y[block_inds[k]])
-            block_y_err[k] = np.nanstd(absolute_y[block_inds[k]]) / np.sqrt(len(absolute_y[block_inds[k]]))
 
         ax[0,j].errorbar(block_times, block_x, block_x_err, marker='o', linestyle='', color='tab:blue', ms=8, mfc='none', mew=2, label='Bin x')
         ax[1,j].errorbar(block_times, block_y, block_y_err, marker='o', linestyle='', color='tab:orange', ms=8, mfc='none', mew=2, label='Bin y')
@@ -274,11 +274,18 @@ def background_plot(target, centroided_sources, gain=8.21):
             block_y[j] = np.nanmean(backgrounds[inds][block_inds[j]])
             block_y_err[j] = np.nanstd(backgrounds[inds][block_inds[j]]) / np.sqrt(len(backgrounds[inds][block_inds[j]]))
 
+        block_x = block_x[~np.isnan(block_y)]
+        block_y_err = block_y_err[~np.isnan(block_y)]
+        block_y = block_y[~np.isnan(block_y)]
+        
         ax[i].errorbar(block_x, block_y, block_y_err, marker='o', linestyle='', color='tab:orange', ms=8, mfc='none', mew=2, label='Bin bkg.')
         
         #Interpolate each night's seeing.
         fit_times = np.linspace(block_x[0], block_x[-1], 1000)
-        interp = CubicSpline(block_x, block_y)
+        try:
+            interp = CubicSpline(block_x, block_y)
+        except:
+            pdb.set_trace()
         interp_fit = interp(fit_times)
         ax[i].plot(fit_times, interp_fit, color='b', lw=2, zorder=0, alpha=0.7, label='CS Interp.')
 

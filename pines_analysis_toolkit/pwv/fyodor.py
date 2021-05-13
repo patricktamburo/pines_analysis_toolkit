@@ -16,6 +16,7 @@ from bs4 import BeautifulSoup
 import wget
 from multiprocessing.pool import ThreadPool
 import pdb 
+from pines_analysis_toolkit.utils import pines_dir_check, short_name_creator
 
 """
     THIS IS AN ADAPTATION OF THE FYODOR PACKAGE TO WORK WITH PINES DATA https://github.com/Erikmeier18/fyodor
@@ -70,16 +71,16 @@ def download_nc(url, directory, date, n_threads=5):
         Website provided by NOAA with the requested files
     directory : str
         Path where a folder with the files should be created
-    date: str, Format dd mm yyyy
+    date: str, Format yyyymmdd
         Day when the measurement took place
     n_threads: int, number of threads to use to download files
     """
     
     any_day = str(date)                         
-    date = time.strptime(any_day, '%d %m %Y') 
-
-    create_folder(str(directory) + "/Data PWV {}".format(any_day))
-    os.chdir(directory + '/Data PWV {}'.format(any_day))
+    date = time.strptime(any_day, '%Y%m%d') 
+    
+    create_folder(str(directory) + "/{}".format(any_day))
+    os.chdir(directory + '/{}'.format(any_day))
     
     url = str(url)
     r = requests.get(url, allow_redirects=False)
@@ -120,7 +121,7 @@ def download_nc(url, directory, date, n_threads=5):
     print("All files downloaded!")
     
 
-def pwv(directory, P_min, P_max, line_of_sight='target', RA=None, Dec=None, plot=False, csv=False):
+def pwv(target, directory, P_min, P_max, line_of_sight='target', RA=None, Dec=None, plot=False, csv=False):
     """
     Compute the precipitable water vapor (PWV) at the PTO at zenith or in direction of
     ``target``.
@@ -156,9 +157,6 @@ def pwv(directory, P_min, P_max, line_of_sight='target', RA=None, Dec=None, plot
     latdeg = 35.097289793027436
     londeg = -111.53686622502691
     site = 'Perkins Telescope Observatory'
-
-
-
 
     # Access working directory
     os.chdir(directory)
@@ -206,8 +204,16 @@ def pwv(directory, P_min, P_max, line_of_sight='target', RA=None, Dec=None, plot
         hourtemp = time.strftime("%H:%M:%S", time.gmtime(epoch[i]))
         hour.append(hourtemp)
     
-    if os.path.exists(directory/('PWV_line_of_sight_{}_{}.csv'.format(site,day[1]))):
-        print('CONUS PWV output already exists for {}, returning.'.format(day[1]))
+    #Check if the output already exists, if so return. 
+    pines_path = pines_dir_check()
+    short_name = short_name_creator(target)
+    out_date = day[1][-4:]+day[1][3:5]+day[1][0:2]
+    #Make the object's pwv directory if it doesn't already exist.
+    if not os.path.isdir(pines_path/('Objects/'+short_name+'/pwv/')):
+        os.mkdir(pines_path/('Objects/'+short_name+'/pwv/'))
+    output_path = pines_path/('Objects/'+short_name+'/pwv/PWV_los_{}.csv'.format(out_date))
+    if os.path.exists(output_path):
+        print('PWV output already exists for {}, returning.'.format(out_date))
         return 
 
     # Use astropy.time to keep format for target coordinates:
@@ -224,9 +230,6 @@ def pwv(directory, P_min, P_max, line_of_sight='target', RA=None, Dec=None, plot
 
     e = np.sqrt((r_eq**2-r_pol**2)/(r_eq**2)) #Eccentricity
 
-   
-
-        
     latdeg = float(latdeg)
     londeg = float(londeg)
 
@@ -252,8 +255,8 @@ def pwv(directory, P_min, P_max, line_of_sight='target', RA=None, Dec=None, plot
 
     # Computes PWV along line of sight
     if line_of_sight == 'target':
-        INDEX = np.ravel(np.where(Aa.alt.degree<10)) #ORIGINAL USED VALUES WERE WHERE ALT WAS >30. CHANGED TO 10 FOR PERKINS.
-        INDEXP = np.ravel(np.where(Aa.alt.degree>10))
+        INDEX = np.ravel(np.where(Aa.alt.degree<0)) #ORIGINAL USED VALUES WERE WHERE ALT WAS >30. CHANGED FOR PERKINS.
+        INDEXP = np.ravel(np.where(Aa.alt.degree>0))
     
         # Keep time values corresponding to Alt above 30 degrees
         EPOCH = epoch
@@ -409,8 +412,6 @@ def pwv(directory, P_min, P_max, line_of_sight='target', RA=None, Dec=None, plot
             PWV.append(integral)
 
         PWV = np.asarray(PWV)
-
-        out_date=DATE
     
         if plot:
             # Plot and save data
@@ -437,9 +438,9 @@ def pwv(directory, P_min, P_max, line_of_sight='target', RA=None, Dec=None, plot
             fig.savefig('PWV_line_of_sight_{}_{}.png'.format(site, day[1]))
         
         if csv:
-            np.savetxt('PWV_line_of_sight_{}_{}.csv'.format(site,day[1]), np.column_stack((date, PWV)), 
+            np.savetxt(output_path, np.column_stack((date, PWV)), 
                    delimiter=',' , fmt = '%s', header= 'Time,PWV', comments='')
-        
+
     # Computes PWV at zenith
     elif line_of_sight == 'zenith':
     

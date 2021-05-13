@@ -9,8 +9,6 @@ def object_directory_creator(pines_path, short_name):
     os.mkdir(pines_path/('Objects/'+short_name+'/output'))
     os.mkdir(pines_path/('Objects/'+short_name+'/psf_phot'))
     os.mkdir(pines_path/('Objects/'+short_name+'/pwv'))
-    os.mkdir(pines_path/('Objects/'+short_name+'/pwv'))
-    os.mkdir(pines_path/('Objects/'+short_name+'/pwv/CONUS'))
     os.mkdir(pines_path/('Objects/'+short_name+'/sources'))
     os.mkdir(pines_path/('Objects/'+short_name+'/raw'))
     os.mkdir(pines_path/('Objects/'+short_name+'/reduced'))

@@ -365,7 +365,7 @@ def corr_target_plot(times, targ_flux_corr, binned_times, binned_flux, binned_er
         ax.errorbar(binned_times[i], binned_flux[i], binned_errs[i], linestyle='', marker='o', zorder=2, color='k', capsize=2, ms=7)
         
         #Plot the 5-sigma decrement line. 
-        five_sig = 5*np.mean(binned_errs[i])
+        five_sig = 5*np.nanmean(binned_errs[i])
         ax.axhline(1-five_sig, color='k', lw=2, linestyle='--', zorder=0)
         ax.tick_params(labelsize=16)
         
@@ -428,7 +428,7 @@ def global_corr_target_plot(times, targ_flux_corr, binned_times, binned_flux, bi
     ax.grid(alpha=0.2)
     ax.plot(times, targ_flux_corr[0], linestyle='', marker='o', zorder=1, color='darkgrey', ms=5, label='Unbinned data')
     ax.errorbar(binned_times, binned_flux[0], binned_errs[0], linestyle='', marker='o', zorder=2, color='k', capsize=2, ms=7, label='Binned data')
-    five_sig = 5*np.mean(binned_errs[0])
+    five_sig = 5*np.nanmean(binned_errs[0])
     ax.axhline(1-five_sig, color='k', lw=2, linestyle='--', zorder=0, label='5-$\sigma$ threshold')
     ax.tick_params(labelsize=16)
     
@@ -513,7 +513,7 @@ def corr_all_sources_plot(target):
         for j in range(num_nights):
             if i != 0: 
                 weight = np.array(data[ref_name+' ALC Weight'])[night_inds[j]][0]
-                title = ref_name+', weight = {:1.3f}'.format(weight)
+                title = ref_name.replace('erence','.')+', weight = {:1.3f}'.format(weight)
 
             if j == 0:
                 ax[j].set_ylabel('Normalized Flux', fontsize=20)
