@@ -3,7 +3,7 @@
 """
 Created on Thu Feb 18 21:57:40 2021
 
-@author: davidgracia
+@authors: davidgracia, Patrick Tamburo 
 """
 
 import requests
@@ -14,24 +14,14 @@ import pdb
 
 astrometry = Client()
 
-def login():
+# def login():
     
-    """ Login in to astrometry.net and get a session ID
-    """
-    
-    apikey = 'mioghoxehfwdxyim'
-    astrometry.login(apikey)
-    
-
-# def upload_file(apikey, filename):
-    
-#     """ uploads file to astrometry.net
+#     """ Login in to astrometry.net and get a session ID
 #     """
     
-#     #apikey = 'mioghoxehfwdxyim'
+#     apikey = 'mioghoxehfwdxyim'
 #     astrometry.login(apikey)
     
-#     astrometry.upload(filename) 
     
 def upload_file(apikey, filename):
     
@@ -41,26 +31,15 @@ def upload_file(apikey, filename):
     """
     
     astrometry.login(apikey)
-    
-    # filename = '/Users/davidgracia/Downloads/Astronomy Research/20201105.100_red_no_nan.fits'
-    # beg = filename[:57]
-    # end = filename[60:]
-    # num = 100
-    
-        
-    
+   
     sub_id = astrometry.upload(filename)['subid']
-    print(' ')
     print('sub_id: ' , str(sub_id))
-    print(' ')
     
     while astrometry.sub_status(sub_id)['jobs'] == [] or astrometry.sub_status(sub_id)['jobs'] == [None]:
         time.sleep(5)
         
     job_id = astrometry.sub_status(sub_id)['jobs'][0]
-    print(' ')
     print('job_id: ', astrometry.sub_status(sub_id)['jobs'])
-    print(' ')
     
     while astrometry.job_status(job_id) == 'solving':
         time.sleep(1)

@@ -104,7 +104,6 @@ def raw_flux_plot(times, raw_targ_flux, raw_targ_err, raw_ref_flux, raw_ref_err,
         elif 'fixed' in ap_rad:
             rad = ap_rad.split('_')[0]
             filename = short_name.replace(' ','')+'_fixed_'+phot_type+'_phot_r='+rad+'_nightly_raw_flux.png'
-
         if not os.path.exists(analysis_path/('aper_phot_analysis/'+ap_rad)):
             os.mkdir(analysis_path/('aper_phot_analysis/'+ap_rad))
         output_path = analysis_path/('aper_phot_analysis/'+ap_rad+'/'+filename)
