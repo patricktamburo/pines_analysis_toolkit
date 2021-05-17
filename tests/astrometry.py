@@ -7,6 +7,7 @@ from astropy.convolution import interpolate_replace_nans, Gaussian2DKernel
 from astropy.io import fits 
 import os 
 import time
+from pathlib import Path
 
 target = '2MASS J09130320+1841501'
 
@@ -21,17 +22,17 @@ kernel = Gaussian2DKernel(x_stddev=0.25)
 times = []
 for i in range(0, len(reduced_files)):
     t1 = time.time()
-    filename = reduced_files[i]
-    print(filename.split('/')[-1])
-
-    #Read in the file, interpolate NaNs, and save to a temporary fits file. 
-    #Astrometry.net does not work with NaNs in images. 
-    image = interpolate_replace_nans(fits.open(filename)[0].data, kernel=kernel)
-    header = fits.open(filename)[0].header
+    filename = Path(reduced_files[i])
+    print(filename.name)
 
     #If the header does not have a HISTORY keyword (which is added by astrometry.net), process it. 
-    if 'HISTORY' in header:
-        temp_filename = filename.split('.fits')[0]+'_temp.fits'
+    header = fits.open(filename)[0].header
+
+    if 'HISTORY' not in header:
+        #Read in the image data, interpolate NaNs, and save to a temporary fits file. 
+        #Astrometry.net does not work with NaNs in images. 
+        image = interpolate_replace_nans(fits.open(filename)[0].data, kernel=kernel)
+        temp_filename = filename.parent/(filename.name.split('.fits')[0]+'_temp.fits')
         hdu = fits.PrimaryHDU(image, header=header)
         hdu.writeto(temp_filename, overwrite=True)
 
@@ -39,13 +40,13 @@ for i in range(0, len(reduced_files)):
         pat.astrometry.upload_to_astrometry.upload_file(api_key, temp_filename)
 
         #Grab the header of the astrometry.net solution image, and the original image data. 
-        astrometry_image_path = temp_filename.split('.fits')[0]+'_new_image.fits'
+        astrometry_image_path = filename.parent/(temp_filename.name.split('.fits')[0]+'_new_image.fits')
         wcs_header = fits.open(astrometry_image_path)[0].header
         original_image = fits.open(filename)[0].data
         wcs_hdu = fits.PrimaryHDU(original_image, header=wcs_header)
 
         #Save the original image data with the new wcs header. 
-        output_filename = filename.split('.fits')[0]+'.fits'
+        output_filename = filename
         wcs_hdu.writeto(output_filename, overwrite=True)
 
         #Delete temporary files. 
@@ -58,4 +59,5 @@ for i in range(0, len(reduced_files)):
         print('')
     #If the header DOES have a HISTORY keyword, skip it, it has already been processed. 
     else:
-        print('Astrometric solution already exists for {}, skipping.'.format(filename.split('/')[-1]))
+        print('Astrometric solution already exists for {}, skipping.'.format(filename.name))
+        print('')

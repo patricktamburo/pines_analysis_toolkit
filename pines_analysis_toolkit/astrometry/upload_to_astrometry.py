@@ -44,7 +44,7 @@ def upload_file(apikey, filename):
     while astrometry.job_status(job_id) == 'solving':
         time.sleep(1)
     
-    outfile = filename.split('.fits')[0] + '_new_image.fits'
+    outfile = filename.parent/(filename.name.split('.fits')[0]+'_new_image.fits')
     
     url = 'http://nova.astrometry.net/new_fits_file/' + str(job_id)
     
