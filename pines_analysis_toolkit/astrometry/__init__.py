@@ -1,1 +1,2 @@
 from pines_analysis_toolkit.astrometry.upload_to_astrometry import *
+from pines_analysis_toolkit.astrometry.pines_astrometry import pines_astrometry

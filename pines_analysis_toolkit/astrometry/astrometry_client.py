@@ -29,6 +29,8 @@ from email.mime.application  import MIMEApplication
 from email.encoders import encode_noop
 
 import json
+import pdb 
+
 def json2python(data):
     try:
         return json.loads(data)
@@ -159,6 +161,7 @@ class Client(object):
                 args.update({key: val})
             elif default is not None:
                 args.update({key: default})
+        
         #print('Upload args:', args)
         return args
 

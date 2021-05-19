@@ -13,17 +13,8 @@ import time
 import pdb 
 
 astrometry = Client()
-
-# def login():
     
-#     """ Login in to astrometry.net and get a session ID
-#     """
-    
-#     apikey = 'mioghoxehfwdxyim'
-#     astrometry.login(apikey)
-    
-    
-def upload_file(apikey, filename):
+def upload_file(apikey, filename, header):
     
     """ uploads multiple file to astrometry.net
     
@@ -31,19 +22,25 @@ def upload_file(apikey, filename):
     """
     
     astrometry.login(apikey)
-   
-    sub_id = astrometry.upload(filename)['subid']
-    print('sub_id: ' , str(sub_id))
+    
+    tel_ra_str = header['TELRA'].split(':')
+    tel_ra_deg = int(tel_ra_str[0])*15 + int(tel_ra_str[1])*(15/60) + float(tel_ra_str[2])*(15/3600)
+
+    tel_dec_str = header['TELDEC'].split(':')
+    tel_dec_deg = int(tel_dec_str[0])+ int(tel_dec_str[1])/60 + float(tel_dec_str[2])/3600
+
+    sub_id = astrometry.upload(filename, scale_units='arcsecperpix', scale_lower=0.575, scale_upper=0.585, center_ra=tel_ra_deg, center_dec=tel_dec_deg, radius=0.116)['subid']
+    print('submission_id: ' , str(sub_id))
     
     while astrometry.sub_status(sub_id)['jobs'] == [] or astrometry.sub_status(sub_id)['jobs'] == [None]:
-        time.sleep(5)
+        time.sleep(1)
         
     job_id = astrometry.sub_status(sub_id)['jobs'][0]
     print('job_id: ', astrometry.sub_status(sub_id)['jobs'])
     
     while astrometry.job_status(job_id) == 'solving':
         time.sleep(1)
-    
+
     outfile = filename.parent/(filename.name.split('.fits')[0]+'_new_image.fits')
     
     url = 'http://nova.astrometry.net/new_fits_file/' + str(job_id)
@@ -51,30 +48,3 @@ def upload_file(apikey, filename):
     r = requests.get(url, allow_redirects=True)
     open(outfile, 'wb').write(r.content)
             
-        
-
-def download_file(version, job_id, filename):
-    
-    """ Downoald requested file from astrometry
-    
-        for wcs, version = 'wcs'
-    
-        for new-image, version = 'new_fits'
-        
-        for corr, version = 'corr_file'
-    """
-    
-    url = "https://nova.astrometry.net/" + version + "_file/" + job_id
-    
-    r = requests.get(url, allow_redirects=True)
-    open(filename, 'wb').write(r.content)
-
-
-
-#functions to use in the command line to check status on job/submission
-"""
-astrometry.myjobs()
-astrometry.job_status(job_id)
-astrometry.sub_status(sub_id)
-astrometry.submission_images(subid)
-"""
