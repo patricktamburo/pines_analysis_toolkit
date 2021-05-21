@@ -86,7 +86,7 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
 
     #Get list of reduced files for target. 
     reduced_path = pines_path/('Objects/'+short_name+'/reduced')
-    reduced_filenames = natsort.natsorted([x.name for x in reduced_path.glob('*.fits')])
+    reduced_filenames = natsort.natsorted([x.name for x in reduced_path.glob('*red.fits')])
     reduced_files = np.array([reduced_path/i for i in reduced_filenames])
     
     #Declare a new dataframe to hold the centroid information for all sources we want to track. 

@@ -380,6 +380,7 @@ def corr_target_plot(times, targ_flux_corr, binned_times, binned_flux, binned_er
     #plt.suptitle(short_name+' Nightly Corrected Target Lightcurve', fontsize=20)
     #plt.subplots_adjust(left=0.07, wspace=0.05, top=0.92, bottom=0.17)
 
+    pdb.set_trace()
     #Save the figure. 
     print('Saving target lightcurve...')
     if phot_type == 'aper':

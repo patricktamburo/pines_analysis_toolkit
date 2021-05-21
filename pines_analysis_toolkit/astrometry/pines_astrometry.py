@@ -18,6 +18,8 @@ def pines_astrometry(target, api_key, download_data=False):
             target (str): The target's long 2MASS name (e.g., '2MASS J09161504+2139512')
             api_key (str): The api key of your account on astrometry.net. 
             donwload_data (bool, optional): Whether or not to first download reduced data for the target from the PINES server. 
+        Outputs:
+            Updates the headers of reduced images with wcs information. 
     '''
 
     pines_path = pat.utils.pines_dir_check()

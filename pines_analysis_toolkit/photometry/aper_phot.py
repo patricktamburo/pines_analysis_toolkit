@@ -350,7 +350,7 @@ def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.,
 
     #Get list of reduced files for target. 
     reduced_path = pines_path/('Objects/'+short_name+'/reduced')
-    reduced_filenames = natsort.natsorted([x.name for x in reduced_path.glob('*.fits')])
+    reduced_filenames = natsort.natsorted([x.name for x in reduced_path.glob('*red.fits')])
     reduced_files = np.array([reduced_path/i for i in reduced_filenames])
     
     #source_names = natsort.natsorted(list(set([i.replace('X','').replace('Y','').replace('Centroid Warning','').strip() for i in centroided_sources.keys() if i != 'Filename'])))
@@ -538,7 +538,7 @@ def variable_aper_phot(target, centroided_sources, multiplicative_factors, an_in
 
     #Get list of reduced files for target. 
     reduced_path = pines_path/('Objects/'+short_name+'/reduced')
-    reduced_filenames = natsort.natsorted([x.name for x in reduced_path.glob('*.fits')])
+    reduced_filenames = natsort.natsorted([x.name for x in reduced_path.glob('*red.fits')])
     reduced_files = np.array([reduced_path/i for i in reduced_filenames])
     
     #Get source names. 
