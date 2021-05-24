@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 plt.ioff()
 
-def gaia_cmd(target, sources, catalog='eDR3', plot=True, red_only=False):
+def gaia_cmd(target, sources, catalog='eDR3', plot=True):
     '''Authors:
             Patrick Tamburo, Boston University, May 2021
         Purpose:
@@ -24,7 +24,7 @@ def gaia_cmd(target, sources, catalog='eDR3', plot=True, red_only=False):
         Outputs:
             sources (pd.DataFrame): DataFrame of sources, with M_G and BP-RP columns added. Also updates the target_and references_source_detection.csv file in the object's 'sources' directory. 
         TODO:
-            red_only = True will overwrite the source_detection csv...
+            None.
     '''
 
     pines_path = pat.utils.pines_dir_check()
@@ -52,12 +52,16 @@ def gaia_cmd(target, sources, catalog='eDR3', plot=True, red_only=False):
         query_gaia = Gaia.cone_search(c, radius=5*u.arcsec)
         result_gaia = query_gaia.get_results()
 
-        bp_rp[i] = result_gaia['bp_rp'][0]
-
-        m_G = result_gaia['phot_g_mean_mag'][0]
-        p_mas[i] = result_gaia['parallax'][0]
-        dist_pc = 1/(p_mas[i]/1000)
-        M_G[i] = m_G + 5 - 5*np.log10(dist_pc) 
+        if len(result_gaia) == 0:
+            bp_rp[i] = np.nan
+            p_mas[i] = np.nan
+            M_G[i] = np.nan
+        else:
+            bp_rp[i] = result_gaia['bp_rp'][0]
+            m_G = result_gaia['phot_g_mean_mag'][0]
+            p_mas[i] = result_gaia['parallax'][0]
+            dist_pc = 1/(p_mas[i]/1000)
+            M_G[i] = m_G + 5 - 5*np.log10(dist_pc) 
 
     if plot:
         plt.figure(figsize=(6,9))
@@ -70,28 +74,10 @@ def gaia_cmd(target, sources, catalog='eDR3', plot=True, red_only=False):
         plt.gca().invert_yaxis()
         plt.tight_layout()
         plt.savefig(pines_path/('Objects/'+short_name+'/sources/gaia_cmd.png'), dpi=300)
-    
+
     sources['M_G'] = M_G
     sources['bp_rp'] = bp_rp
     
-    if red_only:
-        #Grab only the reddest sources from the sources DataFrame.
-        red_sources = sources[(sources['M_G'] < 14) & (sources['M_G'] > 7.5)]
-
-        #Add the target row to the new DataFrame.
-        target_entry = sources.loc[sources['Name'] == short_name]
-        red_sources = pd.concat([target_entry, red_sources])
-
-        #Reset the indices of the DataFrame.s
-        red_sources.reset_index(inplace=True, drop=True)
-
-        #Rename the sources. 
-        for i in range(1, len(red_sources)):
-            red_sources['Name'][i] = 'Reference '+str(i)
-        
-        #Write the red sources out to disk, overwriting the full source detection csv. 
-        red_sources.to_csv(pines_path/('Objects/'+short_name+'/sources/target_and_references_source_detection.csv'), index=0, na_rep='NaN')
-    else:
-        sources.to_csv(pines_path/('Objects/'+short_name+'/sources/target_and_references_source_detection.csv'), index=0, na_rep='NaN')
+    sources.to_csv(pines_path/('Objects/'+short_name+'/sources/target_and_references_source_detection.csv'), index=0, na_rep='NaN')
 
     return sources

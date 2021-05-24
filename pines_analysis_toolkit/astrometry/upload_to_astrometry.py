@@ -28,9 +28,9 @@ def upload_file(apikey, filename, header):
 
     tel_dec_str = header['TELDEC'].split(':')
     
-    if int(tel_dec_str[0]) >= 0:
+    if tel_dec_str[0][0] == '+':
         tel_dec_deg = int(tel_dec_str[0]) + int(tel_dec_str[1])/60 + float(tel_dec_str[2])/3600
-    else:
+    elif tel_dec_str[0][0] == '-':
         tel_dec_deg = int(tel_dec_str[0]) - int(tel_dec_str[1])/60 - float(tel_dec_str[2])/3600
 
     sub_id = astrometry.upload(filename, scale_units='arcsecperpix', scale_lower=0.575, scale_upper=0.585, center_ra=tel_ra_deg, center_dec=tel_dec_deg, radius=0.116)['subid']

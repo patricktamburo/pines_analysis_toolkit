@@ -17,3 +17,4 @@ from pines_analysis_toolkit.data.get_calibrations import get_calibrations
 from pines_analysis_toolkit.data.get_master_synthetic_image import get_master_synthetic_image
 from pines_analysis_toolkit.data.make_calibrations import make_calibrations
 from pines_analysis_toolkit.data.straggler_upload import straggler_upload
+from pines_analysis_toolkit.data.upload_reduced_data import upload_reduced_data

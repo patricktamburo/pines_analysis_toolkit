@@ -3,7 +3,7 @@ import pines_analysis_toolkit as pat
 from pathlib import Path
 import pdb 
 
-target = '2MASS J16202614-0416315'
+target = '2MASS J05012406-0010452'
 
 pines_path = pat.utils.pines_dir_check()
 short_name = pat.utils.short_name_creator(target)
@@ -22,14 +22,23 @@ pat.astrometry.source_detect_astrometry(target, api_key, source_detect_image_pat
 sources = pat.astrometry.source_pixels_to_world(target, source_detect_image_path)
 
 #Query 2MASS and Gaia for information on sources. 
-sources = pat.photometry.gaia_cmd(target, sources, red_only=False)
+sources = pat.photometry.gaia_cmd(target, sources)
 
 #Get centroids for sources.
-centroided_sources = pat.photometry.centroider(target, sources, restore=True, output_plots=False)
+centroided_sources = pat.photometry.centroider(target, sources, restore=False, output_plots=False)
 
 #Do photometry on centroided sources.
-pat.photometry.aper_phot.fixed_aper_phot(target, centroided_sources, ap_radii=[4.0, 4.5, 5.0, 5.5, 6.0])
+pat.photometry.aper_phot.fixed_aper_phot(target, centroided_sources, ap_radii=[3.5, 4.0, 4.5, 5.0, 5.5])
 
 #Make lightcurves. 
-pat.analysis.weighted_lightcurve(target, plots=True)
+pat.analysis.weighted_lightcurve(target, plots=True, use_pwv=False, red_stars_only=False, n_sig_refs=3, mode='night')
+pat.analysis.weighted_lightcurve(target, plots=True, use_pwv=False, red_stars_only=False, n_sig_refs=3, mode='global')
+
+#Make diagnostic plots. 
+pat.analysis.diagnostic_plots.seeing_plot(target, centroided_sources)
+pat.analysis.diagnostic_plots.relative_cutout_position_plot(target, centroided_sources)
+pat.analysis.diagnostic_plots.absolute_image_position_plot(target, centroided_sources)
+pat.analysis.diagnostic_plots.background_plot(target, centroided_sources)
+pat.analysis.diagnostic_plots.airmass_plot(target, centroided_sources)
+pat.analysis.analysis_plots.corr_all_sources_plot(target)
 pdb.set_trace()

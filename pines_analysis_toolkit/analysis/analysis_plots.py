@@ -224,11 +224,18 @@ def normalized_flux_plot(times, norm_targ_flux, norm_targ_err, norm_ref_flux, no
         ax.tick_params(labelsize=16)
         ax.set_xlabel('Time (JD$_{UTC}$)', fontsize=20)
 
+        if np.nanstd(norm_targ_flux[i]) > np.nanstd(alc_flux[i]):
+            targ_zorder = 1
+            alc_zorder = 2
+        else:
+            targ_zorder= 2
+            alc_zorder= 1
+        
         #Plot the target. 
-        ax.errorbar(times[i], norm_targ_flux[i], norm_targ_err[i], color='tab:orange', mfc='none', marker='.', ms=7, lw=1.5, linestyle='-', label='Target', mew=2, zorder=1)
+        ax.errorbar(times[i], norm_targ_flux[i], norm_targ_err[i], color='tab:orange', mfc='none', marker='.', ms=7, lw=1.5, linestyle='-', label='Target', mew=2, zorder=targ_zorder)
         
         #Plot the ALC. 
-        ax.errorbar(times[i], alc_flux[i], alc_err[i], color='tab:blue', lw=2, marker='.', linestyle='-', label='ALC', zorder=2, mfc='none', mew=2, ms=5)
+        ax.errorbar(times[i], alc_flux[i], alc_err[i], color='tab:blue', lw=2, marker='.', linestyle='-', label='ALC', zorder=alc_zorder, mfc='none', mew=2, ms=5)
         
         if i == num_nights - 1:
             #ax.legend(bbox_to_anchor=(1.03, 1), fontsize=14)
@@ -380,7 +387,6 @@ def corr_target_plot(times, targ_flux_corr, binned_times, binned_flux, binned_er
     #plt.suptitle(short_name+' Nightly Corrected Target Lightcurve', fontsize=20)
     #plt.subplots_adjust(left=0.07, wspace=0.05, top=0.92, bottom=0.17)
 
-    pdb.set_trace()
     #Save the figure. 
     print('Saving target lightcurve...')
     if phot_type == 'aper':
@@ -480,8 +486,8 @@ def corr_all_sources_plot(target):
         os.mkdir(output_path)
 
     data = pines_log_reader(best_phot_path/filename)
-    num_refs = int((len(data.keys())-5)/3)
-    ref_names = ['Reference '+str(i) for i in np.arange(1, num_refs+1)]
+    ref_names = get_source_names(data)[1:]
+    num_refs = len(ref_names)
     
     times = np.array(data['Time (JD UTC)'])
     night_inds = night_splitter(times)

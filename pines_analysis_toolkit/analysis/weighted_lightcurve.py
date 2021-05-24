@@ -23,7 +23,7 @@ import os
 import fileinput
 import time 
 
-def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mode='night', plots=False, n_sig_refs=5, sigma_clip_threshold=4, max_iterations=1000, use_pwv=False):
+def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mode='night', plots=False, n_sig_refs=5, sigma_clip_threshold=4, max_iterations=1000, use_pwv=False, red_stars_only=False):
 
     '''Authors:
 		Phil Muirhead & Patrick Tamburo, Boston University, November 2020
@@ -38,6 +38,7 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
         sigma_clip_threshold (float): the sigma level used to clip outliers in the final target lightcurve 
         max_iterations (int): the maximum number of iterations in the reference star weighting loop. 
         use_pwv (Bool): whether or not to use pwv in the regression.
+        red_stars_only (Bool): whether or not to only use the reddest reference stars when creating the lightcurve.
     Outputs:
 
 	TODO:
@@ -123,6 +124,21 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
     #Get source names for this observation. 
     source_detection_file = pines_path/('Objects/'+short_name+'/sources/target_and_references_source_detection.csv')
     source_df = pd.read_csv(source_detection_file)
+
+    #If red_stars_only, limit the source_df to the red stars.
+    if red_stars_only:
+        print('Using red reference stars only!')
+        target_entry = source_df.loc[source_df['Name'] == short_name]
+
+        #Grab only the reddest sources from the sources DataFrame.
+        source_df = source_df[(source_df['M_G'] < 14) & (source_df['M_G'] > 7.5)]
+
+        #Create the new source_df with the target in the first row. 
+        source_df = pd.concat([target_entry, source_df])
+
+        #Reset the indices of the DataFrame.s
+        source_df.reset_index(inplace=True, drop=True)
+
     source_names = np.array(source_df['Name'])
     ref_names = source_names[1:]
     num_refs = len(ref_names)
@@ -337,8 +353,10 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
                     #Perform a regression of the corrected flux against various parameters. 
                     if use_pwv:
                         regression_dict = {'airmass':airmass, 'centroid_x':centroid_x, 'centroid_y':centroid_y, 'pwv':pwv}
+
                     else:
                         regression_dict = {'airmass':airmass, 'centroid_x':centroid_x, 'centroid_y':centroid_y}
+
                     regressed_corr_flux[:,k] = regression(corr_flux[:,k], regression_dict)
                 
                     #Calculate stddevs from the regressed corrected flux.
@@ -408,20 +426,15 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
             targ_flux_corr = targ_flux_norm/alc_final_flux
             targ_flux_corr_err = np.sqrt( (targ_flux_err_norm/alc_final_flux)**2 + (targ_flux_norm*alc_final_err/(alc_final_flux**2))**2)
             
-            #Run the corrected target flux through the "leave one out" regression.
             if use_pwv:
                 regression_dict = {'airmass':airmass, 'centroid_x':centroid_x, 'centroid_y':centroid_y, 'pwv':pwv}
             else: 
                 regression_dict = {'airmass':airmass, 'centroid_x':centroid_x, 'centroid_y':centroid_y}
-            regressed_targ_flux_corr = regression(targ_flux_corr, regression_dict, verbose=False)
+
+            regressed_targ_flux_corr = regression(targ_flux_corr, regression_dict, verbose=True)
+
             #regressed_targ_flux_corr = leave_one_out_regression(times, targ_flux_corr, targ_flux_corr_err, regression_dict, verbose=False)
             #pdb.set_trace()
-
-            # plt.ion()
-            # fig, ax = plt.subplots(2,1,figsize=(12,7))
-            # ax[0].plot(times, targ_flux_corr, 'ko')
-            # ax[1].plot(times, regressed_targ_flux_corr, 'bo')
-            # pdb.set_trace()
 
             all_nights_corr_targ_flux.append(regressed_targ_flux_corr)
             all_nights_corr_targ_err.append(targ_flux_corr_err)
