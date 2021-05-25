@@ -23,7 +23,7 @@ import os
 import fileinput
 import time 
 
-def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mode='night', plots=False, n_sig_refs=5, sigma_clip_threshold=4, max_iterations=1000, use_pwv=False, red_stars_only=False):
+def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mode='night', plots=False, n_sig_refs=5, sigma_clip_threshold=4, max_iterations=1000, use_pwv=False, red_stars_only=False, blue_stars_only=False):
 
     '''Authors:
 		Phil Muirhead & Patrick Tamburo, Boston University, November 2020
@@ -39,6 +39,8 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
         max_iterations (int): the maximum number of iterations in the reference star weighting loop. 
         use_pwv (Bool): whether or not to use pwv in the regression.
         red_stars_only (Bool): whether or not to only use the reddest reference stars when creating the lightcurve.
+        blue_stars_only (Bool): whether or not to only use the bluest reference stars when creating the lightcurve.
+
     Outputs:
 
 	TODO:
@@ -125,6 +127,9 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
     source_detection_file = pines_path/('Objects/'+short_name+'/sources/target_and_references_source_detection.csv')
     source_df = pd.read_csv(source_detection_file)
 
+    if red_stars_only and blue_stars_only:
+        raise ValueError('red_stars_only and blue_stars_only cannot both be True!')
+
     #If red_stars_only, limit the source_df to the red stars.
     if red_stars_only:
         print('Using red reference stars only!')
@@ -139,6 +144,20 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
         #Reset the indices of the DataFrame.s
         source_df.reset_index(inplace=True, drop=True)
 
+    if blue_stars_only:
+        print('Using blue reference stars only!')
+        target_entry = source_df.loc[source_df['Name'] == short_name]
+
+        #Grab only the reddest sources from the sources DataFrame.
+        source_df = source_df[(source_df['M_G'] < 7.5)]
+
+        #Create the new source_df with the target in the first row. 
+        source_df = pd.concat([target_entry, source_df])
+
+        #Reset the indices of the DataFrame.s
+        source_df.reset_index(inplace=True, drop=True)
+        pdb.set_trace()
+
     source_names = np.array(source_df['Name'])
     ref_names = source_names[1:]
     num_refs = len(ref_names)
@@ -146,8 +165,8 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
     #Get centroids for regression. 
     centroid_path = pines_path/('Objects/'+short_name+'/sources/target_and_references_centroids.csv')
     centroid_df = pines_log_reader(centroid_path)
-    full_centroid_x = np.array(centroid_df[short_name+' Image X'], dtype='float')
-    full_centroid_y = np.array(centroid_df[short_name+' Image Y'], dtype='float')
+    full_centroid_x = np.array(centroid_df[source_names[0]+' Image X'], dtype='float')
+    full_centroid_y = np.array(centroid_df[source_names[0]+' Image Y'], dtype='float')
 
     if use_pwv:
         #Get PWV for regression. 
@@ -162,11 +181,11 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
         phot_file = Path(phot_files[i])
         if phot_type == 'aper':
             if 'variable' in phot_file.name:
-                ap_rad = phot_file.name.split('_')[4]+'_variable'
+                ap_rad = phot_file.name.split('aper_phot_')[1].split('_')[0]+'_variable'
                 print('\nRestoring variable aperture photometry output, seeing multiplicative factor = {}.'.format(phot_file.name.split('_')[4]))
 
             elif 'fixed' in phot_file.name:
-                ap_rad = phot_file.name.split('_')[4]+'_fixed'
+                ap_rad = phot_file.name.split('aper_phot_')[1].split('_')[0]+'_fixed'
                 print('\nRestoring fixed aperture photometry output, pixel radius = {}.'.format(ap_rad.split('_')[0]))
         else:
             ap_rad == ''
@@ -232,8 +251,8 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
                 pwv = full_pwv[inds]
  
             #Grab the target flux and error. 
-            targ_flux = np.array(df[short_name+' Flux'][inds], dtype='float')
-            targ_flux_err = np.array(df[short_name+' Flux Error'][inds], dtype='float')
+            targ_flux = np.array(df[source_names[0]+' Flux'][inds], dtype='float')
+            targ_flux_err = np.array(df[source_names[0]+' Flux Error'][inds], dtype='float')
             
             #Normalize the target flux and error. 
             normalization = np.nansum(targ_flux/targ_flux_err**2) / np.nansum(1/targ_flux_err**2)

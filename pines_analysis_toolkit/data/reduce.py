@@ -50,13 +50,16 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 		sftp (pysftp.Connection, optional): the sftp connection to the pines server, required if you are going to upload reduced data
 		delete_raw (bool, optional): whether or not to delete raw files from your local directory for this target when done reduction/upload process. 
 		delete_reduced (bool, optional): whether or not to delete reduced files from your local directory for this target when done reduction/upload process.
+		manual_flat_path (pathlib.Path, optional): path to the flat you want to use to reduce the data, if you don't want the code to automatically choose it for you.
+		manual_dark_path (pathlib.Path, optional): path to the dark you want to use to reduce the data, if you don't want the code to automatically choose it for you.
+		manual_bpm_path (pathlib.Path, optional): path to the bad pixel mask you want to use to reduce the data, if you don't want the code to automatically choose it for you.
 	Outputs:
 		None
 	TODO:
 		Add check to see if .fits files are the correct size. If they didn't fully download, fits.open() will crash. 
 '''
 	
-def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sftp=''):
+def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sftp='', manual_flat_path='', manual_dark_path='', manual_bpm_path=''):
 	t1 = time.time()
 	print('')
 	if (upload is True) and (sftp == ''):
@@ -101,10 +104,24 @@ def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sf
 		else:
 			sat_flag = 0
 
-		#Load in the dark/flat files that were taken as close in time as possible to the target image. 
-		master_flat, master_flat_name = master_flat_chooser(flats_path, header)
-		master_dark, master_dark_name = master_dark_chooser(dark_path, header)
-		bad_pixel_mask, bad_pixel_mask_name = bpm_chooser(bpm_path, header)
+		#Load in the dark/flat files. If a manual path is not provided, choose the reduction image that is closest in time to when the image was taken.
+		if manual_flat_path == '':
+			master_flat, master_flat_name = master_flat_chooser(flats_path, header)
+		else:
+			master_flat = fits.open(manual_flat_path)[0].data
+			master_flat_name = manual_flat_path.name
+
+		if manual_dark_path == '':
+			master_dark, master_dark_name = master_dark_chooser(dark_path, header)
+		else:
+			master_dark = fits.open(manual_dark_path)[0].data
+			master_dark_name = manual_dark_path.name
+		
+		if manual_bpm_path == '':
+			bad_pixel_mask, bad_pixel_mask_name = bpm_chooser(bpm_path, header)
+		else:
+			bad_pixel_mask = fits.open(manual_bpm_path)[0].data
+			bad_pixel_mask_name = manual_bpm_path.name
 
 		#Reduce the image. 
 		frame_red = (frame_raw - master_dark)/master_flat

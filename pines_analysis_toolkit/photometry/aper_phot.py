@@ -319,7 +319,6 @@ def calc_aperture_mmm(data, mask, sigma_clip):
         actual_area = (~np.isnan(values)).sum()
         return (mean, median, mode, std, actual_area)
     
-
 def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots=False, gain=8.21, qe=0.9):
     '''Authors:
 		Patrick Tamburo, Boston University, June 2020
@@ -393,8 +392,6 @@ def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.,
             log_path = pines_path/('Logs/'+reduced_files[j].name.split('.')[0]+'_log.txt')
             log = pines_log_reader(log_path)
             log_ind = np.where(log['Filename'] == reduced_files[j].name.split('_')[0]+'.fits')[0][0]
-
-            
 
             header = fits.open(reduced_files[j])[0].header
             date_obs = header['DATE-OBS']
@@ -570,6 +567,8 @@ def variable_aper_phot(target, centroided_sources, multiplicative_factors, an_in
             #Read in some supporting information.
             log_path = pines_path/('Logs/'+reduced_files[j].name.split('.')[0]+'_log.txt')
             log = pines_log_reader(log_path)
+            log_ind = np.where(log['Filename'] == reduced_files[j].name.split('_')[0]+'.fits')[0][0]
+
             header = fits.open(reduced_files[j])[0].header
             date_obs = header['DATE-OBS']
             #Catch a case that can cause datetime strptime to crash; Mimir headers sometimes have DATE-OBS with seconds specified as 010.xx seconds, when it should be 10.xx seconds. 
@@ -598,13 +597,20 @@ def variable_aper_phot(target, centroided_sources, multiplicative_factors, an_in
             var_df['Airmass'][j] = header['AIRMASS']
             var_df['Seeing'][j] = log['X seeing'][np.where(log['Filename'] == reduced_files[j].name.split('_')[0]+'.fits')[0][0]]
             
+            #If the shift quality has been flagged, skip this image. 
+            if log['Shift quality flag'].iloc[log_ind] == 1:
+                continue
+
             #Get the source positions in this image.
             positions = []
             for k in range(len(source_names)):
                 positions.append((centroided_sources[source_names[k]+' Image X'][j], centroided_sources[source_names[k]+' Image Y'][j]))
 
             #Create an aperture centered on this position with radius (in pixels) of (seeing*multiplicative_factor[j])/plate_scale. 
-            apertures = CircularAperture(positions, r=(seeing[j]*fact)/plate_scale)
+            try:
+                apertures = CircularAperture(positions, r=(seeing[j]*fact)/plate_scale)
+            except:
+                pdb.set_trace()
 
             #Create an annulus centered on this position. 
             annuli = CircularAnnulus(positions, r_in=an_in, r_out=an_out)
@@ -647,11 +653,18 @@ def variable_aper_phot(target, centroided_sources, multiplicative_factors, an_in
                     pdb.set_trace()
 
                 #Write in Flux, Flux Error, and Background values for every source. 
-                for k in range(len(source_names)):                    
-                    if k != len(source_names) - 1:
+                for i in range(len(source_names)):                    
+                    if i != len(source_names) - 1:
                         format_string = '{:22.5f}, {:28.5f}, {:28.5f}, {:34d}, '
                     else:
                         format_string = '{:22.5f}, {:28.5f}, {:28.5f}, {:34d}\n'
-                    f.write(format_string.format(var_df[source_names[k]+' Flux'][j], var_df[source_names[k]+' Flux Error'][j], var_df[source_names[k]+' Background'][j], var_df[source_names[k]+' Interpolation Flag'][j]))
+                    try:
+                        f.write(format_string.format(var_df[source_names[i]+' Flux'][j], var_df[source_names[i]+' Flux Error'][j], var_df[source_names[i]+' Background'][j], var_df[source_names[i]+' Interpolation Flag'][j]))
+                    except:
+                        if i != len(source_names) - 1:
+                            format_string = '{:22.5f}, {:28.5f}, {:28.5f}, {:34f}, '
+                        else:
+                            format_string = '{:22.5f}, {:28.5f}, {:28.5f}, {:34f}\n'
+                        f.write(format_string.format(var_df[source_names[i]+' Flux'][j], var_df[source_names[i]+' Flux Error'][j], var_df[source_names[i]+' Background'][j], var_df[source_names[i]+' Interpolation Flag'][j]))
         print('')
     return

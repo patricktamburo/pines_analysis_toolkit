@@ -107,7 +107,7 @@ def detect_sources(image_path, seeing_fwhm, edge_tolerance, thresh=6.0, plot=Fal
         #Plot detected sources. 
         #TODO: indicate saturated sources, sources near edge, etc. with different color markers. 
         ax.plot(phot_table['xcenter'],phot_table['ycenter'], 'ro', markerfacecolor='none')
-        pdb.set_trace()
+
     #print('Found {} sources.'.format(len(phot_table)))
     sources = phot_table[::-1].to_pandas() #Resort remaining sources so that the brightest are listed firsts. 
     return sources
