@@ -43,6 +43,8 @@ def gaia_cmd(target, sources, catalog='eDR3', plot=True):
     p_mas = np.zeros(num_s) #Parallax in mas
     M_G = np.zeros(num_s) #Absolute Gaia Rp 
 
+    print('Querying sources in Gaia {}.'.format(catalog))
+
     for i in range(num_s):
         ra = sources['Source Detect RA'][i]
         dec = sources['Source Detect Dec'][i]
@@ -51,11 +53,12 @@ def gaia_cmd(target, sources, catalog='eDR3', plot=True):
         #Query Gaia 
         query_gaia = Gaia.cone_search(c, radius=5*u.arcsec)
         result_gaia = query_gaia.get_results()
-
+        
         if len(result_gaia) == 0:
             bp_rp[i] = np.nan
             p_mas[i] = np.nan
             M_G[i] = np.nan
+            print('No source found in Gaia {} at ({:1.4f},{:1.4f}). Returning NaNs.'.format(catalog, ra, dec))
         else:
             bp_rp[i] = result_gaia['bp_rp'][0]
             m_G = result_gaia['phot_g_mean_mag'][0]

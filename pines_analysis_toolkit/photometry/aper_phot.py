@@ -1,8 +1,10 @@
 import pdb
+from pines_analysis_toolkit.utils import jd_utc_to_bjd_tdb
 from pines_analysis_toolkit.utils.pines_dir_check import pines_dir_check
 from pines_analysis_toolkit.utils.short_name_creator import short_name_creator
 from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
 from pines_analysis_toolkit.utils.quick_plot import quick_plot
+from pines_analysis_toolkit.utils.jd_utc_to_bjd_tdb import jd_utc_to_bjd_tdb
 import numpy as np
 import natsort
 from photutils import CircularAperture, CircularAnnulus, aperture_photometry, make_source_mask
@@ -79,7 +81,7 @@ def date_to_jd(year,month,day):
     
     return jd
 
-def iraf_style_photometry(phot_apertures, bg_apertures, data, dark_std_data, header, seeing, bg_method='mean', epadu=1.0):
+def iraf_style_photometry(phot_apertures, bg_apertures, data, dark_std_data, header, seeing, bg_method='mean', epadu=1.0, gain=8.21, non_linear_threshold=4000):
     """Computes photometry with PhotUtils apertures, with IRAF formulae
     Parameters
     ----------
@@ -127,6 +129,12 @@ def iraf_style_photometry(phot_apertures, bg_apertures, data, dark_std_data, hea
         ap_mask = ap.to_mask(method='exact')
         ap_cut = ap_mask.cutout(cutout)
 
+        non_linear_sum = np.sum(ap_cut/gain > non_linear_threshold)
+        
+        # if non_linear_sum > 0: 
+        #     print('Pixels in the non-linear range!')
+        #     breakpoint()
+        
         bad_sum = np.sum(np.isnan(ap_cut))
 
         if bad_sum > 0:
@@ -373,7 +381,7 @@ def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.,
         print('Doing fixed aperture photometry for {}, aperture radius = {:1.1f} pix, inner annulus radius = {} pix, outer annulus radius = {} pix.'.format(target, ap, an_in, an_out))
 
         #Declare a new dataframe to hold the information for all targets for this aperture. 
-        columns = ['Filename', 'Time UT', 'Time JD', 'Airmass', 'Seeing']
+        columns = ['Filename', 'Time UT', 'Time JD UTC', 'Time BJD TDB', 'Airmass', 'Seeing']
         for i in range(0, len(source_names)):
             columns.append(source_names[i]+' Flux')
             columns.append(source_names[i]+' Flux Error')
@@ -417,7 +425,8 @@ def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.,
             jd = date_to_jd(date.year,date.month,days)
             ap_df['Filename'][j] = reduced_files[j].name
             ap_df['Time UT'][j] = header['DATE-OBS']
-            ap_df['Time JD'][j] = jd
+            ap_df['Time JD UTC'][j] = jd
+            ap_df['Time BJD TDB'][j] = jd_utc_to_bjd_tdb(jd, header['TELRA'], header['TELDEC']) #Using the telescope ra and dec should be accurate enough for our purposes
             ap_df['Airmass'][j] = header['AIRMASS']
             ap_df['Seeing'][j] = log['X seeing'][log_ind]
             
@@ -435,7 +444,7 @@ def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.,
                 apertures = CircularAperture(positions, r=ap)
             except:
                 pdb.set_trace()
-
+                
             #Create an annulus centered on this position. 
             annuli = CircularAnnulus(positions, r_in=an_in, r_out=an_out)
 
@@ -485,7 +494,7 @@ def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.,
             for j in range(len(ap_df)):
                 #Write in the header. 
                 if j == 0:
-                    f.write('{:>21s}, {:>22s}, {:>17s}, {:>7s}, {:>7s}, '.format('Filename', 'Time UT', 'Time JD', 'Airmass', 'Seeing'))
+                    f.write('{:>21s}, {:>22s}, {:>17s}, {:>17s}, {:>7s}, {:>7s}, '.format('Filename', 'Time UT', 'Time JD UTC', 'Time BJD TDB', 'Airmass', 'Seeing'))
                     for i in range(len(source_names)):
                         if i != len(source_names) - 1:
                             f.write('{:>22s}, {:>28s}, {:>28s}, {:>34s}, '.format(source_names[i]+' Flux', source_names[i]+' Flux Error', source_names[i]+' Background', source_names[i]+' Interpolation Flag'))
@@ -494,7 +503,7 @@ def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.,
 
 
                 #Write in Filename, Time UT, Time JD, Airmass, Seeing values.
-                format_string = '{:21s}, {:22s}, {:17.9f}, {:7.2f}, {:7.1f}, '
+                format_string = '{:21s}, {:22s}, {:17.9f}, {:17.9f}, {:7.2f}, {:7.1f}, '
                 #If the seeing value for this image is 'nan' (a string), convert it to a float. 
                 #TODO: Not sure why it's being read in as a string, fix that. 
                 if type(ap_df['Seeing'][j]) == str:
@@ -502,7 +511,7 @@ def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.,
 
                 #Do a try/except clause for writeout, in case it breaks in the future. 
                 try:
-                    f.write(format_string.format(ap_df['Filename'][j], ap_df['Time UT'][j], ap_df['Time JD'][j], ap_df['Airmass'][j], ap_df['Seeing'][j]))
+                    f.write(format_string.format(ap_df['Filename'][j], ap_df['Time UT'][j], ap_df['Time JD UTC'][j], ap_df['Time BJD TDB'][j], ap_df['Airmass'][j], ap_df['Seeing'][j]))
                 except:
                     print('Writeout failed! Inspect quantities you are trying to write out.')
                     pdb.set_trace()
@@ -550,7 +559,7 @@ def variable_aper_phot(target, centroided_sources, multiplicative_factors, an_in
         print('Doing variable aperture photometry for {}, multiplicative seeing factor = {}, inner annulus radius = {} pix, outer annulus radius = {} pix.'.format(target, fact, an_in, an_out))
 
         #Declare a new dataframe to hold the information for all targets for this aperture. 
-        columns = ['Filename', 'Time UT', 'Time JD', 'Airmass', 'Seeing']
+        columns = ['Filename', 'Time UT', 'Time JD UTC', 'Time BJD TDB', 'Airmass', 'Seeing']
         for j in range(0, len(source_names)):
             columns.append(source_names[j]+' Flux')
             columns.append(source_names[j]+' Flux Error')
@@ -593,7 +602,8 @@ def variable_aper_phot(target, centroided_sources, multiplicative_factors, an_in
             jd = date_to_jd(date.year,date.month,days)
             var_df['Filename'][j] = reduced_files[j].name
             var_df['Time UT'][j] = header['DATE-OBS']
-            var_df['Time JD'][j] = jd
+            var_df['Time JD UTC'][j] = jd
+            var_df['Time BJD TDB'][j] = jd_utc_to_bjd_tdb(jd, header['TELRA'], header['TELDEC'])
             var_df['Airmass'][j] = header['AIRMASS']
             var_df['Seeing'][j] = log['X seeing'][np.where(log['Filename'] == reduced_files[j].name.split('_')[0]+'.fits')[0][0]]
             
@@ -630,7 +640,7 @@ def variable_aper_phot(target, centroided_sources, multiplicative_factors, an_in
             for j in range(len(var_df)):
                 #Write in the header. 
                 if j == 0:
-                    f.write('{:>21s}, {:>22s}, {:>17s}, {:>7s}, {:>7s}, '.format('Filename', 'Time UT', 'Time JD', 'Airmass', 'Seeing'))
+                    f.write('{:>21s}, {:>22s}, {:>17s}, {:>17s}, {:>7s}, {:>7s}, '.format('Filename', 'Time UT', 'Time JD UTC', 'Time BJD TDB', 'Airmass', 'Seeing'))
                     for k in range(len(source_names)):
                         if k != len(source_names) - 1:
                             f.write('{:>22s}, {:>28s}, {:>28s}, {:>34s}, '.format(source_names[k]+' Flux', source_names[k]+' Flux Error', source_names[k]+' Background', source_names[k]+' Interpolation Flag'))
@@ -639,7 +649,7 @@ def variable_aper_phot(target, centroided_sources, multiplicative_factors, an_in
 
 
                 #Write in Filename, Time UT, Time JD, Airmass, Seeing values.
-                format_string = '{:21s}, {:22s}, {:17.9f}, {:7.2f}, {:7.1f}, '
+                format_string = '{:21s}, {:22s}, {:17.9f}, {:17.9f}, {:7.2f}, {:7.1f}, '
                 #If the seeing value for this image is 'nan' (a string), convert it to a float. 
                 #TODO: Not sure why it's being read in as a string, fix that. 
                 if type(var_df['Seeing'][j]) == str:
@@ -647,7 +657,7 @@ def variable_aper_phot(target, centroided_sources, multiplicative_factors, an_in
 
                 #Do a try/except clause for writeout, in case it breaks in the future. 
                 try:
-                    f.write(format_string.format(var_df['Filename'][j], var_df['Time UT'][j], var_df['Time JD'][j], var_df['Airmass'][j], var_df['Seeing'][j]))
+                    f.write(format_string.format(var_df['Filename'][j], var_df['Time UT'][j], var_df['Time JD UTC'][j], var_df['Time BJD TDB'][j], var_df['Airmass'][j], var_df['Seeing'][j]))
                 except:
                     print('Writeout failed! Inspect quantities you are trying to write out.')
                     pdb.set_trace()

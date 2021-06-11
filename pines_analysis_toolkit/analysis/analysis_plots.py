@@ -82,7 +82,7 @@ def raw_flux_plot(times, raw_targ_flux, raw_targ_err, raw_ref_flux, raw_ref_err,
         if i == 0:
             ax.set_ylabel('Photons', fontsize=20)
         ax.tick_params(labelsize=16)
-        ax.set_xlabel('Time (JD$_{UTC}$)', fontsize=20)
+        ax.set_xlabel('Time (BJD$_{TDB}$)', fontsize=20)
 
         #Plot the target. 
         ax.errorbar(times[i], raw_targ_flux[i], raw_targ_err[i], marker='o', linestyle='-', label='Target', mfc='none', mew=2, color='tab:orange')
@@ -144,7 +144,7 @@ def global_raw_flux_plot(times, raw_targ_flux, raw_targ_err, raw_ref_flux, raw_r
         ax.errorbar(times, raw_ref_flux[0][:,j], raw_ref_err[0][:,j], marker=marker, linestyle='-', label='Ref. '+str(j+1), color=color)
     ax.set_ylabel('Photons', fontsize=20)
     ax.tick_params(labelsize=16)
-    ax.set_xlabel('Time (JD$_{UTC}$)', fontsize=20)
+    ax.set_xlabel('Time (BJD$_{TDB}$)', fontsize=20)
 
     ax.errorbar(times, raw_targ_flux[0], raw_targ_err[0], marker='o', linestyle='-', label='Target', mfc='none', mew=2, color='tab:orange')
 
@@ -222,7 +222,7 @@ def normalized_flux_plot(times, norm_targ_flux, norm_targ_err, norm_ref_flux, no
         if i == 0:
             ax.set_ylabel('Normalized Flux', fontsize=20)
         ax.tick_params(labelsize=16)
-        ax.set_xlabel('Time (JD$_{UTC}$)', fontsize=20)
+        ax.set_xlabel('Time (BJD$_{TDB}$)', fontsize=20)
 
         if np.nanstd(norm_targ_flux[i]) > np.nanstd(alc_flux[i]):
             targ_zorder = 1
@@ -298,7 +298,7 @@ def global_normalized_flux_plot(times, norm_targ_flux, norm_targ_err, norm_ref_f
     
     ax.set_ylabel('Normalized Flux', fontsize=20)
     ax.tick_params(labelsize=16)
-    ax.set_xlabel('Time (JD$_{UTC}$)', fontsize=20)
+    ax.set_xlabel('Time (BjD$_{TDB}$)', fontsize=20)
 
     #Plot the target.
     ax.errorbar(times, norm_targ_flux[0], norm_targ_err[0], color='tab:orange', mfc='none', marker='.', ms=7, lw=1.5, linestyle='', label='Target', mew=2, zorder=1)
@@ -378,7 +378,7 @@ def corr_target_plot(times, targ_flux_corr, binned_times, binned_flux, binned_er
         #Set labels.
         if i == 0:
             ax.set_ylabel('Normalized Flux', fontsize=20)
-        ax.set_xlabel('Time (JD$_{UTC}$)', fontsize=20)
+        ax.set_xlabel('Time (BJD$_{TDB}$)', fontsize=20)
         ut_date = julian.from_jd(times[i][0])
         ut_date_str = 'UT '+ut_date.strftime('%b. %d %Y')
         ax.set_title(ut_date_str, fontsize=20)
@@ -440,7 +440,7 @@ def global_corr_target_plot(times, targ_flux_corr, binned_times, binned_flux, bi
     
     ax.set_ylabel('Normalized Flux', fontsize=20)
 
-    ax.set_xlabel('Time (JD$_{UTC}$)', fontsize=20)
+    ax.set_xlabel('Time (BJD$_{TDB}$)', fontsize=20)
     plt.suptitle(short_name+' Global Corrected Target Lightcurve', fontsize=20)
     
     #Save the figure. 
@@ -489,7 +489,7 @@ def corr_all_sources_plot(target):
     ref_names = get_source_names(data)[1:]
     num_refs = len(ref_names)
     
-    times = np.array(data['Time (JD UTC)'])
+    times = np.array(data['Time BJD TDB'])
     night_inds = night_splitter(times)
     num_nights = len(night_inds)
     
@@ -537,7 +537,7 @@ def corr_all_sources_plot(target):
 
             ax[j].plot(times[inds], flux[inds], color=color, linestyle='', marker='.', alpha=0.25)
             ax[j].errorbar(binned_time, binned_flux, binned_err, color=color, linestyle='', marker='o', ms=10, mfc='none', mew=2)
-            ax[j].set_xlabel('Time (JD UTC)', fontsize=20)
+            ax[j].set_xlabel('Time (BJD$_{TDB}$)', fontsize=20)
             ax[j].tick_params(labelsize=16)
             ax[j].axhline(1, color='k', alpha=0.7, lw=1, zorder=0)
             ax[j].grid(alpha=0.2)

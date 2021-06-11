@@ -53,13 +53,15 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 		manual_flat_path (pathlib.Path, optional): path to the flat you want to use to reduce the data, if you don't want the code to automatically choose it for you.
 		manual_dark_path (pathlib.Path, optional): path to the dark you want to use to reduce the data, if you don't want the code to automatically choose it for you.
 		manual_bpm_path (pathlib.Path, optional): path to the bad pixel mask you want to use to reduce the data, if you don't want the code to automatically choose it for you.
+		linearity_correction (bool): Whether or not to apply a linearity correction to the data. 
+		linearity_correction (int): Degree of polynomial used to correct the data if linearity_correction is True.
 	Outputs:
 		None
 	TODO:
 		Add check to see if .fits files are the correct size. If they didn't fully download, fits.open() will crash. 
 '''
 	
-def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sftp='', manual_flat_path='', manual_dark_path='', manual_bpm_path=''):
+def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sftp='', manual_flat_path='', manual_dark_path='', manual_bpm_path='', linearity_correction=False, linearity_correction_degree=5):
 	t1 = time.time()
 	print('')
 	if (upload is True) and (sftp == ''):
@@ -91,13 +93,13 @@ def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sf
 		header = hdulist[0].header
 
 		try:
-			frame_raw = fits.open(raw_files[i])[0].data
+			frame_raw = fits.open(raw_files[i])[0].data.astype('float32')
 		except:
 			pdb.set_trace()
 
 
 		frame_raw = frame_raw[0:1024,:] #Cuts off 2 rows of overscan (?) pixels
-
+			
 		#Add a flag to the header to check if background is near saturation
 		if sigma_clipped_stats(frame_raw)[1] > 3800: 
 			sat_flag = 1
@@ -123,43 +125,32 @@ def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sf
 			bad_pixel_mask = fits.open(manual_bpm_path)[0].data
 			bad_pixel_mask_name = manual_bpm_path.name
 
-		#Reduce the image. 
-		frame_red = (frame_raw - master_dark)/master_flat
-		frame_red = frame_red.astype('float32')
+
+
+		#If linearity_correction is set, correct the pixels for linearity.
+		if linearity_correction:
+
+			poly_coeffs_path = pines_path/('Calibrations/Linearity/meas2corr_poly_coeffs_deg_{}_no_redchi.fits'.format(linearity_correction_degree))
+			hdu_list = fits.open(poly_coeffs_path)
+			meas2corr_poly_coeffs = hdu_list[0].data[0:1024,:,:]
+			degree = meas2corr_poly_coeffs.shape[2]
+			frame_raw[np.where(bad_pixel_mask == 1)] = np.nan
+			measured_counts = frame_raw - master_dark
+
+			#Make an array of corrected counts, and correct using the polynomial coefficients form meas2corr_poly_coeffs.fits
+			corrected_counts = np.zeros((1024,1024), dtype='float32')
+			for i in np.arange(degree): 
+				corrected_counts += meas2corr_poly_coeffs[:,:,i] * measured_counts**i
+			frame_red = corrected_counts
+
+		else:
+			#Reduce the image. 
+			frame_red = (frame_raw - master_dark)/master_flat
+			frame_red = frame_red.astype('float32')
+			
+			#Set bad pixels to NaNs. 
+			frame_red[np.where(bad_pixel_mask == 1)] = np.nan
 		
-		#frame_red_no_flag = deepcopy(frame_red)
-
-		#Set bad pixels to NaNs. 
-		frame_red[np.where(bad_pixel_mask == 1)] = np.nan
-
-		# norm = ImageNormalize(data=frame_red, interval=ZScaleInterval())
-		# plt.ion()
-		# fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(16,7), sharex=True, sharey=True)
-		# im = ax[0].imshow(frame_red_no_flag, origin='lower', norm=norm)
-		# ax[0].set_title('Reduced')
-		# divider = make_axes_locatable(ax[0])
-		# cax = divider.new_vertical(size="3%", pad=0.3, pack_start=True)
-		# fig.add_axes(cax)
-		# fig.colorbar(im, cax=cax, orientation="horizontal", label='ADUs')
-
-		# im2 = ax[1].imshow(frame_red, origin='lower', norm=norm)
-		# ax[1].set_title('Reduced, Bad Pixels Flagged')
-		# divider = make_axes_locatable(ax[1])
-		# cax = divider.new_vertical(size="3%", pad=0.3, pack_start=True)
-		# fig.add_axes(cax)
-		# fig.colorbar(im2, cax=cax, orientation="horizontal", label='ADUs')
-
-		# kernel = Gaussian2DKernel(x_stddev=0.5)
-		# frame_red_interp = interpolate_replace_nans(frame_red, kernel=kernel)
-		# im3 = ax[2].imshow(frame_red_interp, origin='lower', norm=norm)
-		# ax[2].set_title('Reduced, Bad Pixels Interpolated')
-		# divider = make_axes_locatable(ax[2])
-		# cax = divider.new_vertical(size="3%", pad=0.3, pack_start=True)
-		# fig.add_axes(cax)
-		# fig.colorbar(im3, cax=cax, orientation="horizontal", label='ADUs')
-		# plt.tight_layout()
-		# pdb.set_trace()
-		# qp(frame_red)
 		# pdb.set_trace()
 
 		# #Do a background model subtraction

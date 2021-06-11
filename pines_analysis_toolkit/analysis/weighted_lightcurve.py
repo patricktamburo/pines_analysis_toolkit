@@ -133,7 +133,7 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
     #If red_stars_only, limit the source_df to the red stars.
     if red_stars_only:
         print('Using red reference stars only!')
-        target_entry = source_df.loc[source_df['Name'] == short_name]
+        target_entry = source_df.loc[[0]]
 
         #Grab only the reddest sources from the sources DataFrame.
         source_df = source_df[(source_df['M_G'] < 14) & (source_df['M_G'] > 7.5)]
@@ -146,7 +146,7 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
 
     if blue_stars_only:
         print('Using blue reference stars only!')
-        target_entry = source_df.loc[source_df['Name'] == short_name]
+        target_entry = source_df.loc[[0]]
 
         #Grab only the reddest sources from the sources DataFrame.
         source_df = source_df[(source_df['M_G'] < 7.5)]
@@ -156,7 +156,7 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
 
         #Reset the indices of the DataFrame.s
         source_df.reset_index(inplace=True, drop=True)
-        pdb.set_trace()
+
 
     source_names = np.array(source_df['Name'])
     ref_names = source_names[1:]
@@ -193,9 +193,10 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
         df = pd.read_csv(phot_file)
         df.columns = df.keys().str.strip()
         
-        full_times = np.array(df['Time JD'])        
+        full_times = np.array(df['Time BJD TDB'])        
         full_file_list = np.array(df['Filename'])
         full_airmass = np.array(df['Airmass']) #Get airmass for regression.
+        full_background = np.array(df[source_names[0]+' Background'], dtype='float')
         sigma_clip_flags = np.zeros(len(full_times), dtype='int') #Track any frames identified as bad in sigma clipping. 
 
         #Split data up into individual nights. 
@@ -247,9 +248,15 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
             airmass = full_airmass[inds]
             centroid_x = full_centroid_x[inds]
             centroid_y = full_centroid_y[inds]
+            background = full_background[inds]
             if use_pwv:
-                pwv = full_pwv[inds]
- 
+                pwv = full_pwv[inds]     
+                        
+            times = np.array(full_times[inds])
+            all_nights_times.append(times)
+            date = julian.from_jd(times[0])
+            date_str = 'UT '+date.strftime('%b %d, %Y')
+
             #Grab the target flux and error. 
             targ_flux = np.array(df[source_names[0]+' Flux'][inds], dtype='float')
             targ_flux_err = np.array(df[source_names[0]+' Flux Error'][inds], dtype='float')
@@ -296,11 +303,6 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
             running_stddev = np.zeros((num_frames,num_refs)) #running std dev of corr flux
             regressed_corr_flux = np.zeros((num_frames,num_refs)) #corrected flux that has been run through the linear regression procedure
 
-            times = np.array(full_times[inds])
-            all_nights_times.append(times)
-            date = julian.from_jd(times[0])
-            date_str = 'UT '+date.strftime('%b %d, %Y')
-
             try:    
                 block_inds = block_splitter(times, []) #Get indices of each block for binning/plotting purposes.
             except:
@@ -314,8 +316,6 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
                 print('Sigma clipping identified {} bad frames:'.format(len(bad_frames)))
                 for f in range(len(bad_frames)):
                     print('     '+full_file_list[bad_inds[f]])
-
-            #times = np.array([julian.from_jd(times[i], fmt='jd') for i in range(len(times))])
 
             #fill raw flux and err flux arrays, and normalize
             for k in np.arange(num_refs):
@@ -377,7 +377,7 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
                         regression_dict = {'airmass':airmass, 'centroid_x':centroid_x, 'centroid_y':centroid_y}
 
                     regressed_corr_flux[:,k] = regression(corr_flux[:,k], regression_dict)
-                
+
                     #Calculate stddevs from the regressed corrected flux.
                     old_stddev[k] = new_stddev[k]
                     new_stddev[k] = np.nanstd(regressed_corr_flux[:,k])
@@ -446,7 +446,7 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
             targ_flux_corr_err = np.sqrt( (targ_flux_err_norm/alc_final_flux)**2 + (targ_flux_norm*alc_final_err/(alc_final_flux**2))**2)
             
             if use_pwv:
-                regression_dict = {'airmass':airmass, 'centroid_x':centroid_x, 'centroid_y':centroid_y, 'pwv':pwv}
+                regression_dict = {'airmass':airmass, 'centroid_x':centroid_x, 'centroid_y':centroid_y,'pwv':pwv}
             else: 
                 regression_dict = {'airmass':airmass, 'centroid_x':centroid_x, 'centroid_y':centroid_y}
 
@@ -527,7 +527,7 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
                 ref_flux_corr_err_save[k].extend(all_nights_corr_ref_err[j][:,k])
                 night_weight_arrays[k].extend(np.zeros(len(night_inds[j]))+norm_night_weights[j][k])
         
-        output_dict = {'Filename':file_list_save, 'Time (JD UTC)':time_save, 'Sigma Clip Flag':sigma_clip_flag_save, short_name+' Corrected Flux':targ_flux_corr_save, short_name+' Corrected Flux Error':targ_flux_corr_err_save}
+        output_dict = {'Filename':file_list_save, 'Time BJD TDB':time_save, 'Sigma Clip Flag':sigma_clip_flag_save, short_name+' Corrected Flux':targ_flux_corr_save, short_name+' Corrected Flux Error':targ_flux_corr_err_save}
         for j in range(num_refs):
             ref = source_names[j+1]
             output_dict[ref+' Corrected Flux'] = ref_flux_corr_save[j]
@@ -541,7 +541,7 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
                 #Write the header line. 
                 if j == 0:
                     f.write('{:<21s}, '.format('Filename'))
-                    f.write('{:<15s}, '.format('Time (JD UTC)'))
+                    f.write('{:<15s}, '.format('Time BJD TDB'))
                     f.write('{:<15s}, '.format('Sigma Clip Flag'))
                     f.write('{:<30s}, {:<30s}, '.format(short_name+' Corrected Flux', short_name+' Corrected Flux Error'))
 
@@ -554,7 +554,7 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
                 
                 #Write in the data lines.
                 f.write('{:<21s}, '.format(output_df['Filename'][j]))
-                f.write('{:<15.7f}, '.format(output_df['Time (JD UTC)'][j]))
+                f.write('{:<15.7f}, '.format(output_df['Time BJD TDB'][j]))
                 f.write('{:<15d}, '.format(output_df['Sigma Clip Flag'][j]))
                 f.write('{:<30.6f}, {:<36.6f}, '.format(output_df[short_name+' Corrected Flux'][j], output_df[short_name+' Corrected Flux Error'][j]))
                 
