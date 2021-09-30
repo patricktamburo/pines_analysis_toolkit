@@ -21,8 +21,11 @@ def plot_style():
     legend_font_size = 12
     return (title_size, axis_title_size, axis_ticks_font_size, legend_font_size)
 
-def seeing_plot(target, centroided_sources):
-    pines_path = pines_dir_check()
+def seeing_plot(target, centroided_sources, bin_mins='', force_output_path=''):
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pines_dir_check()
     short_name = short_name_creator(target)
     #Get plot style parameters. 
     title_size, axis_title_size, axis_ticks_font_size, legend_font_size = plot_style()
@@ -32,8 +35,8 @@ def seeing_plot(target, centroided_sources):
     centroided_sources.columns = centroided_sources.keys().str.strip()
 
     #Read in times and seeing values. 
-    times_full = np.array(centroided_sources['Time (JD UTC)'])
-    seeing = np.array(centroided_sources['Seeing'])
+    times_full = np.array(centroided_sources['Time BJD TDB'], dtype='float')
+    seeing = np.array(centroided_sources['Seeing'], dtype='float')
 
     #Split up times by nights.
     night_inds = night_splitter(times_full)
@@ -44,34 +47,50 @@ def seeing_plot(target, centroided_sources):
     fig, ax = plt.subplots(nrows=1, ncols=num_nights, figsize=(17,5), sharey=True)
     for i in range(num_nights):
         if i == 0:
-            ax[i].set_ylabel('Seeing (")', fontsize=axis_title_size)
+            if num_nights == 1:
+                ax.set_ylabel('Seeing (")', fontsize=axis_title_size)
+            else:
+                ax[i].set_ylabel('Seeing (")', fontsize=axis_title_size)
 
         inds = night_inds[i]
-        ax[i].plot(times_nights[i], seeing[inds], marker='.', linestyle='', alpha=0.3, label='Raw seeing')
-        ax[i].tick_params(labelsize=axis_ticks_font_size)
-        ax[i].set_xlabel('Time (JD UTC)', fontsize=axis_title_size)
-        ax[i].grid(alpha=0.2)
-        ax[i].set_xlim(np.mean(times_nights[i])-standard_x/2, np.mean(times_nights[i])+standard_x/2)
+        
 
         #bin
-        block_inds = block_splitter(times_nights[i])
+        block_inds = block_splitter(times_nights[i], bin_mins=bin_mins)
         block_x = np.zeros(len(block_inds))
         block_y = np.zeros(len(block_inds))
         block_y_err = np.zeros(len(block_inds))
         for j in range(len(block_inds)):
-            block_x[j] = np.mean(times_nights[i][block_inds[j]])
-            block_y[j] = np.mean(seeing[inds][block_inds[j]])
-            block_y_err[j] = np.std(seeing[inds][block_inds[j]]) / np.sqrt(len(seeing[inds][block_inds[j]]))
-
-        ax[i].errorbar(block_x, block_y, block_y_err, marker='o', linestyle='', color='tab:blue', ms=8, mfc='none', mew=2, label='Bin seeing')
+            block_x[j] = np.nanmean(times_nights[i][block_inds[j]])
+            block_y[j] = np.nanmean(seeing[inds][block_inds[j]])
+            block_y_err[j] = np.nanstd(seeing[inds][block_inds[j]]) / np.sqrt(len(seeing[inds][block_inds[j]]))
+       
         
         #Interpolate each night's seeing.
         fit_times = np.linspace(block_x[0], block_x[-1], 1000)
         interp = CubicSpline(block_x, block_y)
         interp_fit = interp(fit_times)
-        ax[i].plot(fit_times, interp_fit, color='r', lw=2, zorder=0, alpha=0.7, label='CS Interp.')
-
-    ax[i].legend(bbox_to_anchor=(1.01, 0.5), fontsize=legend_font_size)
+        
+        if num_nights == 1:
+            ax.plot(times_nights[i], seeing[inds], marker='.', linestyle='', alpha=0.3, label='Raw seeing')
+            ax.tick_params(labelsize=axis_ticks_font_size)
+            ax.set_xlabel('Time (BJD$_{TDB}$)', fontsize=axis_title_size)
+            ax.grid(alpha=0.2)
+            ax.set_xlim(np.mean(times_nights[i])-standard_x/2, np.mean(times_nights[i])+standard_x/2)
+            ax.errorbar(block_x, block_y, block_y_err, marker='o', linestyle='', color='tab:blue', ms=8, mfc='none', mew=2, label='Bin seeing')
+            ax.plot(fit_times, interp_fit, color='r', lw=2, zorder=0, alpha=0.7, label='CS Interp.')
+        else:
+            ax[i].plot(times_nights[i], seeing[inds], marker='.', linestyle='', alpha=0.3, label='Raw seeing')
+            ax[i].tick_params(labelsize=axis_ticks_font_size)
+            ax[i].set_xlabel('Time (BJD$_{TDB}$)', fontsize=axis_title_size)
+            ax[i].grid(alpha=0.2)
+            ax[i].set_xlim(np.mean(times_nights[i])-standard_x/2, np.mean(times_nights[i])+standard_x/2)
+            ax[i].errorbar(block_x, block_y, block_y_err, marker='o', linestyle='', color='tab:blue', ms=8, mfc='none', mew=2, label='Bin seeing')
+            ax[i].plot(fit_times, interp_fit, color='r', lw=2, zorder=0, alpha=0.7, label='CS Interp.')
+    if num_nights == 1:
+        ax.legend(bbox_to_anchor=(1.01, 0.5), fontsize=legend_font_size)
+    else:
+        ax[i].legend(bbox_to_anchor=(1.01, 0.5), fontsize=legend_font_size)
     plt.suptitle(short_name+' Seeing Measurements', fontsize=title_size)
     plt.subplots_adjust(left=0.07, wspace=0.05, top=0.92, bottom=0.17)
 
@@ -79,8 +98,11 @@ def seeing_plot(target, centroided_sources):
     plt.savefig(output_filename, dpi=300)
     return
 
-def relative_cutout_position_plot(target, centroided_sources):
-    pines_path = pines_dir_check()
+def relative_cutout_position_plot(target, centroided_sources, force_output_path=''):
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pines_dir_check()
     short_name = short_name_creator(target)
 
     #Get plot style parameters. 
@@ -91,7 +113,7 @@ def relative_cutout_position_plot(target, centroided_sources):
     centroided_sources.columns = centroided_sources.keys().str.strip()
 
     #Get times from the centroid output and split them by night. 
-    times_full = np.array(centroided_sources['Time (JD UTC)'])
+    times_full = np.array(centroided_sources['Time BJD TDB'])
     night_inds = night_splitter(times_full)
     num_nights = len(night_inds)
     times_nights = [times_full[night_inds[i]] for i in range(num_nights)]
@@ -106,10 +128,17 @@ def relative_cutout_position_plot(target, centroided_sources):
     for j in range(num_nights):
         inds = night_inds[j]
         if j == 0: 
-            ax[0,j].set_ylabel('Cutout X Position', fontsize=axis_title_size)
-            ax[1,j].set_ylabel('Cutout Y Position', fontsize=axis_title_size)
-
+            if num_nights == 1:
+                ax[0].set_ylabel('Cutout X Position', fontsize=axis_title_size)
+                ax[1].set_ylabel('Cutout Y Position', fontsize=axis_title_size)
+                ax[0].set_ylim(0.25,0.75)
+            else:
+                ax[0,j].set_ylabel('Cutout X Position', fontsize=axis_title_size)
+                ax[1,j].set_ylabel('Cutout Y Position', fontsize=axis_title_size)
+                ax[0,j].set_ylim(0.25,0.75)
         for i in range(len(source_names)):
+            if i == 1:
+                continue
             cutout_x = np.array(centroided_sources[source_names[i]+' Cutout X'][inds], dtype='float')
             cutout_y = np.array(centroided_sources[source_names[i]+' Cutout Y'][inds], dtype='float')
 
@@ -119,22 +148,42 @@ def relative_cutout_position_plot(target, centroided_sources):
             else:
                 marker = markers[(i-1) % len(markers)]
                 label = 'Ref. '+str(i)
-            ax[0,j].plot(times_nights[j], cutout_x, marker=marker, label=label, linestyle='')
-            ax[1,j].plot(times_nights[j], cutout_y, marker=marker, linestyle='')
 
-        ax[0,j].tick_params(labelsize=axis_ticks_font_size)
-        ax[0,j].set_xticklabels([])
-        ax[0,j].axhline(box_w/2, zorder=0, color='r', label='Center pix.', lw=2)
-        ax[0,j].set_xlim(np.mean(times_nights[j])-standard_x/2, np.mean(times_nights[j])+standard_x/2)
-        ax[0,j].grid(alpha=0.2)
-        ax[1,j].tick_params(labelsize=axis_ticks_font_size)
-        ax[1,j].axhline(box_w/2, zorder=0, color='r', label='Center pix.', lw=2)
-        ax[1,j].set_xlim(np.mean(times_nights[j])-standard_x/2, np.mean(times_nights[j])+standard_x/2)
-        ax[1,j].set_xlabel('Time (JD UTC)', fontsize=axis_title_size)
-        ax[1,j].grid(alpha=0.2)
+            if num_nights == 1:
+                ax[0].plot(times_nights[j], cutout_x, marker=marker, label=label, linestyle='')
+                ax[1].plot(times_nights[j], cutout_y, marker=marker, linestyle='')
+            else:
+                ax[0,j].plot(times_nights[j], cutout_x, marker=marker, label=label, linestyle='')
+                ax[1,j].plot(times_nights[j], cutout_y, marker=marker, linestyle='')
+
+        if num_nights == 1:
+            ax[0].tick_params(labelsize=axis_ticks_font_size)
+            ax[0].set_xticklabels([])
+            ax[0].axhline(box_w/2, zorder=0, color='r', label='Center pix.', lw=2)
+            ax[0].set_xlim(np.mean(times_nights[j])-standard_x/2, np.mean(times_nights[j])+standard_x/2)
+            ax[0].grid(alpha=0.2)
+            ax[1].tick_params(labelsize=axis_ticks_font_size)
+            ax[1].axhline(box_w/2, zorder=0, color='r', label='Center pix.', lw=2)
+            ax[1].set_xlim(np.mean(times_nights[j])-standard_x/2, np.mean(times_nights[j])+standard_x/2)
+            ax[1].set_xlabel('Time (BJD$_{TDB}$)', fontsize=axis_title_size)
+            ax[1].grid(alpha=0.2)
+        else:
+            ax[0,j].tick_params(labelsize=axis_ticks_font_size)
+            ax[0,j].set_xticklabels([])
+            ax[0,j].axhline(box_w/2, zorder=0, color='r', label='Center pix.', lw=2)
+            ax[0,j].set_xlim(np.mean(times_nights[j])-standard_x/2, np.mean(times_nights[j])+standard_x/2)
+            ax[0,j].grid(alpha=0.2)
+            ax[1,j].tick_params(labelsize=axis_ticks_font_size)
+            ax[1,j].axhline(box_w/2, zorder=0, color='r', label='Center pix.', lw=2)
+            ax[1,j].set_xlim(np.mean(times_nights[j])-standard_x/2, np.mean(times_nights[j])+standard_x/2)
+            ax[1,j].set_xlabel('Time (BJD$_{TDB}$)', fontsize=axis_title_size)
+            ax[1,j].grid(alpha=0.2)
 
         if j == num_nights - 1:
-            ax[0,j].legend(bbox_to_anchor=(1.01, 1.0), fontsize=legend_font_size)
+            if num_nights == 1:
+                ax[0].legend(bbox_to_anchor=(1.01, 1.0), fontsize=legend_font_size)
+            else:
+                ax[0,j].legend(bbox_to_anchor=(1.01, 1.0), fontsize=legend_font_size)
 
     plt.suptitle(short_name+' Cutout Centroid Positions', fontsize=title_size)
 
@@ -143,8 +192,11 @@ def relative_cutout_position_plot(target, centroided_sources):
 
     return
 
-def absolute_image_position_plot(target, centroided_sources):
-    pines_path = pines_dir_check()
+def absolute_image_position_plot(target, centroided_sources, force_output_path='', bin_mins=''):
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pines_dir_check()
     short_name = short_name_creator(target)
 
     #Get plot style parameters. 
@@ -155,29 +207,38 @@ def absolute_image_position_plot(target, centroided_sources):
     centroided_sources.columns = centroided_sources.keys().str.strip()
 
     #Get times from the centroid output and split them by night. 
-    times_full = np.array(centroided_sources['Time (JD UTC)'])
+    times_full = np.array(centroided_sources['Time BJD TDB'])
     night_inds = night_splitter(times_full)
     num_nights = len(night_inds)
     times_nights = [times_full[night_inds[i]] for i in range(num_nights)]
     standard_x = standard_x_range(times_nights)
     
-    source = source_names[0]
+    targ_ind = np.where(['2MASS' in i for i in source_names])[0][0]
+    targ_name = source_names[targ_ind]
     fig, ax = plt.subplots(nrows=2, ncols=num_nights, figsize=(17,9), sharex='col', sharey='row')
     plt.subplots_adjust(left=0.07, hspace=0.05, wspace=0.05, top=0.92, bottom=0.17)
     for j in range(num_nights):
         if j == 0:
-            ax[0,j].set_ylabel('Image X', fontsize=axis_title_size)
-            ax[1,j].set_ylabel('Image Y', fontsize=axis_title_size)
+            if num_nights == 1:
+                ax[0].set_ylabel('Image X', fontsize=axis_title_size)
+                ax[1].set_ylabel('Image Y', fontsize=axis_title_size)
+            else:
+                ax[0,j].set_ylabel('Image X', fontsize=axis_title_size)
+                ax[1,j].set_ylabel('Image Y', fontsize=axis_title_size)
 
         inds = night_inds[j]
         times = times_nights[j]
-        absolute_x = np.array(centroided_sources[source+' Image X'][inds], dtype='float')
-        absolute_y = np.array(centroided_sources[source+' Image Y'][inds], dtype='float')
-        ax[0,j].plot(times, absolute_x, marker='.', linestyle='', alpha=0.3, color='tab:blue', label='Raw x')
-        ax[1,j].plot(times, absolute_y, marker='.', linestyle='', alpha=0.3, color='tab:orange', label='Raw y')
+        absolute_x = np.array(centroided_sources[targ_name+' Image X'][inds], dtype='float')
+        absolute_y = np.array(centroided_sources[targ_name+' Image Y'][inds], dtype='float')
+        if num_nights == 1:
+            ax[0].plot(times, absolute_x, marker='.', linestyle='', alpha=0.3, color='tab:blue', label='Raw x')
+            ax[1].plot(times, absolute_y, marker='.', linestyle='', alpha=0.3, color='tab:orange', label='Raw y')
+        else:
+            ax[0,j].plot(times, absolute_x, marker='.', linestyle='', alpha=0.3, color='tab:blue', label='Raw x')
+            ax[1,j].plot(times, absolute_y, marker='.', linestyle='', alpha=0.3, color='tab:orange', label='Raw y')
 
         #bin
-        block_inds = block_splitter(times)
+        block_inds = block_splitter(times, bin_mins=bin_mins)
         block_times= np.zeros(len(block_inds))
         block_x = np.zeros(len(block_inds))
         block_x_err = np.zeros(len(block_inds))
@@ -193,37 +254,56 @@ def absolute_image_position_plot(target, centroided_sources):
             except:
                 pdb.set_trace()
 
-        ax[0,j].errorbar(block_times, block_x, block_x_err, marker='o', linestyle='', color='tab:blue', ms=8, mfc='none', mew=2, label='Bin x')
-        ax[1,j].errorbar(block_times, block_y, block_y_err, marker='o', linestyle='', color='tab:orange', ms=8, mfc='none', mew=2, label='Bin y')
 
-        ax[0,j].tick_params(labelsize=axis_ticks_font_size)
-        ax[1,j].tick_params(labelsize=axis_ticks_font_size)
-
-        ax[0,j].grid(alpha=0.2)
-        ax[1,j].grid(alpha=0.2)
-        ax[1,j].set_xlabel('Time (JD UTC)', fontsize=axis_title_size)
+        if num_nights == 1:
+            ax[0].errorbar(block_times, block_x, block_x_err, marker='o', linestyle='', color='tab:blue', ms=8, mfc='none', mew=2, label='Bin x')
+            ax[1].errorbar(block_times, block_y, block_y_err, marker='o', linestyle='', color='tab:orange', ms=8, mfc='none', mew=2, label='Bin y')
+            ax[0].tick_params(labelsize=axis_ticks_font_size)
+            ax[1].tick_params(labelsize=axis_ticks_font_size)
+            ax[0].grid(alpha=0.2)
+            ax[1].grid(alpha=0.2)
+            ax[1].set_xlabel('Time (BJD$_{TDB}$)', fontsize=axis_title_size)
+        else:
+            ax[0,j].errorbar(block_times, block_x, block_x_err, marker='o', linestyle='', color='tab:blue', ms=8, mfc='none', mew=2, label='Bin x')
+            ax[1,j].errorbar(block_times, block_y, block_y_err, marker='o', linestyle='', color='tab:orange', ms=8, mfc='none', mew=2, label='Bin y')
+            ax[0,j].tick_params(labelsize=axis_ticks_font_size)
+            ax[1,j].tick_params(labelsize=axis_ticks_font_size)
+            ax[0,j].grid(alpha=0.2)
+            ax[1,j].grid(alpha=0.2)
+            ax[1,j].set_xlabel('Time (BJD$_{TDB}$)', fontsize=axis_title_size)
 
         if j == num_nights - 1:
-            ax[0,j].legend(bbox_to_anchor=(1.29, 1), fontsize=legend_font_size)
-            ax[1,j].legend(bbox_to_anchor=(1.29, 1), fontsize=legend_font_size)
+            if num_nights == 1:
+                ax[0].legend(bbox_to_anchor=(1.29, 1), fontsize=legend_font_size)
+                ax[1].legend(bbox_to_anchor=(1.29, 1), fontsize=legend_font_size)
+            else:
+                ax[0,j].legend(bbox_to_anchor=(1.29, 1), fontsize=legend_font_size)
+                ax[1,j].legend(bbox_to_anchor=(1.29, 1), fontsize=legend_font_size)
 
-    plt.suptitle(source+' Image Centroid Positions', fontsize=title_size)
+    plt.suptitle(targ_name+' Image Centroid Positions', fontsize=title_size)
     #plt.subplots_adjust(left=0.07, hspace=0.05, wspace=0.05, top=0.92, bottom=0.08, right=0.85)
 
     
    #ax.legend(bbox_to_anchor=(1.01, 1), fontsize=14)
 
-    ax[0,j].set_xlim(np.mean(times)-standard_x/2, np.mean(times)+standard_x/2)
-    ax[1,j].set_xlim(np.mean(times)-standard_x/2, np.mean(times)+standard_x/2)
+    if num_nights == 1:
+        ax[0].set_xlim(np.mean(times)-standard_x/2, np.mean(times)+standard_x/2)
+        ax[1].set_xlim(np.mean(times)-standard_x/2, np.mean(times)+standard_x/2)
+    else:
+        ax[0,j].set_xlim(np.mean(times)-standard_x/2, np.mean(times)+standard_x/2)
+        ax[1,j].set_xlim(np.mean(times)-standard_x/2, np.mean(times)+standard_x/2)
 
-    output_filename = pines_path/('Objects/'+short_name+'/analysis/diagnostic_plots/'+source+'_image_positions.png')
+    output_filename = pines_path/('Objects/'+short_name+'/analysis/diagnostic_plots/'+targ_name+'_image_positions.png')
     plt.savefig(output_filename, dpi=300)
 
     return 
 
-def background_plot(target, centroided_sources, gain=8.21):
+def background_plot(target, centroided_sources, gain=8.21, bin_mins='', force_output_path=''):
 
-    pines_path = pines_dir_check()
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pines_dir_check()
     short_name = short_name_creator(target)
 
     #Get plot style parameters. 
@@ -246,7 +326,7 @@ def background_plot(target, centroided_sources, gain=8.21):
     phot_df = pines_log_reader(phot_file)
 
     backgrounds = np.array(phot_df[short_name+' Background'], dtype='float')/gain
-    times_full = np.array(phot_df['Time JD'], dtype='float')
+    times_full = np.array(phot_df['Time BJD TDB'], dtype='float')
     night_inds = night_splitter(times_full)
     num_nights = len(night_inds)
     times_nights = [times_full[night_inds[i]] for i in range(num_nights)]
@@ -255,17 +335,14 @@ def background_plot(target, centroided_sources, gain=8.21):
     fig, ax = plt.subplots(nrows=1, ncols=num_nights, figsize=(17,5), sharey=True)
     for i in range(num_nights):
         if i == 0:
-            ax[i].set_ylabel('Background (ADU)', fontsize=axis_title_size)
+            if num_nights == 1:
+                ax.set_ylabel('Background (ADU)', fontsize=axis_title_size)
+            else:
+                ax[i].set_ylabel('Background (ADU)', fontsize=axis_title_size)
 
         inds = night_inds[i]
-        ax[i].plot(times_full[inds], backgrounds[inds], marker='.', linestyle='', color='tab:orange', alpha=0.3, label='Raw bkg.')
-        ax[i].tick_params(labelsize=axis_ticks_font_size)
-        ax[i].set_xlabel('Time (JD UTC)', fontsize=axis_title_size)
-        ax[i].grid(alpha=0.2)
-        ax[i].set_xlim(np.mean(times_full[inds])-standard_x/2, np.mean(times_full[inds]+standard_x/2))
-
         #bin
-        block_inds = block_splitter(times_full[inds])
+        block_inds = block_splitter(times_full[inds], bin_mins=bin_mins)
         block_x = np.zeros(len(block_inds))
         block_y = np.zeros(len(block_inds))
         block_y_err = np.zeros(len(block_inds))
@@ -278,8 +355,6 @@ def background_plot(target, centroided_sources, gain=8.21):
         block_y_err = block_y_err[~np.isnan(block_y)]
         block_y = block_y[~np.isnan(block_y)]
         
-        ax[i].errorbar(block_x, block_y, block_y_err, marker='o', linestyle='', color='tab:orange', ms=8, mfc='none', mew=2, label='Bin bkg.')
-        
         #Interpolate each night's seeing.
         fit_times = np.linspace(block_x[0], block_x[-1], 1000)
         try:
@@ -287,18 +362,40 @@ def background_plot(target, centroided_sources, gain=8.21):
         except:
             pdb.set_trace()
         interp_fit = interp(fit_times)
-        ax[i].plot(fit_times, interp_fit, color='b', lw=2, zorder=0, alpha=0.7, label='CS Interp.')
 
-    ax[i].legend(bbox_to_anchor=(1.01, 0.5), fontsize=legend_font_size)
+        if num_nights == 1:
+            ax.plot(times_full[inds], backgrounds[inds], marker='.', linestyle='', color='tab:orange', alpha=0.3, label='Raw bkg.')
+            ax.tick_params(labelsize=axis_ticks_font_size)
+            ax.set_xlabel('Time (BJD$_{TDB}$)', fontsize=axis_title_size)
+            ax.grid(alpha=0.2)
+            ax.set_xlim(np.mean(times_full[inds])-standard_x/2, np.mean(times_full[inds]+standard_x/2))
+            ax.errorbar(block_x, block_y, block_y_err, marker='o', linestyle='', color='tab:orange', ms=8, mfc='none', mew=2, label='Bin bkg.')
+            ax.legend(bbox_to_anchor=(1.01, 0.5), fontsize=legend_font_size)
+            ax.plot(fit_times, interp_fit, color='b', lw=2, zorder=0, alpha=0.7, label='CS Interp.')
+        else:
+            ax[i].plot(times_full[inds], backgrounds[inds], marker='.', linestyle='', color='tab:orange', alpha=0.3, label='Raw bkg.')
+            ax[i].tick_params(labelsize=axis_ticks_font_size)
+            ax[i].set_xlabel('Time (BJD$_{TDB}$)', fontsize=axis_title_size)
+            ax[i].grid(alpha=0.2)
+            ax[i].set_xlim(np.mean(times_full[inds])-standard_x/2, np.mean(times_full[inds]+standard_x/2))
+            ax[i].errorbar(block_x, block_y, block_y_err, marker='o', linestyle='', color='tab:orange', ms=8, mfc='none', mew=2, label='Bin bkg.')
+            if i == num_nights - 1:
+                ax[i].legend(bbox_to_anchor=(1.01, 0.5), fontsize=legend_font_size)
+            ax[i].plot(fit_times, interp_fit, color='b', lw=2, zorder=0, alpha=0.7, label='CS Interp.')
+
     plt.suptitle(short_name+' Background Measurements', fontsize=title_size)
     plt.subplots_adjust(left=0.07, wspace=0.05, top=0.92, bottom=0.17)
-
+    
+    breakpoint()
     output_filename = pines_path/('Objects/'+short_name+'/analysis/diagnostic_plots/'+short_name+'_backgrounds.png')
     plt.savefig(output_filename, dpi=300)
     return
 
-def airmass_plot(target, centroided_sources):
-    pines_path = pines_dir_check()
+def airmass_plot(target, centroided_sources, bin_mins='', force_output_path=''):
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pines_dir_check()
     short_name = short_name_creator(target)
 
     #Get plot style parameters. 
@@ -307,7 +404,7 @@ def airmass_plot(target, centroided_sources):
     #Get list of souce names in the centroid output.
     centroided_sources.columns = centroided_sources.keys().str.strip()
     airmasses = np.array(centroided_sources['Airmass'])
-    times_full = np.array(centroided_sources['Time (JD UTC)'])
+    times_full = np.array(centroided_sources['Time BJD TDB'])
     night_inds = night_splitter(times_full)
     num_nights = len(night_inds)
     times_nights = [times_full[night_inds[i]] for i in range(num_nights)]
@@ -316,17 +413,15 @@ def airmass_plot(target, centroided_sources):
     fig, ax = plt.subplots(nrows=1, ncols=num_nights, figsize=(17,5), sharey=True)
     for i in range(num_nights):
         if i == 0:
-            ax[i].set_ylabel('Airmass', fontsize=axis_title_size)
+            if num_nights == 1:
+                ax.set_ylabel('Airmass', fontsize=axis_title_size)
+            else:
+                ax[i].set_ylabel('Airmass', fontsize=axis_title_size)
 
         inds = night_inds[i]
-        ax[i].plot(times_full[inds], airmasses[inds], marker='.', linestyle='', color='m', alpha=0.3, label='Raw airmass')
-        ax[i].tick_params(labelsize=axis_ticks_font_size)
-        ax[i].set_xlabel('Time (JD UTC)', fontsize=axis_title_size)
-        ax[i].grid(alpha=0.2)
-        ax[i].set_xlim(np.mean(times_full[inds])-standard_x/2, np.mean(times_full[inds]+standard_x/2))
 
         #bin
-        block_inds = block_splitter(times_full[inds])
+        block_inds = block_splitter(times_full[inds], bin_mins=bin_mins)
         block_x = np.zeros(len(block_inds))
         block_y = np.zeros(len(block_inds))
         block_y_err = np.zeros(len(block_inds))
@@ -335,15 +430,34 @@ def airmass_plot(target, centroided_sources):
             block_y[j] = np.mean(airmasses[inds][block_inds[j]])
             block_y_err[j] = np.std(airmasses[inds][block_inds[j]]) / np.sqrt(len(airmasses[inds][block_inds[j]]))
 
-        ax[i].errorbar(block_x, block_y, block_y_err, marker='o', linestyle='', color='m', ms=8, mfc='none', mew=2, label='Bin airmass')
+        
         
         #Interpolate each night's seeing.
         fit_times = np.linspace(block_x[0], block_x[-1], 1000)
         interp = CubicSpline(block_x, block_y)
         interp_fit = interp(fit_times)
-        ax[i].plot(fit_times, interp_fit, color='c', lw=2, zorder=0, alpha=0.7, label='CS Interp.')
 
-    ax[i].legend(bbox_to_anchor=(1.005, 0.5), fontsize=legend_font_size)
+        if num_nights == 1:
+            ax.plot(times_full[inds], airmasses[inds], marker='.', linestyle='', color='m', alpha=0.3, label='Raw airmass')
+            ax.tick_params(labelsize=axis_ticks_font_size)
+            ax.set_xlabel('Time (BJD$_{TDB}$)', fontsize=axis_title_size)
+            ax.grid(alpha=0.2)
+            ax.set_xlim(np.mean(times_full[inds])-standard_x/2, np.mean(times_full[inds]+standard_x/2))
+            ax.errorbar(block_x, block_y, block_y_err, marker='o', linestyle='', color='m', ms=8, mfc='none', mew=2, label='Bin airmass')
+            ax.plot(fit_times, interp_fit, color='c', lw=2, zorder=0, alpha=0.7, label='CS Interp.')
+        else:
+            ax[i].plot(times_full[inds], airmasses[inds], marker='.', linestyle='', color='m', alpha=0.3, label='Raw airmass')
+            ax[i].tick_params(labelsize=axis_ticks_font_size)
+            ax[i].set_xlabel('Time (BJD$_{TDB}$)', fontsize=axis_title_size)
+            ax[i].grid(alpha=0.2)
+            ax[i].set_xlim(np.mean(times_full[inds])-standard_x/2, np.mean(times_full[inds]+standard_x/2))
+            ax[i].errorbar(block_x, block_y, block_y_err, marker='o', linestyle='', color='m', ms=8, mfc='none', mew=2, label='Bin airmass')
+            ax[i].plot(fit_times, interp_fit, color='c', lw=2, zorder=0, alpha=0.7, label='CS Interp.')
+    
+    if num_nights == 1:
+        ax.legend(bbox_to_anchor=(1.005, 0.5), fontsize=legend_font_size)
+    else:
+        ax[i].legend(bbox_to_anchor=(1.005, 0.5), fontsize=legend_font_size)
     plt.suptitle(short_name+' Airmass Measurements', fontsize=title_size)
     plt.subplots_adjust(left=0.07, wspace=0.05, top=0.92, bottom=0.17)
 

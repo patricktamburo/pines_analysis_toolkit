@@ -5,7 +5,7 @@ from astropy.wcs import WCS
 import pdb 
 import numpy as np 
 
-def source_pixels_to_world(target, source_detect_image_path): 
+def source_pixels_to_world(target, source_detect_image_path, force_output_path=''): 
     '''
         Authors:
             Pat Tamburo, Boston University, May 2021
@@ -16,9 +16,14 @@ def source_pixels_to_world(target, source_detect_image_path):
             source_detect_image_path (pathlib.Path): Path to the source detection image used to generate the target_and_references_source_detection.csv file
         Outputs:
             sources (pd.DataFrame): Data frame containing source names, x/y pixel positions, and RA/Decs in the source_detect_image.
+            force_output_path (path): if you want to manually set an output directory, specify the top-level here (i.e. the directory containing Logs, Objects, etc.)
     '''
 
-    pines_path = pat.utils.pines_dir_check()
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pat.utils.pines_dir_check()
+
     short_name = pat.utils.short_name_creator(target)
     sources_csv_path = pines_path/('Objects/'+short_name+'/sources/target_and_references_source_detection.csv')
     sources_df = pd.read_csv(sources_csv_path)

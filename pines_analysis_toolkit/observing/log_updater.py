@@ -87,7 +87,7 @@ def log_updater(date, sftp, shift_tolerance=30, upload=False):
 
     #Now loop over all files in the log, measure shifts in each file and update the line in the log. 
     for i in range(len(log)):
-        if (log['Target'][i].lower() != 'flat') & (log['Target'][i].lower() != 'skyflat') & (log['Target'][i].lower() != 'supersky') & (log['Target'][i].lower() != 'dark') & (log['Target'][i].lower() != 'bias') & (log['Target'][i].lower() != 'dummy') & (log['Post-processing flag'][i] != 1):
+        if (log['Target'][i].lower() != 'flat') & (log['Target'][i].lower() != 'skyflat') & (log['Target'][i].lower() != 'supersky') & (log['Target'][i].lower() != 'dark') & (log['Target'][i].lower() != 'bias') & (log['Target'][i].lower() != 'dummy') & (log['Target'][i].lower() != 'linearity') & (log['Post-processing flag'][i] != 1):
             filename = log['Filename'][i].split('.fits')[0]+'_red.fits'
             target = log['Target'][i]
             short_name = short_name_creator(target)

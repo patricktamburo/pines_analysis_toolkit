@@ -34,7 +34,7 @@ def standard_y_range(y, multiple=3.5):
         stds[i] = sigma_clipped_stats(y[i])[2]
     return multiple*np.nanmax(stds)
 
-def raw_flux_plot(times, raw_targ_flux, raw_targ_err, raw_ref_flux, raw_ref_err, short_name, analysis_path, phot_type, ap_rad): 
+def raw_flux_plot(times, raw_targ_flux, raw_targ_err, raw_ref_flux, raw_ref_err, short_name, analysis_path, phot_type, ap_rad, num_refs): 
     '''Authors:
         Patrick Tamburo, Boston University, December 2020
 	Purpose:
@@ -54,7 +54,6 @@ def raw_flux_plot(times, raw_targ_flux, raw_targ_err, raw_ref_flux, raw_ref_err,
     '''
     
     num_nights = len(times)
-    num_refs = np.shape(raw_ref_flux[0])[1]
 
     cm = plt.get_cmap('viridis_r')
     markers = ['+', 'x', '*', 'X']
@@ -192,7 +191,6 @@ def normalized_flux_plot(times, norm_targ_flux, norm_targ_err, norm_ref_flux, no
         '''
     
     num_nights = len(times)
-    num_refs = np.shape(norm_ref_flux[0])[1]
 
     #cm = plt.get_cmap('viridis_r')
     #markers = ['+', 'x', '*', 'X']
@@ -327,7 +325,7 @@ def global_normalized_flux_plot(times, norm_targ_flux, norm_targ_err, norm_ref_f
     else:
         raise RuntimeError("HAVE TO UPDATE!!!")
 
-def corr_target_plot(times, targ_flux_corr, binned_times, binned_flux, binned_errs, short_name, analysis_path, phot_type, ap_rad):
+def corr_target_plot(times, targ_flux_corr, binned_times, binned_flux, binned_errs, short_name, analysis_path, phot_type, ap_rad, force_y_lim=0):
     '''Authors:
         Patrick Tamburo, Boston University, November, December 2020
 	Purpose:
@@ -350,8 +348,11 @@ def corr_target_plot(times, targ_flux_corr, binned_times, binned_flux, binned_er
     num_nights = len(times)
 
     standard_time_range = standard_x_range(times)
-    standard_y = standard_y_range(targ_flux_corr)
-
+    if force_y_lim == 0:
+        standard_y = standard_y_range(targ_flux_corr)
+    else:
+        standard_y = force_y_lim
+    
     #Plot the corrected target flux. 
     fig, axis = plt.subplots(nrows=1,ncols=num_nights,figsize=(17,5), sharey=True)
     #plt.subplots_adjust(left=0.07, wspace=0.05, top=0.86, bottom=0.17, right=0.96)
@@ -460,9 +461,12 @@ def global_corr_target_plot(times, targ_flux_corr, binned_times, binned_flux, bi
         raise RuntimeError("HAVE TO UPDATE!!!")
 
 #def corr_all_sources_plot(times, targ_flux_corr, binned_times, binned_flux, binned_errs, corr_flux, binned_ref_fluxes, binned_ref_flux_errs, short_name, analysis_path, phot_type, ap_rad, num_refs, num_nights, norm_night_weights):
-def corr_all_sources_plot(target):
+def corr_all_sources_plot(target, bin_mins='', force_output_path='', force_y_range=0.1):
     print('Generating corrected flux plots for all sources...\n')
-    pines_path = pines_dir_check()
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pines_dir_check()
     short_name = short_name_creator(target)
     analysis_path = pines_path/('Objects/'+short_name+'/analysis/')
     photometry_path = pines_path/('Objects/'+short_name+'/aper_phot/')
@@ -510,10 +514,7 @@ def corr_all_sources_plot(target):
             ref_name = ref_names[i-1]
             flux = np.array(data[ref_name+' Corrected Flux'], dtype='float64')
             flux_err = np.array(data[ref_name+' Corrected Flux Error'], dtype='float64')
-            if i < 10:
-                num = '0'+str(i)
-            else:
-                num = str(i)
+            num = ref_names[i-1].split(' ')[1].zfill(2)
             output_name = 'reference_'+num+'_corrected_flux.png'
 
         for j in range(num_nights):
@@ -522,11 +523,14 @@ def corr_all_sources_plot(target):
                 title = ref_name.replace('erence','.')+', weight = {:1.3f}'.format(weight)
 
             if j == 0:
-                ax[j].set_ylabel('Normalized Flux', fontsize=20)
+                if num_nights == 1:
+                    ax.set_ylabel('Normalized Flux', fontsize=20)
+                else:
+                    ax[j].set_ylabel('Normalized Flux', fontsize=20)
             
             inds = night_inds[j]
 
-            block_inds = block_splitter(times[inds])
+            block_inds = block_splitter(times[inds], bin_mins=bin_mins)
             binned_time = []
             binned_flux = []
             binned_err  = []
@@ -535,14 +539,24 @@ def corr_all_sources_plot(target):
                 binned_flux.append(np.nanmean(flux[inds][block_inds[k]]))
                 binned_err.append(np.nanstd(flux[inds][block_inds[k]])/np.sqrt(len(block_inds[k])))
 
-            ax[j].plot(times[inds], flux[inds], color=color, linestyle='', marker='.', alpha=0.25)
-            ax[j].errorbar(binned_time, binned_flux, binned_err, color=color, linestyle='', marker='o', ms=10, mfc='none', mew=2)
-            ax[j].set_xlabel('Time (BJD$_{TDB}$)', fontsize=20)
-            ax[j].tick_params(labelsize=16)
-            ax[j].axhline(1, color='k', alpha=0.7, lw=1, zorder=0)
-            ax[j].grid(alpha=0.2)
-            ax[j].set_title(title, fontsize=20, color=color)
-            ax[j].set_ylim(0.9,1.1)
+            if num_nights == 1:
+                ax.plot(times[inds], flux[inds], color=color, linestyle='', marker='.', alpha=0.25)
+                ax.errorbar(binned_time, binned_flux, binned_err, color=color, linestyle='', marker='o', ms=10, mfc='none', mew=2)
+                ax.set_xlabel('Time (BJD$_{TDB}$)', fontsize=20)
+                ax.tick_params(labelsize=16)
+                ax.axhline(1, color='k', alpha=0.7, lw=1, zorder=0)
+                ax.grid(alpha=0.2)
+                ax.set_title(title, fontsize=16, color=color)
+                ax.set_ylim(1-force_y_range,1+force_y_range)
+            else:
+                ax[j].plot(times[inds], flux[inds], color=color, linestyle='', marker='.', alpha=0.25)
+                ax[j].errorbar(binned_time, binned_flux, binned_err, color=color, linestyle='', marker='o', ms=10, mfc='none', mew=2)
+                ax[j].set_xlabel('Time (BJD$_{TDB}$)', fontsize=20)
+                ax[j].tick_params(labelsize=16)
+                ax[j].axhline(1, color='k', alpha=0.7, lw=1, zorder=0)
+                ax[j].grid(alpha=0.2)
+                ax[j].set_title(title, fontsize=16, color=color)
+                ax[j].set_ylim(1-force_y_range,1+force_y_range)
 
         plt.savefig(output_path/output_name, dpi=300)
         plt.close()

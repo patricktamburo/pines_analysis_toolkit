@@ -1,4 +1,5 @@
-import pdb 
+import pdb
+from pines_analysis_toolkit.photometry.mamajek_spts import mamajek_spts 
 import pines_analysis_toolkit as pat 
 from astroquery.vizier import Vizier
 from astroquery.gaia import Gaia
@@ -9,7 +10,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 plt.ioff()
 
-def gaia_cmd(target, sources, catalog='eDR3', plot=True):
+def gaia_cmd(target, sources, catalog='eDR3', plot=True, force_output_path=''):
     '''Authors:
             Patrick Tamburo, Boston University, May 2021
         Purpose:
@@ -21,20 +22,25 @@ def gaia_cmd(target, sources, catalog='eDR3', plot=True):
             catalog (str, optional): The name of the Gaia catalog you wish to query, 'DR2' or 'eDR3'.
             plot (bool, optional): Whether or not to save the CMD to the object's 'sources' directory.
             red_only (bool, optional): Whether or not to limit the retained sources to the reddest stars in the field. 
+            force_output_path (path): if you want to manually set an output directory, specify the top-level here (i.e. the directory containing Logs, Objects, etc.)
         Outputs:
             sources (pd.DataFrame): DataFrame of sources, with M_G and BP-RP columns added. Also updates the target_and references_source_detection.csv file in the object's 'sources' directory. 
         TODO:
             None.
     '''
 
-    pines_path = pat.utils.pines_dir_check()
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pat.utils.pines_dir_check()
+
     short_name = pat.utils.short_name_creator(target)
 
     #Set the Gaia data release to query. 
     if catalog == 'DR2':
-        Gaia.MAIN_GAIA_TABLE = 'gaiadr2.gaia_source'
+        Gaia.MAIN_GAIA_TABLE = "gaiadr2.gaia_source"  
     elif catalog == 'eDR3':
-        Gaia.MAIN_GAIA_TABLE = 'gaiadr3.gaia_source'
+        Gaia.MAIN_GAIA_TABLE = "gaiaedr3.gaia_source" 
     else:
         raise ValueError('catalog must be DR2 or eDR3.')
 
@@ -51,14 +57,18 @@ def gaia_cmd(target, sources, catalog='eDR3', plot=True):
         c = SkyCoord(ra=ra, dec=dec, unit=(u.deg, u.deg))
 
         #Query Gaia 
-        query_gaia = Gaia.cone_search(c, radius=5*u.arcsec)
-        result_gaia = query_gaia.get_results()
+        #query_gaia = Gaia.cone_search(c, radius=5*u.arcsec)
+        #result_gaia = query_gaia.get_results()
         
+        result_gaia = Gaia.query_object_async(coordinate=c, width=u.Quantity(5, u.arcsec), height=u.Quantity(5, u.arcsec))
+
+        #If no sources at this position, return NaNs.
         if len(result_gaia) == 0:
             bp_rp[i] = np.nan
             p_mas[i] = np.nan
             M_G[i] = np.nan
             print('No source found in Gaia {} at ({:1.4f},{:1.4f}). Returning NaNs.'.format(catalog, ra, dec))
+        #If one source found, return values
         else:
             bp_rp[i] = result_gaia['bp_rp'][0]
             m_G = result_gaia['phot_g_mean_mag'][0]
@@ -80,6 +90,8 @@ def gaia_cmd(target, sources, catalog='eDR3', plot=True):
 
     sources['M_G'] = M_G
     sources['bp_rp'] = bp_rp
+
+    sources = mamajek_spts(sources)
     
     sources.to_csv(pines_path/('Objects/'+short_name+'/sources/target_and_references_source_detection.csv'), index=0, na_rep='NaN')
 

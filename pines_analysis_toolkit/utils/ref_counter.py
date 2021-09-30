@@ -4,6 +4,7 @@ from natsort import natsorted
 import os 
 import pandas as pd 
 import numpy as np 
+from scipy.stats import sigmaclip
 
 def ref_counter():
     pines_path = pat.utils.pines_dir_check()
@@ -15,9 +16,15 @@ def ref_counter():
     num_refs = np.zeros(len(targets))
     for i in range(len(targets)):
         source_path = objects_path/(targets[i]+'/sources/target_and_references_source_detection.csv')
-        df = pd.read_csv(source_path)
-        num_refs[i] = len(df) - 1 #Subtract the target. 
-    pdb.set_trace()
+        try:
+            df = pd.read_csv(source_path)
+            num_refs[i] = len(df) - 1 #Subtract the target. 
+        except:
+            num_refs[i] = np.nan
+    
+    num_refs = num_refs[~np.isnan(num_refs)]
+    v,l,h = sigmaclip(num_refs, 3, 3)
+    breakpoint()
     return 
 
 if __name__ == '__main__':

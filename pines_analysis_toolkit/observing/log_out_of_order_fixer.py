@@ -69,7 +69,8 @@ def log_out_of_order_fixer(log_path, sftp):
         if num_entries == 0:
             found = False
 
-            missing_filename = log_path.name.split('_')[0]+'.'+str(file_num)+'.fits'
+            missing_filename = log_path.name.split('_')[0]+'.'+str(file_num).zfill(3)+'.fits'
+
             if missing_filename != '20200206.607.fits': #corrupt file
                 print('{} missing from log.'.format(missing_filename))
                 print('Searching for file on PINES server...')
@@ -117,7 +118,7 @@ def log_out_of_order_fixer(log_path, sftp):
                             y_seeing = str(2.5)
 
                             #Add the line to the log.
-                            line = pines_logging(missing_filename, date, target_name, filter_name, exptime, airmass, x_shift, y_shift, x_seeing, y_seeing)
+                            line = pines_logging(missing_filename, date, target_name, filter_name, exptime, airmass, x_shift, y_shift, x_seeing, y_seeing, '0', '0')
                             lines.insert(i+1, line)
 
                             #Delete the file from the Downloads folder. 

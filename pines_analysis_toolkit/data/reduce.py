@@ -54,27 +54,30 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 		manual_dark_path (pathlib.Path, optional): path to the dark you want to use to reduce the data, if you don't want the code to automatically choose it for you.
 		manual_bpm_path (pathlib.Path, optional): path to the bad pixel mask you want to use to reduce the data, if you don't want the code to automatically choose it for you.
 		linearity_correction (bool): Whether or not to apply a linearity correction to the data. 
-		linearity_correction (int): Degree of polynomial used to correct the data if linearity_correction is True.
 	Outputs:
 		None
 	TODO:
 		Add check to see if .fits files are the correct size. If they didn't fully download, fits.open() will crash. 
 '''
 	
-def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sftp='', manual_flat_path='', manual_dark_path='', manual_bpm_path='', linearity_correction=False, linearity_correction_degree=5):
+def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sftp='', manual_flat_path='', manual_dark_path='', manual_bpm_path='', linearity_correction=False, force_output_path=''):
 	t1 = time.time()
 	print('')
 	if (upload is True) and (sftp == ''):
 		print('ERROR: You must pass an sftp connection if you want to upload reduced files to pines.bu.edu.!')
 		return
 
-	pines_path = pines_dir_check()
+	if force_output_path != '':
+		pines_path = force_output_path
+	else:
+		pines_path = pines_dir_check()
+		
 	short_name = short_name_creator(target_name)
 
 	#Paths
 	raw_path = pines_path/('Objects/'+short_name+'/raw')
 	raw_files = [Path(i) for i in natsort.natsorted(glob.glob(os.path.join(raw_path,'*.fits')))] #Natsort sorts things how you expect them to be sorted.
-	dark_path = pines_path/('Calibrations/Darks')
+	dark_path = pines_path/('Calibrations/Darks/')
 	reduced_path = pines_path/('Objects/'+short_name+'/reduced')
 	flats_path = pines_path/('Calibrations/Flats/Domeflats')
 	bpm_path = pines_path/('Calibrations/Bad Pixel Masks')
@@ -125,24 +128,17 @@ def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sf
 			bad_pixel_mask = fits.open(manual_bpm_path)[0].data
 			bad_pixel_mask_name = manual_bpm_path.name
 
-
-
 		#If linearity_correction is set, correct the pixels for linearity.
 		if linearity_correction:
-
-			poly_coeffs_path = pines_path/('Calibrations/Linearity/meas2corr_poly_coeffs_deg_{}_no_redchi.fits'.format(linearity_correction_degree))
-			hdu_list = fits.open(poly_coeffs_path)
-			meas2corr_poly_coeffs = hdu_list[0].data[0:1024,:,:]
-			degree = meas2corr_poly_coeffs.shape[2]
+			log_line_coeffs_path = pines_path/('Calibrations/Linearity/log_line_coeffs.fits')
+			hdu_list = fits.open(log_line_coeffs_path)
+			log_line_coeffs = hdu_list[0].data[:,0:1024,:]
+			median_linear_count_rate = np.nanmedian(10**log_line_coeffs[0,:,:])	
 			frame_raw[np.where(bad_pixel_mask == 1)] = np.nan
 			measured_counts = frame_raw - master_dark
-
-			#Make an array of corrected counts, and correct using the polynomial coefficients form meas2corr_poly_coeffs.fits
-			corrected_counts = np.zeros((1024,1024), dtype='float32')
-			for i in np.arange(degree): 
-				corrected_counts += meas2corr_poly_coeffs[:,:,i] * measured_counts**i
+			corrected_counts = (measured_counts/(10**log_line_coeffs[0,:,:]))**(1/log_line_coeffs[1,:,:]) * median_linear_count_rate
 			frame_red = corrected_counts
-
+			breakpoint()
 		else:
 			#Reduce the image. 
 			frame_red = (frame_raw - master_dark)/master_flat
@@ -151,8 +147,6 @@ def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sf
 			#Set bad pixels to NaNs. 
 			frame_red[np.where(bad_pixel_mask == 1)] = np.nan
 		
-		# pdb.set_trace()
-
 		# #Do a background model subtraction
 		# frame_red = bg_2d(frame_red)
 

@@ -7,23 +7,24 @@ import pdb
         Finds individual blocks of data given a single night of exposture times. 
 	Inputs:
         times (numpy array): 1D array of exposure times (in days)
+        time_threshold (float): the duration in hours separating two observations that will cause a block to be defined.
         bad_vals (numpy array, optional): 1D array of any sigma-clipped values to be excluded in the averaging/error estimation 
     Outputs:
         night_inds (list): list containing the data indices associated with each night
 	TODO:
 '''
-def block_splitter(times, bad_vals=[]):
-    block_boundaries = np.where(np.gradient(times) > 0.15/24)[0]
+def block_splitter(times, time_threshold=0.15, bad_vals=[], bin_mins=''):
+    times = np.array(times) 
 
     #Staring observations. TODO: This will not work if there is a mix of staring/hopping observations on a single night!
-    if len(block_boundaries) == 0:
-        time_bin = 10.0 #Minutes over which to bin. 
+    if bin_mins != '':
+        time_bin = bin_mins #Minutes over which to bin. 
         block_boundaries = np.where(np.gradient(((times - times[0]) * (24*60)) % time_bin) < 0.2)[0]
-    
+    else:
+        block_boundaries = np.where(np.gradient(times) > time_threshold/24)[0]
+
     num_blocks = int(1 + len(block_boundaries) / 2)
     block_inds = [[] for x in range(num_blocks)]
-
-    #Hopping observations.
     for j in range(num_blocks):
         if j == 0:
             block_inds[j].extend(np.arange(0,block_boundaries[0]+1))
@@ -31,6 +32,7 @@ def block_splitter(times, bad_vals=[]):
             block_inds[j].extend(np.arange(block_boundaries[2*j-1],block_boundaries[2*j]+1))
         else:
             block_inds[j].extend(np.arange(block_boundaries[2*j-1],len(times)))
+    
     if len(bad_vals) > 0:
         for i in range(len(block_inds)):
             bad_locs = []

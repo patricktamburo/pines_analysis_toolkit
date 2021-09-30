@@ -9,7 +9,7 @@ from natsort import natsorted
 from datetime import date, datetime
 import os 
 
-def dv_report(target, pat_version='1.0'):
+def dv_report(target, pat_version='1.0', force_output_path=''):
     
     def page_header():
         today = date.today()
@@ -264,7 +264,10 @@ def dv_report(target, pat_version='1.0'):
                 page_num += 1        
 
     #Set up pathing.
-    pines_path = pines_dir_check()
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pines_dir_check()
     short_name = short_name_creator(target)
     print('Generating PINES DV report for {}.'.format(short_name))
     output_filename = (short_name+'_dv_report.pdf').replace(' ','')

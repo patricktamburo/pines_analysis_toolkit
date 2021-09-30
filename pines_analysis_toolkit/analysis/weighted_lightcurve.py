@@ -4,6 +4,7 @@ import pdb
 from pines_analysis_toolkit.utils import pines_dir_check, short_name_creator
 from pines_analysis_toolkit.analysis.night_splitter import night_splitter
 from pines_analysis_toolkit.analysis.block_splitter import block_splitter
+from pines_analysis_toolkit.analysis.block_binner import block_binner
 from pines_analysis_toolkit.analysis.analysis_plots import raw_flux_plot, global_raw_flux_plot, normalized_flux_plot, global_normalized_flux_plot, corr_target_plot, global_corr_target_plot, corr_all_sources_plot
 from pines_analysis_toolkit.analysis.regression import *
 from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
@@ -21,9 +22,9 @@ from scipy.stats import pearsonr, sigmaclip
 from pathlib import Path
 import os 
 import fileinput
-import time 
+import time   
 
-def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mode='night', plots=False, n_sig_refs=5, sigma_clip_threshold=4, max_iterations=1000, use_pwv=False, red_stars_only=False, blue_stars_only=False):
+def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mode='night', plots=False, n_sig_refs=5, sigma_clip_threshold=4, max_iterations=1000, use_pwv=False, red_stars_only=False, blue_stars_only=False, high_correlation_refs=False, force_output_path=''):
 
     '''Authors:
 		Phil Muirhead & Patrick Tamburo, Boston University, November 2020
@@ -40,7 +41,8 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
         use_pwv (Bool): whether or not to use pwv in the regression.
         red_stars_only (Bool): whether or not to only use the reddest reference stars when creating the lightcurve.
         blue_stars_only (Bool): whether or not to only use the bluest reference stars when creating the lightcurve.
-
+        high_correlation_refs (Bool): whether or not to use only the references with fluxes most highly correlated with the target. 
+        force_output_path (path): if you want to manually set an output directory, specify the top-level here (i.e. the directory containing Logs, Objects, etc.)
     Outputs:
 
 	TODO:
@@ -117,7 +119,11 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
     np.seterr(divide='ignore') #Ignore divide-by-zero errors. 
 
     #Set up paths and get photometry files. 
-    pines_path = pines_dir_check()
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pines_dir_check()
+
     short_name = short_name_creator(target)
     phot_path = pines_path/('Objects/'+short_name+'/'+phot_type+'_phot/')
     phot_files = natsorted(glob(str(phot_path/'*.csv')))
@@ -156,8 +162,7 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
 
         #Reset the indices of the DataFrame.s
         source_df.reset_index(inplace=True, drop=True)
-
-
+    
     source_names = np.array(source_df['Name'])
     ref_names = source_names[1:]
     num_refs = len(ref_names)
@@ -296,15 +301,10 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
             raw_err =        np.zeros((num_frames,num_refs)) #units of photons
             norm_flux =      np.zeros((num_frames,num_refs)) #raw flux normalized by a single value to be near 1.0, unitless
             norm_err =       np.zeros((num_frames,num_refs)) #norm flux err, unitless
-            alc_flux =       np.zeros((num_frames,num_refs)) #special ALC to remove atm veriation, unitless, near 1.0
-            alc_err =        np.zeros((num_frames,num_refs)) #err in special ALC
-            corr_flux =      np.zeros((num_frames,num_refs)) #norm flux corrected to remove atm veriation, unitless, near 1.0
-            corr_err =       np.zeros((num_frames,num_refs)) #corr flux err
-            running_stddev = np.zeros((num_frames,num_refs)) #running std dev of corr flux
-            regressed_corr_flux = np.zeros((num_frames,num_refs)) #corrected flux that has been run through the linear regression procedure
+            
 
             try:    
-                block_inds = block_splitter(times, []) #Get indices of each block for binning/plotting purposes.
+                block_inds = block_splitter(times) #Get indices of each block for binning/plotting purposes.
             except:
                 pdb.set_trace()
                 
@@ -325,12 +325,10 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
                 raw_flux[bad_frames, k] = np.nan #Overwrite any sigma-clipped frames with NaNs. 
                 raw_err[bad_frames, k] = np.nan
                 
-                #OLD: Normalize to weighted mean of flux values so they are near 1.
+                #Normalize to weighted mean of flux values so they are near 1.
                 #Weights are 1/raw_err**2.
-                ###normalization = np.nansum(raw_flux[:,k]/raw_err[:,k]**2) / np.nansum(1/raw_err[:,k]**2) #ORIGINAL VERSION!
+                normalization = np.nansum(raw_flux[:,k]/raw_err[:,k]**2) / np.nansum(1/raw_err[:,k]**2) #ORIGINAL VERSION!
 
-                #NEW: Normalize such that their mean is exactly 1. 
-                normalization = np.nanmean(raw_flux[:,k])
                 norm_flux[:,k] = raw_flux[:,k] / normalization
                 norm_err[:,k] = raw_err[:,k] / normalization   
 
@@ -338,6 +336,40 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
             all_nights_raw_ref_err.append(raw_err)
             all_nights_norm_ref_flux.append(norm_flux)
             all_nights_norm_ref_err.append(norm_err)
+
+            if high_correlation_refs:
+                selection_type = 'worst'
+                n_to_take = 4
+
+                #Measure the Pearson correlation coefficient of each reference normalized flux with the target's normalized flux.
+                correlations = np.zeros(num_refs)
+                for k in range(num_refs):
+                    non_nan_inds = np.where(~np.isnan(norm_flux[:,k]) | ~np.isnan(targ_flux_norm))[0]
+                    corr, sig = pearsonr(targ_flux_norm[non_nan_inds], norm_flux[:,k][non_nan_inds])
+                    correlations[k] = corr
+
+                #Sort the references by those with the highest correlation with the target, and take the best handful of them. 
+                sorted_corr_inds = np.argsort(correlations)[::-1]
+
+                #Can choose the n_to_take most correlated references...
+                if selection_type == 'best':
+                    best_ref_inds = sorted_corr_inds[0:n_to_take]
+                #Or the least correlated, for testing purposes...
+                elif selection_type == 'worst':
+                    best_ref_inds = sorted_corr_inds[n_to_take:]
+
+                #Change the norm_flux array to only contain the flux from the most highly correlated references.
+                norm_flux = norm_flux[:,best_ref_inds]
+                norm_err  = norm_err[:,best_ref_inds]
+                num_refs = len(norm_flux[0,:])
+                ref_names = ref_names[best_ref_inds]
+
+            #Define some more arrays. 
+            alc_flux =       np.zeros((num_frames,num_refs)) #special ALC to remove atm veriation, unitless, near 1.0
+            alc_err =        np.zeros((num_frames,num_refs)) #err in special ALC
+            corr_flux =      np.zeros((num_frames,num_refs)) #norm flux corrected to remove atm veriation, unitless, near 1.0
+            corr_err =       np.zeros((num_frames,num_refs)) #corr flux err
+            regressed_corr_flux = np.zeros((num_frames,num_refs)) #corrected flux that has been run through the linear regression procedure
 
             #Now calculate the "special" ALC for each ref star, use that to correct the ref star's flux, and run the corrected flux through the linear regression model.
             #Regressed corrected flux is used to measure the standard deviation of the lightcurve, which is used to weight it in the target ALC. 
@@ -347,6 +379,7 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
             iteration = 0 
             while keep_going:
                 iteration += 1
+
                 for k in np.arange(num_refs):
                     #indices w/o the k'th ref star
                     indices = np.where(np.arange(num_refs) != k)
@@ -372,7 +405,6 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
                     #Perform a regression of the corrected flux against various parameters. 
                     if use_pwv:
                         regression_dict = {'airmass':airmass, 'centroid_x':centroid_x, 'centroid_y':centroid_y, 'pwv':pwv}
-
                     else:
                         regression_dict = {'airmass':airmass, 'centroid_x':centroid_x, 'centroid_y':centroid_y}
 
@@ -384,7 +416,7 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
 
                     #update normalized errors
                     norm_err[:,k] = new_stddev[k]
-                
+
                 fractional_changes = np.abs(new_stddev - old_stddev)/old_stddev
                 
                 #Once fractional changes stabilize, break out of the loop. 
@@ -394,43 +426,8 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
                 if iteration > max_iterations:
                     print('Iterations in reference star weighting loop exceeded max_iterations.')
                     break
-
-            
-            # #Can plot individual blocks 
-            # plt.ion()
-            # cm = plt.get_cmap('viridis')
-            # j_ks = [0.301, 0.259, 0.690, 0.488, 0.378, 0.323, 0.697, 0.438, 0.882, 0.884, 0.913]
-            # for k in np.arange(num_refs):
-            #     color = cm(int((k)/num_refs*255))
-            #     fig, ax = plt.subplots(nrows=2, ncols=len(block_inds), figsize=(30,10), sharey='row', sharex='col')
-            #     plt.subplots_adjust(wspace=0, hspace=0.04, left=0.05, right=0.99)
-            #     j_k = j_ks[k]
-            #     for l in range(len(block_inds)):
-            #         for kk in range(len(norm_flux_without_k[0])):
-            #             if kk == 0:
-            #                 ax[0,l].plot(times[block_inds[l]], norm_flux_without_k[:,kk][block_inds[l]], label='Ref. Flux w/o Ref. '+str(k+1), color='#DCDCDC')
-            #             else:
-            #                 ax[0,l].plot(times[block_inds[l]], norm_flux_without_k[:,kk][block_inds[l]], color='#DCDCDC')
-            #         ax[0,l].plot(times[block_inds[l]], alc_flux[:,k][block_inds[l]], marker='o', color='tab:red', label='Ref. '+str(k+1)+' Special ALC', alpha=0.6)
-            #         ax[0,l].plot(times[block_inds[l]], norm_flux[:,k][block_inds[l]], marker='o', color=color, label='Ref. '+str(k+1), alpha=0.6)
-            #         ax[0,l].set_title('Block '+str(l+1), fontsize=16)
-            #         if l == 0:
-            #             ax[0,l].legend()
-            #             ax[0,l].set_ylabel('Normalized Flux', fontsize=20)
-                    
-            #         ax[1,l].plot(times[block_inds[l]], regressed_corr_flux[:,k][block_inds[l]], marker='o', color=color, label='Ref. '+str(k+1)+' Corrected Flux', alpha=0.5, linestyle='')
-            #         ax[1,l].errorbar(np.nanmean(times[block_inds[l]]), np.nanmean(regressed_corr_flux[:,k][block_inds[l]]), np.nanmean(corr_err[:,k])/np.sqrt(len(block_inds[l])), np.std(times[block_inds[l]])/np.sqrt(len(block_inds[l])), marker='o', color=color, label='Ref. '+str(k+1)+' Binned Corrected Flux', ms=10, mfc='none', mew=3)
-            #         ax[1,l].axhline(1.0, zorder=0, color='k', ls='--')
-            #         if l == 0:
-            #             ax[1,l].legend()
-            #             ax[1,l].set_ylabel('Corrected Flux', fontsize=20)
-            #         ax[1,l].set_xlabel('\nTime (JD UTC)', fontsize=20)
-            #         ax[0,l].tick_params(labelsize=16)
-            #         ax[1,l].tick_params(labelsize=16)
-            #     pdb.set_trace()
-            #     plt.suptitle(short_name+', '+date_str+'\n'+'Reference '+str(k+1)+' Special ALC and Corrected Flux, J-K Color = '+str(j_k), fontsize=20)
-            #     #plt.savefig('/Users/tamburo/Desktop/output/ref'+str(k+1).zfill(2)+'.png', dpi=200)
                 
+            
             all_nights_corr_ref_flux.append(regressed_corr_flux)
             all_nights_corr_ref_err.append(corr_err)
 
@@ -449,9 +446,10 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
                 regression_dict = {'airmass':airmass, 'centroid_x':centroid_x, 'centroid_y':centroid_y,'pwv':pwv}
             else: 
                 regression_dict = {'airmass':airmass, 'centroid_x':centroid_x, 'centroid_y':centroid_y}
-
+            
             regressed_targ_flux_corr = regression(targ_flux_corr, regression_dict, verbose=True)
 
+            
             #regressed_targ_flux_corr = leave_one_out_regression(times, targ_flux_corr, targ_flux_corr_err, regression_dict, verbose=False)
             #pdb.set_trace()
 
@@ -468,13 +466,13 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
             for k in range(len(block_inds)):
                 binned_times[k] = np.nanmean(times[block_inds[k]])
                 binned_flux[k]  = np.nanmean(regressed_targ_flux_corr[block_inds[k]])
-                binned_errs[k] = np.nanmean(targ_flux_corr_err[block_inds[k]]) / np.sqrt(len(block_inds[k])) #Uses calculated errors. 
-                #binned_errs[k]  = np.std(targ_flux_corr[block_inds[k]])/np.sqrt(len(block_inds[k])) #Uses standard deviation of the block.
+                #binned_errs[k] = np.nanmean(targ_flux_corr_err[block_inds[k]]) / np.sqrt(len(block_inds[k])) #Uses calculated errors. 
+                binned_errs[k]  = np.nanstd(targ_flux_corr[block_inds[k]])/np.sqrt(len(block_inds[k])) #Uses standard deviation of the block.
                 
                 for l in range(num_refs):
                     binned_ref_fluxes[k,l] = np.nanmean(regressed_corr_flux[:,l][block_inds[k]])
-                    binned_ref_flux_errs[k,l] = np.nanmean(corr_err[:,l][block_inds[k]]) / np.sqrt(len(block_inds[k])) #Uses calculated errors.
-                    #binned_ref_flux_errs[k,l] = np.std(corr_flux[:,l][block_inds[k]])/np.sqrt(len(block_inds[k])) #Uses standard deviation of the block.
+                   #binned_ref_flux_errs[k,l] = np.nanmean(corr_err[:,l][block_inds[k]]) / np.sqrt(len(block_inds[k])) #Uses calculated errors.
+                    binned_ref_flux_errs[k,l] = np.std(corr_flux[:,l][block_inds[k]])/np.sqrt(len(block_inds[k])) #Uses standard deviation of the block.
 
             all_nights_binned_times.append(binned_times)
             all_nights_binned_corr_targ_flux.append(binned_flux)
@@ -494,9 +492,9 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
         #Plot the raw fluxes, normalized fluxes, corrected target flux, and corrected reference star fluxes. 
         if plots:
             if mode == 'night':
-                raw_flux_plot(all_nights_times, all_nights_raw_targ_flux, all_nights_raw_targ_err, all_nights_raw_ref_flux, all_nights_raw_ref_err, short_name, analysis_path, phot_type, ap_rad)   
+                raw_flux_plot(all_nights_times, all_nights_raw_targ_flux, all_nights_raw_targ_err, all_nights_raw_ref_flux, all_nights_raw_ref_err, short_name, analysis_path, phot_type, ap_rad, num_refs)   
                 normalized_flux_plot(all_nights_times, all_nights_norm_targ_flux, all_nights_norm_targ_err, all_nights_norm_ref_flux, all_nights_norm_ref_err, all_nights_alc_flux, all_nights_alc_err, short_name, analysis_path, phot_type, ap_rad)
-                corr_target_plot(all_nights_times, all_nights_corr_targ_flux, all_nights_binned_times, all_nights_binned_corr_targ_flux, all_nights_binned_corr_targ_err, short_name, analysis_path, phot_type, ap_rad)
+                corr_target_plot(all_nights_times, all_nights_corr_targ_flux, all_nights_binned_times, all_nights_binned_corr_targ_flux, all_nights_binned_corr_targ_err, short_name, analysis_path, phot_type, ap_rad, force_y_lim=0.075)
                 #corr_all_sources_plot(all_nights_times, all_nights_corr_targ_flux, all_nights_binned_times, all_nights_binned_corr_targ_flux, all_nights_binned_corr_targ_err, all_nights_corr_ref_flux, all_nights_binned_corr_ref_flux, all_nights_binned_corr_ref_err, short_name, analysis_path, phot_type, ap_rad, num_refs, num_nights, norm_night_weights)
             elif mode == 'global':
                 global_raw_flux_plot(all_nights_times, all_nights_raw_targ_flux, all_nights_raw_targ_err, all_nights_raw_ref_flux, all_nights_raw_ref_err, short_name, analysis_path, phot_type, ap_rad)
@@ -529,7 +527,7 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
         
         output_dict = {'Filename':file_list_save, 'Time BJD TDB':time_save, 'Sigma Clip Flag':sigma_clip_flag_save, short_name+' Corrected Flux':targ_flux_corr_save, short_name+' Corrected Flux Error':targ_flux_corr_err_save}
         for j in range(num_refs):
-            ref = source_names[j+1]
+            ref = ref_names[j]
             output_dict[ref+' Corrected Flux'] = ref_flux_corr_save[j]
             output_dict[ref+' Corrected Flux Error'] = ref_flux_corr_err_save[j]
         output_df = pd.DataFrame(data=output_dict)
@@ -558,7 +556,7 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
                 f.write('{:<15d}, '.format(output_df['Sigma Clip Flag'][j]))
                 f.write('{:<30.6f}, {:<36.6f}, '.format(output_df[short_name+' Corrected Flux'][j], output_df[short_name+' Corrected Flux Error'][j]))
                 
-                for i in range(len(ref_names)):
+                for i in range(num_refs):
                     n = ref_names[i]                  
                     if i != num_refs - 1:
                         format_string = '{:<22.3f}, {:<30.6f}, {:<36.6f}, '

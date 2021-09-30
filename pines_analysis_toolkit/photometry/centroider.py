@@ -6,6 +6,9 @@ from pines_analysis_toolkit.utils.short_name_creator import short_name_creator
 from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
 from pines_analysis_toolkit.utils.quick_plot import quick_plot
 from pines_analysis_toolkit.utils.gif_utils import gif_maker
+from pines_analysis_toolkit.utils.jd_utc_to_bjd_tdb import jd_utc_to_bjd_tdb
+from pines_analysis_toolkit.analysis.night_splitter import night_splitter
+from pines_analysis_toolkit.analysis.block_splitter import block_splitter
 import natsort
 from astropy.stats import sigma_clipped_stats
 import numpy as np
@@ -41,6 +44,7 @@ warnings.simplefilter("ignore", category=AstropyUserWarning)
         sources (pandas dataframe): List of source names, x and y positions. 
         plots (bool, optional): Whether or not to output plots showing centroid positions. Images output to sources directory within the object directory. 
         restore (bool, optional): Whether or not to restore centroider output that already exists. 
+        force_output_path (path): if you want to manually set an output directory, specify the top-level here (i.e. the directory containing Logs, Objects, etc.)
     Outputs:
 		centroid_df (pandas DataFrame): X and Y centroid positions for each source. 
 	TODO:
@@ -48,11 +52,16 @@ warnings.simplefilter("ignore", category=AstropyUserWarning)
         Flag bad centroids?
 '''
 
-def centroider(target, sources, output_plots=False, gif=False, restore=False, box_w=8):
+def centroider(target, sources, output_plots=False, gif=False, restore=False, box_w=8, force_output_path=''):
     matplotlib.use('TkAgg')
     plt.ioff()
     t1 = time.time()
-    pines_path = pines_dir_check()
+
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pines_dir_check()
+
     short_name = short_name_creator(target)
 
     kernel = Gaussian2DKernel(x_stddev=1) #For fixing nans in cutouts.
@@ -92,8 +101,11 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
     #Declare a new dataframe to hold the centroid information for all sources we want to track. 
     columns = []
     columns.append('Filename')
+    columns.append('Time JD UTC')
+    columns.append('Time BJD TDB')
+    columns.append('Night Number')
+    columns.append('Block Number')
     columns.append('Seeing')
-    columns.append('Time (JD UTC)')
     columns.append('Airmass')
 
     #Add x/y positions and cenroid flags for every tracked source
@@ -117,6 +129,45 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
             pdb.set_trace()
 
     shift_tolerance = 2.0 #Number of pixels that the measured centroid can be away from the expected position in either x or y before trying other centroiding algorithms. 
+    
+    #Get times before the main loop. 
+    for j in range(len(reduced_files)):
+        file = reduced_files[j]
+        header = fits.open(file)[0].header
+        time_str = fits.open(file)[0].header['DATE-OBS']
+            
+        #Correct some formatting issues that can occur in Mimir time stamps. 
+        if time_str.split(':')[-1] == '60.00':
+            time_str = time_str[0:14]+str(int(time_str.split(':')[-2])+1)+':00.00'
+        elif time_str.split(':')[-1] == '010.00':
+            time_str = time_str[0:17]+time_str.split(':')[-1][1:]
+
+        if '.' not in time_str:
+            time_fmt = '%Y-%m-%dT%H:%M:%S'
+        else:
+            time_fmt = '%Y-%m-%dT%H:%M:%S.%f'
+
+        jd = julian.to_jd(datetime.datetime.strptime(time_str, time_fmt))
+        centroid_df['Time JD UTC'][j] = jd
+        centroid_df['Time BJD TDB'][j] = jd_utc_to_bjd_tdb(jd, header['TELRA'], header['TELDEC'])
+    
+    #From times, generate night and block numbers. 
+    night_inds = night_splitter(centroid_df['Time BJD TDB'])
+    all_night_inds = np.concatenate([np.zeros(len(night_inds[i]), dtype='int')+i+1 for i in range(len(night_inds))]).ravel()
+    all_block_inds = []
+    #On each night...
+    for k in range(len(night_inds)):
+        #Generate block indices...
+        block_inds = block_splitter(centroid_df['Time BJD TDB'][night_inds[k]])
+        #Convert them to block numbers...
+        night_block_numbers = [np.zeros(len(block_inds[i]), dtype='int')+i+1 for i in range(len(block_inds))] 
+        #And append to the all_block_inds list
+        all_block_inds.extend(np.concatenate(night_block_numbers).ravel())      
+    for j in range(len(reduced_files)):
+        centroid_df['Night Number'][j] = all_night_inds[j]
+        centroid_df['Block Number'][j] = all_block_inds[j]
+
+    #Measure centroids for each tracked source i in each image j. 
     for i in range(len(sources)):
         #Get the initial source position.
         x_pos = sources['Source Detect X'][i] 
@@ -130,11 +181,11 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
             centroid_df[sources['Name'][i]+' Centroid Warning'][j] = 0
             file = reduced_files[j]
             image = fits.open(file)[0].data
+            header = fits.open(file)[0].header
+
             #Get the measured image shift for this image. 
             log = pines_log_reader(log_path/(file.name.split('.')[0]+'_log.txt'))
             log_ind = np.where(log['Filename'] == file.name.split('_')[0]+'.fits' )[0][0]
-
-            
 
             x_shift = float(log['X shift'][log_ind])
             y_shift = float(log['Y shift'][log_ind])
@@ -143,15 +194,6 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
             if i == 0:
                 centroid_df['Filename'][j] = file.name.split('_')[0]+'.fits'
                 centroid_df['Seeing'][j] = log['X seeing'][log_ind]
-                time_str = fits.open(file)[0].header['DATE-OBS']
-                
-                #Correct some formatting issues that can occur in Mimir time stamps. 
-                if time_str.split(':')[-1] == '60.00':
-                    time_str = time_str[0:14]+str(int(time_str.split(':')[-2])+1)+':00.00'
-                elif time_str.split(':')[-1] == '010.00':
-                    time_str = time_str[0:17]+time_str.split(':')[-1][1:]
-
-                centroid_df['Time (JD UTC)'][j] = julian.to_jd(datetime.datetime.strptime(time_str, '%Y-%m-%dT%H:%M:%S.%f'))
                 centroid_df['Airmass'][j] = log['Airmass'][log_ind]
             
             nan_flag = False #Flag indicating if you should not trust the log's shifts. Set to true if x_shift/y_shift are 'nan' or > 30 pixels. 
@@ -182,7 +224,7 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
             y_pos = sources['Source Detect Y'][i] + (y_shift - extra_y_shift)
 
             #TODO: Make all this its own function. 
-
+            
             #Cutout around the expected position and interpolate over any NaNs (which screw up source detection).
             cutout = interpolate_replace_nans(image[int(y_pos-box_w):int(y_pos+box_w)+1, int(x_pos-box_w):int(x_pos+box_w)+1], kernel=Gaussian2DKernel(x_stddev=0.5))
 
@@ -319,7 +361,7 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
                 plt.xlim(lock_x-30,lock_x+30-1)
                 plt.title('CENTROID DIAGNOSTIC PLOT\n'+sources['Name'][i]+', '+reduced_files[j].name+' (image '+str(j+1)+' of '+str(len(reduced_files))+')', fontsize=10)
                 plt.text(centroid_x, centroid_y+0.5, '('+str(np.round(centroid_x,1))+', '+str(np.round(centroid_y,1))+')', color='r', ha='center')
-                plot_output_path = (pines_path/('Objects/'+short_name+'/sources/'+sources['Name'][i]+'/'+str(j).zfill(4)+'.jpg'))
+                plot_output_path = (pines_path/('Objects/'+short_name+'/sources/'+sources['Name'][i]+'/'+file.name.split('_')[0]+'_night_'+str(centroid_df['Night Number'][j]).zfill(2)+'_block_'+str(centroid_df['Block Number'][j]).zfill(2)+'.jpg'))
                 plt.gca().set_axis_off()
                 plt.subplots_adjust(top = 1, bottom = 0, right = 1, left = 0, hspace = 0, wspace = 0)
                 plt.margins(0,0)
@@ -328,6 +370,7 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
                 plt.savefig(plot_output_path, bbox_inches='tight', pad_inches=0, dpi=150)
                 plt.close()
 
+        
         if gif: 
             gif_path = (pines_path/('Objects/'+short_name+'/sources/'+sources['Name'][i]+'/'))
             gif_maker(path=gif_path, fps=10)
@@ -341,7 +384,10 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
             #Write the header line. 
             if j == 0:
                 f.write('{:<17s}, '.format('Filename'))
-                f.write('{:<15s}, '.format('Time (JD UTC)'))
+                f.write('{:<15s}, '.format('Time JD UTC'))
+                f.write('{:<15s}, '.format('Time BJD TDB'))
+                f.write('{:<15s}, '.format('Night Number'))
+                f.write('{:<15s}, '.format('Block Number'))
                 f.write('{:<6s}, '.format('Seeing'))
                 f.write('{:<7s}, '.format('Airmass'))
                 for i in range(len(sources['Name'])):
@@ -354,7 +400,10 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
             #Write in the data lines.
             try:
                 f.write('{:<17s}, '.format(centroid_df['Filename'][j]))
-                f.write('{:<15.7f}, '.format(centroid_df['Time (JD UTC)'][j]))
+                f.write('{:<15.7f}, '.format(centroid_df['Time JD UTC'][j]))
+                f.write('{:<15.7f}, '.format(centroid_df['Time BJD TDB'][j]))
+                f.write('{:<15d}, '.format(centroid_df['Night Number'][j]))
+                f.write('{:<15d}, '.format(centroid_df['Block Number'][j]))
                 f.write('{:<6.1f}, '.format(float(centroid_df['Seeing'][j])))
                 f.write('{:<7.2f}, '.format(centroid_df['Airmass'][j]))
             except:

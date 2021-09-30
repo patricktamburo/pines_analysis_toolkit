@@ -36,6 +36,7 @@ from astropy.visualization import ImageNormalize, ZScaleInterval, SquaredStretch
         exclude_lower_left (bool, optional): Whether or not to automatically discard potential references in the lower left quadrant, which is necessary if Mimir's bars problem exists in the data. 
         restore (bool, optional): Whether or not to restore ref_star_chooser output that already exists. 
         source_detect_plot (bool, optional): Whether or not to plot the initial source detection, before suitable reference stars have been selected. 
+        force_output_path (path): if you want to manually set an output directory, specify the top-level here (i.e. the directory containing Logs, Objects, etc.)
     Outputs:
 		ref stars...
 	TODO:
@@ -43,14 +44,17 @@ from astropy.visualization import ImageNormalize, ZScaleInterval, SquaredStretch
 
 def ref_star_chooser(target, source_detect_image, guess_position=(700.,382.), radius_check=6., non_linear_limit=3300., 
                     dimness_tolerance=0.5, brightness_tolerance=10., closeness_tolerance=12., distance_from_target=900., edge_tolerance=50., exclude_lower_left=False, restore=False,
-                    source_detect_plot=False):
+                    source_detect_plot=False, force_output_path=''):
     plt.ion()
 
     #Get the target's 'short name'
     short_name = short_name_creator(target)
 
     #Get your local PINES directory
-    pines_path = pines_dir_check()
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pines_dir_check()
 
     if restore:
         output_df = pd.read_csv(pines_path/('Objects/'+short_name+'/sources/target_and_references_source_detection.csv'))

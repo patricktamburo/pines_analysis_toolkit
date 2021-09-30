@@ -8,3 +8,4 @@ from pines_analysis_toolkit.photometry.epsf_phot import epsf_phot
 from pines_analysis_toolkit.photometry.basic_psf_phot import basic_psf_phot
 from pines_analysis_toolkit.photometry.gaia_cmd import gaia_cmd
 from pines_analysis_toolkit.photometry.align_and_stack_images import align_and_stack_images
+from pines_analysis_toolkit.photometry.mamajek_spts import mamajek_spts

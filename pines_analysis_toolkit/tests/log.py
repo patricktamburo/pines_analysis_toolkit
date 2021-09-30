@@ -2,11 +2,11 @@ import pines_analysis_toolkit as pat
 
 sftp = pat.utils.pines_login() 
 
-targets = ['2MASS J15394189-0520428'
-'2MASS J15551573-0956055',
-'2MASS J15552614+0017204',
-'2MASS J16051015+0421521',
-'2MASS J16192830+0050118']
+# targets = ['2MASS J08312221+1538511',
+# '2MASS J08350622+1953050',
+# '2MASS J08354537+2224310',
+# '2MASS J08433323+1024470',
+# '2MASS J08560211+1240150']
 
 #for target in targets:
 #  pat.data.get_reduced_science_files(sftp, target)
@@ -18,5 +18,5 @@ dates = ['20210527', '20210528']
 for date in dates:
    pat.observing.log_updater(date, sftp, upload=False)
 
-pat.data.straggler_upload(sftp, targets)
+#pat.data.straggler_upload(sftp, targets)
 sftp.close()

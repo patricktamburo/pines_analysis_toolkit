@@ -32,6 +32,7 @@ def regression(flux, regressors, corr_significance=1e-2, verbose=False):
         sigs.append(sig)
         if verbose:
             print('{:<11s} | {:>.2e}'.format(keys[i], sig))
+
     use_inds = np.where(np.array(sigs) <= corr_significance)
     use_keys = keys[use_inds]
 
@@ -40,6 +41,7 @@ def regression(flux, regressors, corr_significance=1e-2, verbose=False):
         for i in range(len(use_keys)):
             print('{:<11s}'.format(use_keys[i]))
         print('')
+
 
     #Now set up the linear regression.
     regr = linear_model.LinearRegression()

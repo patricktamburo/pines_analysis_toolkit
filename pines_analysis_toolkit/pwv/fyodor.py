@@ -76,7 +76,7 @@ def download_nc(url, directory, date, n_threads=5):
     n_threads: int, number of threads to use to download files
     """
     
-    any_day = str(date)                         
+    any_day = str(date)             
     date = time.strptime(any_day, '%Y%m%d') 
     
     create_folder(str(directory) + "/{}".format(any_day))
