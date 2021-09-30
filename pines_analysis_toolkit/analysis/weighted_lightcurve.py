@@ -5,7 +5,7 @@ from pines_analysis_toolkit.utils import pines_dir_check, short_name_creator
 from pines_analysis_toolkit.analysis.night_splitter import night_splitter
 from pines_analysis_toolkit.analysis.block_splitter import block_splitter
 from pines_analysis_toolkit.analysis.block_binner import block_binner
-from pines_analysis_toolkit.analysis.analysis_plots import raw_flux_plot, global_raw_flux_plot, normalized_flux_plot, global_normalized_flux_plot, corr_target_plot, global_corr_target_plot, corr_all_sources_plot
+from pines_analysis_toolkit.analysis.analysis_plots import raw_flux_plot, normalized_flux_plot, global_normalized_flux_plot, corr_target_plot, global_corr_target_plot, corr_all_sources_plot
 from pines_analysis_toolkit.analysis.regression import *
 from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
 from glob import glob

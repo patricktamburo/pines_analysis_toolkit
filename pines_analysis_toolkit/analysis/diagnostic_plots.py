@@ -386,7 +386,6 @@ def background_plot(target, centroided_sources, gain=8.21, bin_mins='', force_ou
     plt.suptitle(short_name+' Background Measurements', fontsize=title_size)
     plt.subplots_adjust(left=0.07, wspace=0.05, top=0.92, bottom=0.17)
     
-    breakpoint()
     output_filename = pines_path/('Objects/'+short_name+'/analysis/diagnostic_plots/'+short_name+'_backgrounds.png')
     plt.savefig(output_filename, dpi=300)
     return
