@@ -15,21 +15,42 @@ import os
 from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
 
 def plot_style():
+    """Sets some font sizes for standard plots. 
+
+    :return: plot style parameters
+    :rtype: floats
+    """
+
     title_size = 20 
     axis_title_size = 20
     axis_ticks_font_size = 16
     legend_font_size = 12
     return (title_size, axis_title_size, axis_ticks_font_size, legend_font_size)
 
-def seeing_plot(target, centroided_sources, bin_mins='', force_output_path=''):
+def seeing_plot(short_name, bin_mins=0.0, force_output_path=''):
+    """Creates a plot of seeing versus time.
+
+    :param short_name: short name of the target
+    :type short_name: str
+    :param bin_mins: number of minutes to bin over data for staring observations, defaults to 0.0
+    :type bin_mins: float, optional
+    :param force_output_path: user-chosen path if you do not want to use the default ~/Documents/PINES_analysis_toolkit/ directory for analysis, defaults to ''
+    :type force_output_path: str, optional
+    """
     if force_output_path != '':
         pines_path = force_output_path
     else:
         pines_path = pines_dir_check()
-    short_name = short_name_creator(target)
+
     #Get plot style parameters. 
     title_size, axis_title_size, axis_ticks_font_size, legend_font_size = plot_style()
     
+    centroided_sources_path = pines_path/('Objects/'+short_name+'/sources/target_and_references_centroids.csv')
+    if not os.path.exists(centroided_sources_path):
+        print('ERROR: no centroided sources csv, not doing seeing plot.')
+    else:
+        centroided_sources = pines_log_reader(centroided_sources_path)
+
     #Get list of souce names in the centroid output.
     source_names = get_source_names(centroided_sources)
     centroided_sources.columns = centroided_sources.keys().str.strip()
@@ -95,15 +116,28 @@ def seeing_plot(target, centroided_sources, bin_mins='', force_output_path=''):
     plt.subplots_adjust(left=0.07, wspace=0.05, top=0.92, bottom=0.17)
 
     output_filename = pines_path/('Objects/'+short_name+'/analysis/diagnostic_plots/'+short_name+'_seeing.png')
+    print('Saving seeing plot to {}.'.format(output_filename))
     plt.savefig(output_filename, dpi=300)
     return
 
-def relative_cutout_position_plot(target, centroided_sources, force_output_path=''):
+def relative_cutout_position_plot(short_name, force_output_path=''):
+    """Creates a plot of relative cutout positions versus time for all sources.
+
+    :param short_name: short name for the target
+    :type short_name: str
+    :param force_output_path: user-chosen path if you do not want to use the default ~/Documents/PINES_analysis_toolkit/ directory for analysis, defaults to ''
+    :type force_output_path: str, optional
+    """
     if force_output_path != '':
         pines_path = force_output_path
     else:
         pines_path = pines_dir_check()
-    short_name = short_name_creator(target)
+    
+    centroided_sources_path = pines_path/('Objects/'+short_name+'/sources/target_and_references_centroids.csv')
+    if not os.path.exists(centroided_sources_path):
+        print('ERROR: no centroided sources csv, not doing relative cutout position plot.')
+    else:
+        centroided_sources = pines_log_reader(centroided_sources_path)
 
     #Get plot style parameters. 
     title_size, axis_title_size, axis_ticks_font_size, legend_font_size = plot_style()
@@ -113,7 +147,7 @@ def relative_cutout_position_plot(target, centroided_sources, force_output_path=
     centroided_sources.columns = centroided_sources.keys().str.strip()
 
     #Get times from the centroid output and split them by night. 
-    times_full = np.array(centroided_sources['Time BJD TDB'])
+    times_full = np.array(centroided_sources['Time BJD TDB'], dtype='float')
     night_inds = night_splitter(times_full)
     num_nights = len(night_inds)
     times_nights = [times_full[night_inds[i]] for i in range(num_nights)]
@@ -131,17 +165,16 @@ def relative_cutout_position_plot(target, centroided_sources, force_output_path=
             if num_nights == 1:
                 ax[0].set_ylabel('Cutout X Position', fontsize=axis_title_size)
                 ax[1].set_ylabel('Cutout Y Position', fontsize=axis_title_size)
-                ax[0].set_ylim(0.25,0.75)
+                #ax[0].set_ylim(0.25,0.75)
             else:
                 ax[0,j].set_ylabel('Cutout X Position', fontsize=axis_title_size)
                 ax[1,j].set_ylabel('Cutout Y Position', fontsize=axis_title_size)
-                ax[0,j].set_ylim(0.25,0.75)
+                #ax[0,j].set_ylim(0.25,0.75)
         for i in range(len(source_names)):
             if i == 1:
                 continue
             cutout_x = np.array(centroided_sources[source_names[i]+' Cutout X'][inds], dtype='float')
             cutout_y = np.array(centroided_sources[source_names[i]+' Cutout Y'][inds], dtype='float')
-
             if i == 0:
                 marker = 'o'
                 label = 'Target'
@@ -188,16 +221,31 @@ def relative_cutout_position_plot(target, centroided_sources, force_output_path=
     plt.suptitle(short_name+' Cutout Centroid Positions', fontsize=title_size)
 
     output_filename = pines_path/('Objects/'+short_name+'/analysis/diagnostic_plots/'+short_name+'_cutout_positions.png')
+    print('Saving relative cutout position plot to {}.'.format(output_filename))
     plt.savefig(output_filename, dpi=300)
 
     return
 
-def absolute_image_position_plot(target, centroided_sources, force_output_path='', bin_mins=''):
+def absolute_image_position_plot(short_name, bin_mins=0.0, force_output_path=''):
+    """Creates a plot of target x/y pixel positions versus time. 
+
+    :param short_name: short name of the target
+    :type short_name: str
+    :param bin_mins:  number of minutes to bin over data for staring observations, defaults to 0.0
+    :type bin_mins: float, optional
+    :param force_output_path: user-chosen path if you do not want to use the default ~/Documents/PINES_analysis_toolkit/ directory for analysis, defaults to ''
+    :type force_output_path: str, optional
+    """
     if force_output_path != '':
         pines_path = force_output_path
     else:
         pines_path = pines_dir_check()
-    short_name = short_name_creator(target)
+
+    centroided_sources_path = pines_path/('Objects/'+short_name+'/sources/target_and_references_centroids.csv')
+    if not os.path.exists(centroided_sources_path):
+        print('ERROR: no centroided sources csv, not doing absolute position plot.')
+    else:
+        centroided_sources = pines_log_reader(centroided_sources_path)
 
     #Get plot style parameters. 
     title_size, axis_title_size, axis_ticks_font_size, legend_font_size = plot_style()
@@ -294,17 +342,28 @@ def absolute_image_position_plot(target, centroided_sources, force_output_path='
         ax[1,j].set_xlim(np.mean(times)-standard_x/2, np.mean(times)+standard_x/2)
 
     output_filename = pines_path/('Objects/'+short_name+'/analysis/diagnostic_plots/'+targ_name+'_image_positions.png')
+    print('Saving absolute image position plot to {}.'.format(output_filename))
     plt.savefig(output_filename, dpi=300)
 
     return 
 
-def background_plot(target, centroided_sources, gain=8.21, bin_mins='', force_output_path=''):
+def background_plot(short_name, gain=8.21, bin_mins=0.0, force_output_path=''):
+    """Creates a plot of measured target background versus time.
 
+    :param short_name: short name of the target
+    :type short_name: str
+    :param gain: gain of the detector in e-/ADU, defaults to 8.21
+    :type gain: float, optional
+    :param bin_mins: number of minutes to bin over data for staring observations, defaults to ''
+    :type bin_mins: str, optional
+    :param force_output_path: user-chosen path if you do not want to use the default ~/Documents/PINES_analysis_toolkit/ directory for analysis, defaults to ''
+    :type force_output_path: str, optional
+    """
     if force_output_path != '':
         pines_path = force_output_path
     else:
         pines_path = pines_dir_check()
-    short_name = short_name_creator(target)
+
 
     #Get plot style parameters. 
     title_size, axis_title_size, axis_ticks_font_size, legend_font_size = plot_style()
@@ -387,15 +446,29 @@ def background_plot(target, centroided_sources, gain=8.21, bin_mins='', force_ou
     plt.subplots_adjust(left=0.07, wspace=0.05, top=0.92, bottom=0.17)
     
     output_filename = pines_path/('Objects/'+short_name+'/analysis/diagnostic_plots/'+short_name+'_backgrounds.png')
+    print('Saving background plot to {}.'.format(output_filename))
     plt.savefig(output_filename, dpi=300)
     return
 
-def airmass_plot(target, centroided_sources, bin_mins='', force_output_path=''):
+def airmass_plot(short_name, bin_mins=0.0, force_output_path=''):
+    """Creates a plot of airmass versus time.
+
+    :param short_name: short name of the target
+    :type short_name: str
+    :param bin_mins: number of minutes to bin over data for staring observations, defaults to 0.0
+    :type bin_mins: float, optional
+    :param force_output_path: user-chosen path if you do not want to use the default ~/Documents/PINES_analysis_toolkit/ directory for analysis, defaults to ''
+    :type force_output_path: str, optional
+    """
     if force_output_path != '':
         pines_path = force_output_path
     else:
         pines_path = pines_dir_check()
-    short_name = short_name_creator(target)
+    centroided_sources_path = pines_path/('Objects/'+short_name+'/sources/target_and_references_centroids.csv')
+    if not os.path.exists(centroided_sources_path):
+        print('ERROR: no centroided sources csv, not doing airmass plot.')
+    else:        
+        centroided_sources = pines_log_reader(centroided_sources_path)
 
     #Get plot style parameters. 
     title_size, axis_title_size, axis_ticks_font_size, legend_font_size = plot_style()
@@ -461,5 +534,6 @@ def airmass_plot(target, centroided_sources, bin_mins='', force_output_path=''):
     plt.subplots_adjust(left=0.07, wspace=0.05, top=0.92, bottom=0.17)
 
     output_filename = pines_path/('Objects/'+short_name+'/analysis/diagnostic_plots/'+short_name+'_airmasses.png')
+    print('Saving airmass plot to {}.'.format(output_filename))
     plt.savefig(output_filename, dpi=300)
     return

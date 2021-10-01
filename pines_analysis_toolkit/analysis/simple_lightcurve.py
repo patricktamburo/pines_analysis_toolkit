@@ -135,28 +135,11 @@ def simple_lightcurve(short_name, phot_type='aper'):
             ref_corr = ref_corr_norm / alc
             ref_corr = ref_corr / np.nanmedian(ref_corr)
 
-            #Do sigma clipping on the corrected lightcurve to get rid of outliers (from clouds, bad target centroid, cosmic rays, etc.)
-            ###vals, lo, hi = sigmaclip(targ_corr, low=2.5, high=2.5)
-            avg, med, std = sigma_clipped_stats(targ_corr, sigma=3)      
-            bad_vals = np.where((targ_corr > med + 5*std) | (targ_corr < med - 5*std))[0]
-            good_vals = np.where((targ_corr < med + 5*std) & (targ_corr > med - 5*std))[0]      
-            vals = targ_corr[good_vals]
-            
-            blocks = block_splitter(times[inds])
-            bin_times = np.zeros(len(blocks))
-            bin_fluxes = np.zeros(len(blocks))
-            bin_errs = np.zeros(len(blocks))
-            bin_dts = []
-            for k in range(len(blocks)):
-                try: 
-                    bin_times[k] = np.mean(times[inds][blocks[k]])
-                    #vals, hi, lo = sigmaclip(targ_corr[blocks[k]],high=3,low=3) #Exclude outliers. 
-                    bin_fluxes[k] = np.mean(targ_corr[blocks[k]])
-                    bin_errs[k] = np.std(targ_corr[blocks[k]]) / np.sqrt(len(targ_corr[blocks[k]]))
-                    bin_dts.append(julian.from_jd(bin_times[k], fmt='jd'))
-                except:
-                    pdb.set_trace()
-            bin_dts = np.array(bin_dts)
+            # #Do sigma clipping on the corrected lightcurve to get rid of outliers (from clouds, bad target centroid, cosmic rays, etc.)
+            # ###vals, lo, hi = sigmaclip(targ_corr, low=2.5, high=2.5)
+            # avg, med, std = sigma_clipped_stats(targ_corr, sigma=3)      
+            # bad_vals = np.where((targ_corr > med + 5*std) | (targ_corr < med - 5*std))[0]
+            # good_vals = np.where((targ_corr < med + 5*std) & (targ_corr > med - 5*std))[0]      
 
         #Output the simple lc data to a csv. 
         time_save = times        
