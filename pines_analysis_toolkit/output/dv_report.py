@@ -87,7 +87,6 @@ def dv_report(target, pat_version='1.0', force_output_path=''):
             canvas.setFont('Times-Roman', 12) #Font for captions
             canvas.setFillColor('Black')
             image_path = str(nightly_glob[i])
-            aperture_radius = image_path.split('=')[1].split('_')[0]
             
             img = ImageReader(image_path)
             y = (3-(i+1))*fig_y/3 + 50 
@@ -104,55 +103,55 @@ def dv_report(target, pat_version='1.0', force_output_path=''):
         canvas.showPage()
         page_num += 1
 
-    def global_page(): 
-        global fig_num, page_num
+    # def global_page(): 
+    #     global fig_num, page_num
 
-        if os.path.exists(analysis_path/('optimal_aperture.txt')):
-            with open(analysis_path/('optimal_aperture.txt'), 'r') as f:
-                lines = f.readlines()
-                best_ap = lines[1].split(' ')[1]
-                ap_type = best_ap.split('_')[1]
-        best_aper_phot_path = analysis_path/('aper_phot_analysis/'+best_ap)
+    #     if os.path.exists(analysis_path/('optimal_aperture.txt')):
+    #         with open(analysis_path/('optimal_aperture.txt'), 'r') as f:
+    #             lines = f.readlines()
+    #             best_ap = lines[1].split(' ')[1]
+    #             ap_type = best_ap.split('_')[1]
+    #     best_aper_phot_path = analysis_path/('aper_phot_analysis/'+best_ap)
         
 
-        global_glob = np.array(natsorted([x for x in best_aper_phot_path.glob('*global*.png')]))
-        #Sort plots in order we want them in the report: arget lc, raw flux, normalized flux
-        global_glob = np.array([global_glob[2], global_glob[1], global_glob[0]])
+    #     global_glob = np.array(natsorted([x for x in best_aper_phot_path.glob('*global*.png')]))
+    #     #Sort plots in order we want them in the report: arget lc, raw flux, normalized flux
+    #     global_glob = np.array([global_glob[2], global_glob[1], global_glob[0]])
 
-        if ap_type == 'fixed':
-            rad = best_ap.split('_')[0]
-            cap_ender = 'radius = {} pixels'.format(rad)
-        elif ap_type == 'variable':
-            fact = best_ap.split('_')[0]
-            cap_ender = 'multiplicative seeing factor = {}'.format(fact)
-            page_footer
+    #     if ap_type == 'fixed':
+    #         rad = best_ap.split('_')[0]
+    #         cap_ender = 'radius = {} pixels'.format(rad)
+    #     elif ap_type == 'variable':
+    #         fact = best_ap.split('_')[0]
+    #         cap_ender = 'multiplicative seeing factor = {}'.format(fact)
+    #         page_footer
 
-        caption_texts = ['Best globally-normalized corrected target flux, {} aperture photometry, {}.'.format(ap_type, cap_ender),
-                        'Raw flux, {} aperture photometry, {}.'.format(ap_type, cap_ender),
-                        'Globally-normalized flux, {} aperture photometry, {}.'.format(ap_type, cap_ender)]
+    #     caption_texts = ['Best globally-normalized corrected target flux, {} aperture photometry, {}.'.format(ap_type, cap_ender),
+    #                     'Raw flux, {} aperture photometry, {}.'.format(ap_type, cap_ender),
+    #                     'Globally-normalized flux, {} aperture photometry, {}.'.format(ap_type, cap_ender)]
         
-        for i in range(len(global_glob)):
-            if i == 0:
-                page_header()
-            canvas.setFont('Times-Roman', 12) #Font for captions
-            canvas.setFillColor('Black')
-            image_path = str(global_glob[i])
-            aperture_radius = image_path.split('=')[1].split('_')[0]
+    #     for i in range(len(global_glob)):
+    #         if i == 0:
+    #             page_header()
+    #         canvas.setFont('Times-Roman', 12) #Font for captions
+    #         canvas.setFillColor('Black')
+    #         image_path = str(global_glob[i])
+    #         aperture_radius = image_path.split('=')[1].split('_')[0]
             
-            img = ImageReader(image_path)
-            y = (3-(i+1))*fig_y/3 + 50 
-            w = fig_x #All the way across the page
-            h = w * lc_aspect_ratio
-            canvas.drawImage(img, x, y, x+w, h)
-            caption_text = 'Figure {}: '.format(fig_num)+caption_texts[i]
-            canvas.drawCentredString(x+w*0.5,y-h*0.1, caption_text)
-            fig_num += 1
+    #         img = ImageReader(image_path)
+    #         y = (3-(i+1))*fig_y/3 + 50 
+    #         w = fig_x #All the way across the page
+    #         h = w * lc_aspect_ratio
+    #         canvas.drawImage(img, x, y, x+w, h)
+    #         caption_text = 'Figure {}: '.format(fig_num)+caption_texts[i]
+    #         canvas.drawCentredString(x+w*0.5,y-h*0.1, caption_text)
+    #         fig_num += 1
 
-            if i == len(global_glob) - 1:
-                page_footer()
+    #         if i == len(global_glob) - 1:
+    #             page_footer()
 
-        canvas.showPage()
-        page_num += 1
+    #     canvas.showPage()
+    #     page_num += 1
     
     def centroid_page():
         global fig_num, page_num
@@ -300,20 +299,20 @@ def dv_report(target, pat_version='1.0', force_output_path=''):
     night_page()
     
     #------------------------------------------------------------------------------------------------------------------------
-    #PAGE 3: Best globally-normalized lightcurve, raw flux, and normalized flux. 
-    global_page()
+    # #PAGE 3: Best globally-normalized lightcurve, raw flux, and normalized flux. 
+    # global_page()
 
     #------------------------------------------------------------------------------------------------------------------------
     
-    #PAGE 4: Centroid diagnostic plots. 
+    #PAGE 3: Centroid diagnostic plots. 
     centroid_page() 
 
     #------------------------------------------------------------------------------------------------------------------------
-    #PAGE 5: Diagnostic plots.
+    #PAGE 4: Diagnostic plots.
     diagnostics_page()
     
     #------------------------------------------------------------------------------------------------------------------------
-    #PAGES 6-N: Plots of corrected target flux. 
+    #PAGES 5-N: Plots of corrected target flux. 
     corr_refs_pages()
 
     canvas.save()

@@ -1,7 +1,7 @@
 from pines_analysis_toolkit.analysis.block_splitter import block_splitter
 import numpy as np 
 
-def block_binner(raw_times, raw_flux, time_threshold=0.15):
+def block_binner(raw_times, raw_flux, time_threshold=0.15, bin_mins=0.0):
     """Bins PINES data over blocks.
 
     :param raw_times: array of times
@@ -10,10 +10,12 @@ def block_binner(raw_times, raw_flux, time_threshold=0.15):
     :type raw_flux: numpy array
     :param time_threshold: the gap between observations, in hours, above which sets of observations will be considered different blocks, defaults to 0.15
     :type time_threshold: float, optional
+    :param bin_mins: minutes over which to bin data for staring observations, defaults to 0.0
+    :type bin_mins: float, optional
     :return: arrays of binned times, flux, and errors
     :rtype: numpy arrays
     """
-    block_inds = block_splitter(raw_times, time_threshold=time_threshold)
+    block_inds = block_splitter(raw_times, time_threshold=time_threshold, bin_mins=bin_mins)
     n_blocks = len(block_inds)
     bin_times      = np.zeros(n_blocks)
     bin_flux       = np.zeros(n_blocks)

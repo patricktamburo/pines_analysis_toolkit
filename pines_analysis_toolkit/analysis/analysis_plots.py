@@ -172,7 +172,7 @@ def alc_plot(weighted_lc_path, mode='night'):
         broken_times.append(np.array(times[night_inds[i]]))
         broken_flux.append(np.array(norm_targ_flux[night_inds[i]]))
     standard_time_range = standard_x_range(broken_times)
-    standard_y = standard_y_range(broken_flux, multiple=3.0)
+    standard_y = standard_y_range(broken_flux, multiple=4.0)
 
     fig, axis = plt.subplots(nrows=1, ncols=num_nights, figsize=(17,5), sharey=True)
     plt.subplots_adjust(left=0.07, wspace=0.05, top=0.92, bottom=0.17)
@@ -291,93 +291,25 @@ def corr_target_plot(weighted_lc_path, mode='night'):
     print('Saving {} normalized flux plot to {}.'.format(mode, output_path))
     plt.savefig(output_path, dpi=300)
 
-def global_corr_target_plot(times, targ_flux_corr, binned_times, binned_flux, binned_errs, short_name, analysis_path, phot_type, ap_rad):
-    '''Authors:
-        Patrick Tamburo, Boston University, November, December 2020
-	Purpose:
-        Creates a standard plot of global corrected target flux. 
-	Inputs:
-        target (numpy array): times of exposures (as Julian dates).
-        targ_flux_corr (numpy array): corrected target flux measurements.
-        binned_times (numpy array): times of block midpoints.
-        binned_flux (numpy array): average fluxes of blocks.
-        binned_errs (numpy array): uncertainties on binned fluxes.
-        analysis_path (pathlib Path): path to the object's analysis directory.
-        time_mode (str, optional): either 'UT' or 'JD'. UT for calendar-like times, JD for Julian dates. 
-    Outputs:
+def corr_all_sources_plot(weighted_lc_path, bin_mins=0.0, force_y_range=0.1):
+    """Creates corrected light curves for all sources. Saves to 'corr_ref_plots' directory in the same directory as weighted_lc_path.
 
-	TODO:
-
-    '''
-    times = times[0]
-    binned_times = binned_times[0]
-    short_name = str(analysis_path).split('/')[-2]
-
-
-    #Plot the corrected target flux. 
-    fig, ax = plt.subplots(nrows=1,ncols=1,figsize=(17,5))
-    plt.subplots_adjust(left=0.07, wspace=0.05, top=0.92, bottom=0.17)
-
-    ax.axhline(1, color='r', lw=2, zorder=0)
-    ax.grid(alpha=0.2)
-    ax.plot(times, targ_flux_corr[0], linestyle='', marker='o', zorder=1, color='darkgrey', ms=5, label='Unbinned data')
-    ax.errorbar(binned_times, binned_flux[0], binned_errs[0], linestyle='', marker='o', zorder=2, color='k', capsize=2, ms=7, label='Binned data')
-    five_sig = 5*np.nanmean(binned_errs[0])
-    ax.axhline(1-five_sig, color='k', lw=2, linestyle='--', zorder=0, label='5-$\sigma$ threshold')
-    ax.tick_params(labelsize=16)
-    
-    ax.set_ylabel('Normalized Flux', fontsize=20)
-
-    ax.set_xlabel('Time (BJD$_{TDB}$)', fontsize=20)
-    plt.suptitle(short_name+' Global Corrected Target Lightcurve', fontsize=20)
-    
-    #Save the figure. 
-    print('Saving target lightcurve...')
-    if phot_type == 'aper':
-        if 'variable' in ap_rad:
-            fact = ap_rad.split('_')[0]
-            filename = short_name.replace(' ','')+'_variable_'+phot_type+'_phot_f='+fact+'_global_target_flux.png'
-        elif 'fixed' in ap_rad:
-            rad = ap_rad.split('_')[0]
-            filename = short_name.replace(' ','')+'_fixed_'+phot_type+'_phot_r='+rad+'_global_target_flux.png'
-        if not os.path.exists(analysis_path/('aper_phot_analysis/'+ap_rad)):
-            os.mkdir(analysis_path/('aper_phot_analysis/'+ap_rad))
-        output_path = analysis_path/('aper_phot_analysis/'+ap_rad+'/'+filename)
-        plt.savefig(output_path, dpi=300)
-    else:
-        raise RuntimeError("HAVE TO UPDATE!!!")
-
-#def corr_all_sources_plot(times, targ_flux_corr, binned_times, binned_flux, binned_errs, corr_flux, binned_ref_fluxes, binned_ref_flux_errs, short_name, analysis_path, phot_type, ap_rad, num_refs, num_nights, norm_night_weights):
-def corr_all_sources_plot(target, bin_mins='', force_output_path='', force_y_range=0.1):
+    :param weighted_lc_path: path to weighted light curve csv, output from weighted_lightcurve
+    :type weighted_lc_path: pathlib.PosixPath
+    :param bin_mins: number of minutes to bin data over for staring observations, defaults to 0.0
+    :type bin_mins: float, optional
+    :param force_y_range: force y range for all light curves for easier comparison, defaults to 0.1
+    :type force_y_range: float, optional
+    """
     print('Generating corrected flux plots for all sources...\n')
-    if force_output_path != '':
-        pines_path = force_output_path
-    else:
-        pines_path = pines_dir_check()
-    short_name = short_name_creator(target)
-    analysis_path = pines_path/('Objects/'+short_name+'/analysis/')
-    photometry_path = pines_path/('Objects/'+short_name+'/aper_phot/')
 
-    #Grab the data for the best aperture. 
-    if os.path.exists(analysis_path/('optimal_aperture.txt')):
-        with open(analysis_path/('optimal_aperture.txt'), 'r') as f:
-            best_ap = f.readlines()[0].split(':  ')[1].split('\n')[0]
-            phot_type = best_ap.split('_')[1]
-            if phot_type == 'fixed':
-                s = 'r'
-            elif phot_type == 'variable':
-                s = 'f'
-    else:
-        raise RuntimeError('No optimal_aperture.txt file for {}.\nUsing first photometry file in {}.'.format(target, phot_path))
-    
-    filename = short_name.replace(' ','')+'_'+phot_type+'_aper_phot_'+s+'='+best_ap.split('_')[0]+'_nightly_weighted_lc.csv'
-    best_phot_path = analysis_path/('aper_phot_analysis/'+best_ap+'/')
-    output_path = best_phot_path/('corr_ref_plots/')
+    data = pines_log_reader(weighted_lc_path)
+    output_path = weighted_lc_path.parent/('corr_ref_plots/')
     if not os.path.exists(output_path):
         os.mkdir(output_path)
 
-    data = pines_log_reader(best_phot_path/filename)
-    ref_names = get_source_names(data)[1:]
+    sources = get_source_names(data)
+    ref_names = sources[1:]
     num_refs = len(ref_names)
     
     times = np.array(data['Time BJD TDB'])
@@ -391,10 +323,10 @@ def corr_all_sources_plot(target, bin_mins='', force_output_path='', force_y_ran
 
         if i == 0:
             color = cmap(0)
-            flux = np.array(data[short_name+' Corrected Flux'], dtype='float64')
-            flux_err = np.array(data[short_name+' Corrected Flux Error'], dtype='float64')
-            title = short_name
-            output_name = short_name+'_corrected_flux.png'
+            flux = np.array(data[sources[0]+' Corrected Flux'], dtype='float64')
+            flux_err = np.array(data[sources[0]+' Corrected Flux Error'], dtype='float64')
+            title = sources[0]
+            output_name = sources[0]+'_corrected_flux.png'
 
         else:
             color = cmap(95)
@@ -417,14 +349,7 @@ def corr_all_sources_plot(target, bin_mins='', force_output_path='', force_y_ran
             
             inds = night_inds[j]
 
-            block_inds = block_splitter(times[inds], bin_mins=bin_mins)
-            binned_time = []
-            binned_flux = []
-            binned_err  = []
-            for k in range(len(block_inds)):
-                binned_time.append(np.nanmean(times[inds][block_inds[k]]))
-                binned_flux.append(np.nanmean(flux[inds][block_inds[k]]))
-                binned_err.append(np.nanstd(flux[inds][block_inds[k]])/np.sqrt(len(block_inds[k])))
+            binned_time, binned_flux, binned_err = block_binner(times[inds], flux[inds], bin_mins=bin_mins)          
 
             if num_nights == 1:
                 ax.plot(times[inds], flux[inds], color=color, linestyle='', marker='.', alpha=0.25)
