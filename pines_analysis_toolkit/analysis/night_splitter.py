@@ -1,17 +1,14 @@
 import numpy as np
 import pdb 
 
-'''Authors:
-		Patrick Tamburo, Boston University, June 2020
-	Purpose:
-        Finds different nights of data given a 1D array of exposure times (in days), and returns their indices. 
-	Inputs:
-        times (numpy array): 1D array of exposure times (in days)
-    Outputs:
-        night_inds (list): list containing the data indices associated with each night
-	TODO:
-'''
 def night_splitter(times):
+    """Finds different nights of data given a 1D array of exposure times (in days), and returns their indices. 
+
+    :param times: array of times (in units of days)
+    :type times: numpy array
+    :return: list of length n_nights, each entry containing the indices of data from a particular night of observations
+    :rtype: list
+    """
     night_boundaries = np.where(np.gradient(times) > 7/24)[0]
     num_nights = int(1 + len(night_boundaries) / 2)
     night_inds = [[] for x in range(num_nights)]

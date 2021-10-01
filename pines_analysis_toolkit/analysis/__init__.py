@@ -1,5 +1,4 @@
 from pines_analysis_toolkit.analysis.simple_lightcurve import simple_lightcurve
-from pines_analysis_toolkit.analysis.movie import movie
 from pines_analysis_toolkit.analysis.noise_estimator import noise_estimator
 from pines_analysis_toolkit.analysis.readnoise_calculator import readnoise_calculator
 from pines_analysis_toolkit.analysis.night_splitter import night_splitter

@@ -1,4 +1,5 @@
 import pdb
+from pines_analysis_toolkit.analysis.analysis_plots import raw_flux_plot
 from pines_analysis_toolkit.utils import jd_utc_to_bjd_tdb
 from pines_analysis_toolkit.utils.pines_dir_check import pines_dir_check
 from pines_analysis_toolkit.utils.short_name_creator import short_name_creator
@@ -544,6 +545,8 @@ def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.,
                             format_string = '{:22.5f}, {:28.5f}, {:28.5f}, {:34f}\n'
                         f.write(format_string.format(ap_df[source_names[i]+' Flux'][j], ap_df[source_names[i]+' Flux Error'][j], ap_df[source_names[i]+' Background'][j], ap_df[source_names[i]+' Interpolation Flag'][j]))
 
+        raw_flux_plot(output_filename, mode='night')
+        raw_flux_plot(output_filename, mode='global')
     print('')
     return 
 

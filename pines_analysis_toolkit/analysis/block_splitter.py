@@ -1,23 +1,22 @@
 import numpy as np
 import pdb
 
-'''Authors:
-		Patrick Tamburo, Boston University, June 2020
-	Purpose:
-        Finds individual blocks of data given a single night of exposture times. 
-	Inputs:
-        times (numpy array): 1D array of exposure times (in days)
-        time_threshold (float): the duration in hours separating two observations that will cause a block to be defined.
-        bad_vals (numpy array, optional): 1D array of any sigma-clipped values to be excluded in the averaging/error estimation 
-    Outputs:
-        night_inds (list): list containing the data indices associated with each night
-	TODO:
-'''
-def block_splitter(times, time_threshold=0.15, bad_vals=[], bin_mins=''):
+def block_splitter(times, time_threshold=0.15, bin_mins=0.0):
+    """Finds individual blocks of data given a single night of exposture times. 
+
+    :param times: array of times
+    :type times: numpy array
+    :param time_threshold: the gap between observations, in hours, above which sets of observations will be considered different blocks, defaults to 0.15
+    :type time_threshold: float, optional
+    :param bin_mins: can alternatively choose a time duration over which to bin data, which is needed for staring data, defaults to 0.0. 
+    :type bin_mins: float, optional
+    :return: list of length n_blocks, each entry containing the indices of data for that block
+    :rtype: list
+    """
     times = np.array(times) 
 
     #Staring observations. TODO: This will not work if there is a mix of staring/hopping observations on a single night!
-    if bin_mins != '':
+    if bin_mins != 0.0:
         time_bin = bin_mins #Minutes over which to bin. 
         block_boundaries = np.where(np.gradient(((times - times[0]) * (24*60)) % time_bin) < 0.2)[0]
     else:
@@ -33,14 +32,4 @@ def block_splitter(times, time_threshold=0.15, bad_vals=[], bin_mins=''):
         else:
             block_inds[j].extend(np.arange(block_boundaries[2*j-1],len(times)))
     
-    if len(bad_vals) > 0:
-        for i in range(len(block_inds)):
-            bad_locs = []
-            for j in range(len(block_inds[i])):
-                if block_inds[i][j] in bad_vals:
-                    bad_locs.append(np.where(block_inds[i] == block_inds[i][j])[0][0])
-            if len(bad_locs) != 0:
-                bad_locs = bad_locs[::-1]
-                for j in range(len(bad_locs)):
-                    block_inds[i].remove(block_inds[i][bad_locs[j]])
     return block_inds

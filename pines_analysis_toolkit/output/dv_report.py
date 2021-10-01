@@ -65,7 +65,7 @@ def dv_report(target, pat_version='1.0', force_output_path=''):
                 ap_type = best_ap.split('_')[1]
         best_aper_phot_path = analysis_path/('aper_phot_analysis/'+best_ap)
 
-        nightly_glob = np.array(natsorted([x for x in best_aper_phot_path.glob('*nightly*.png')]))
+        nightly_glob = np.array(natsorted([x for x in best_aper_phot_path.glob('*night*.png')]))
         #Sort plots in order we want them in the report: arget lc, raw flux, normalized flux
         nightly_glob = np.array([nightly_glob[2], nightly_glob[1], nightly_glob[0]])
 
