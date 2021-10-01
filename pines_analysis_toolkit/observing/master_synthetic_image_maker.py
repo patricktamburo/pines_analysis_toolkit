@@ -2,43 +2,28 @@ import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.ndimage import gaussian_filter
 import pdb
 import scipy.optimize as opt
-from scipy import signal
-from astropy.modeling import models, fitting
 from astropy.io import fits
 from photutils import DAOStarFinder, aperture_photometry, CircularAperture, Background2D, MedianBackground
 from astropy.stats import sigma_clipped_stats, SigmaClip
-import pickle 
-from pathlib import Path
-import os 
-import time
-import datetime
-import shutil
-import sys
 from astropy.convolution import Gaussian2DKernel, interpolate_replace_nans
 from pines_analysis_toolkit.utils.pines_dir_check import pines_dir_check
 from pines_analysis_toolkit.utils.short_name_creator import short_name_creator
 from pines_analysis_toolkit.utils.quick_plot import quick_plot as qp 
-from astropy.visualization import ImageNormalize, ZScaleInterval
 
-def master_synthetic_image_creator(target, image_name, seeing=2.5, sigma_above_bg=5):
-    '''Authors:
-            Patrick Tamburo, Boston University, February 2021
-        Purpose:
-            Creates a master synthetic image for a PINES target by detecting sources in a reduced image of the field.
-        Inputs:
-            target (str): The target's full 2MASS name.
-            image_name (str): The name of the reduced file (e.g., 20210204.420_red.fits).
-            seeing (float): The FWHM seeing of the image in arcsec. By default, 2.5". 
-            sigma_above_bg (float): The sigma above background used to rule in sources in daostarfinder. By default, 5.
-        Outputs:
-            Writes out a master synthetic image to PINES_analysis_toolkit/Calibrations/Master Synthetic Images/.
-        TODO:
-            Write the filename used to create the master image to the master image header. 
-    '''
+def master_synthetic_image_creator(target, image_name, seeing=2.5, sigma_above_bg=5.):
+    """Creates a master synthetic image for a PINES target by detecting sources in a reduced image of the field.
 
+    :param target: long name of the target
+    :type target: str
+    :param image_name: the name of the reduced file you want to use to create the master synthetic image
+    :type image_name: str
+    :param seeing: FWHM seeing value in the image in arcsec, defaults to 2.5
+    :type seeing: float, optional
+    :param sigma_above_bg: sigma above background used to detect sources, defaults to 5
+    :type sigma_above_bg: float, optional
+    """
 
     def mimir_source_finder(image_path,sigma_above_bg,fwhm, exclude_lower_left=False):
         """Find sources in Mimir images."""
@@ -131,14 +116,12 @@ def master_synthetic_image_creator(target, image_name, seeing=2.5, sigma_above_b
             synthetic_image[y_cut,x_cut] += np.exp(-((dist)**2/(2*sigma**2)+((dist)**2/(2*sigma**2))))
         return(synthetic_image)
     
-    target = target.replace(' ','')
     pines_path = pines_dir_check()
     short_name = short_name_creator(target)
     master_synthetic_path = pines_path/('Calibrations/Master Synthetic Images/'+target+'_master_synthetic.fits')
     image_path = pines_path/('Objects/'+short_name+'/reduced/'+image_name)
     plt.ion()
 
-    target = target.replace(' ','')
     seeing = float(seeing)
     daostarfinder_fwhm = seeing*2.355/0.579
 

@@ -6,6 +6,13 @@ from natsort import natsorted
 import numpy as np 
 
 def average_seeing(log_path):
+    """Calculates average seeing from values in the PINES observing logs. 
+
+    :param log_path: ~/PINES_analysis_toolkit/Logs/ path
+    :type log_path: pathlib.PosixPath
+    :return: average seeing 
+    :rtype: float
+    """
     try:
         df = pines_log_reader(log_path)
         if 'X seeing' in df.keys():

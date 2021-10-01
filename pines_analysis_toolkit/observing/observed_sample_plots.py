@@ -9,6 +9,11 @@ from matplotlib.patches import Polygon
 import os
 
 def observed_sample_plots(upload=True):
+    """Creates observed sample plots for the PINES website
+
+    :param upload: whether or not to upload to the server, defaults to True
+    :type upload: bool, optional
+    """
 
     def plot_mwd(RA,Dec,observed_flag,org=0,title='Mollweide projection', projection='mollweide',observed_plot=0):
         ''' 

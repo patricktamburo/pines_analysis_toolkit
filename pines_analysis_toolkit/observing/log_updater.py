@@ -11,10 +11,7 @@ from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
 import numpy as np 
 import matplotlib.pyplot as plt
 from pines_analysis_toolkit.observing.synthetic_image_maker import synthetic_image_maker
-from scipy import signal
 from astropy.modeling import models, fitting
-from natsort import natsorted 
-from glob import glob 
 import pandas as pd 
 pd.options.mode.chained_assignment = None  # Suppress some useless warnings. 
 from pines_analysis_toolkit.observing.shift_measurer import shift_measurer
@@ -23,27 +20,23 @@ from pines_analysis_toolkit.observing.pines_logging import pines_logging
 from pines_analysis_toolkit.utils.pines_login import pines_login
 from pines_analysis_toolkit.observing.log_out_of_order_fixer import log_out_of_order_fixer
 from astropy.modeling import models, fitting
-from astropy.stats import sigma_clipped_stats, sigma_clip
+from astropy.stats import sigma_clip
 
-def log_updater(date, sftp, shift_tolerance=30, upload=False):
-    '''
-    Authors:
-		Patrick Tamburo, Boston University, January 2021
-	Purpose:
-        Updates x_shift and y_shift measurements from a PINES log. These shifts are measured using *full* resolution images, while at the telescope,
+def log_updater(date, sftp, shift_tolerance=30., upload=False):
+    """Updates x_shift and y_shift measurements from a PINES log. These shifts are measured using *full* resolution images, while at the telescope,
         we use *half* resolution images (to save time between exposures). By measuring on full-res images, we get more accurate shifts, which allows 
         us to determine centroids more easily.
-	Inputs:
-        date (str): the UT date of the log whose shifts you want to update in YYYYMMDD format, e.g. '20151110'
-        sftp (pysftp connection): sftp connection to the PINES server
-        shift_tolerance (float): the maximum distance an x/y shift can be before shifts will be flagged as poor quality. 
-        upload (bool): whether or not to push the updated log to the PINES server (only admins can do this)
-    Outputs:
-		Writes updated log file to disk. 
-	TODO:
-        Re-measure seeing?
-    FIXME:
-    '''
+
+    :param date: date of the log whose shifts you want to update (YYYYMMDD)
+    :type date: str
+    :param sftp: sftp connection to the PINES server
+    :type sftp: pysftp connection
+    :param shift_tolerance: maximum pixel distance an x/y shift can be before shifts flagged as poor quality, defaults to 30
+    :type shift_tolerance: float, optional
+    :param upload: [description], whether or not to push the updated log to the PINES server
+    :type upload: bool, optional
+    """
+
     def tie_sigma(model):
         return model.x_stddev_1
 

@@ -20,6 +20,21 @@ from glob import glob
 import pandas as pd 
 
 def shift_measurer(target, image_name, sftp, num_sources=15, closeness_tolerance=10.):
+    """Measure shifts between an image and the master synthetic image for a target. 
+
+    :param target: target's full 2MASS name 
+    :type target: str
+    :param image_name: name of the image whose shifts you want to measure
+    :type image_name: str
+    :param sftp: sftp connection to the PINES server
+    :type sftp: pysftp.connection
+    :param num_sources: number of sources to use for measuring shift, defaults to 15
+    :type num_sources: int, optional
+    :param closeness_tolerance: closest targets can be in pixels and still be considered for correlation sources, defaults to 10.
+    :type closeness_tolerance: float, optional
+    :return: x/y shift, source x/y, check_image
+    :rtype: [type]
+    """
     '''Authors:
             Patrick Tamburo, Boston University, June 2020
         Purpose:

@@ -19,18 +19,13 @@ def get_download_path():
         return os.path.join(os.path.expanduser('~'), 'downloads')
 
 def log_out_of_order_fixer(log_path, sftp):
-    '''
-    Authors:
-		Patrick Tamburo, Boston University, January 2021
-	Purpose:
-        Fixes logs with out-of-order/duplicate filenames. This is a weird bug that can sometimes happen in our observing scripts.
-	Inputs:
-        log_path (pathlib.Path object): Path to the log. 
-        sftp (pysftp connection): Connection to the PINES server. 
-    Outputs:
-        Writes corrected log file to disk.
-	TODO:
-    '''
+    """Fixes logs with out-of-order/duplicate filenames. 
+
+    :param log_path: path to the log
+    :type log_path: pathlib.PosixPath
+    :param sftp: sftp connection to the PINES server for downloading missing files
+    :type sftp: pysftp connection
+    """
 
     myfile = open(log_path, 'r')
     original_lines = myfile.readlines()

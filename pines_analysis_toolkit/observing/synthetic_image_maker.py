@@ -1,6 +1,15 @@
 import numpy as np 
 
-def synthetic_image_maker(x_centroids,y_centroids,fwhm=8):
+def synthetic_image_maker(x_centroids,y_centroids,fwhm=float):
+    """Construct a synthetic image from centroid data
+
+    :param x_centroids: array of x positions
+    :type x_centroids: numpy array 
+    :param y_centroids: array of y positions
+    :type y_centroids: numpy array
+    :param fwhm: fwhm of synthetic sources, defaults to 8
+    :type fwhm: float, optional
+    """
     #Construct synthetic images from centroid/flux data.
     synthetic_image = np.zeros((1024,1024))
     sigma = fwhm/2.355
