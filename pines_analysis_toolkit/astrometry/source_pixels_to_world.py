@@ -15,7 +15,7 @@ def source_pixels_to_world(short_name, source_detect_image_path, force_output_pa
     :param force_output_path: if you want to manually set an output directory, specify the top-level here (i.e. the directory containing Logs, Objects, etc.), defaults to ''
     :type force_output_path: str, optional
     :return: updates the csv of target/reference source_detect_centroids with world coordinates
-    :rtype: csv 
+    :rtype: csv
     """
 
     if force_output_path != '':
