@@ -4,34 +4,43 @@ import pdb
 def make_calibrations(sftp, exptimes, bands, dark_dates, flat_dates, dark_starts=[], dark_stops=[], lights_on_starts=[],
                       lights_on_stops=[], lights_off_starts=[], lights_off_stops=[], dark=True, flat=True, variable_pixels=True, 
                       hot_pixels=True, dead_pixels=True, bpm=True):
-    '''Authors: 
-        Patrick Tamburo, Boston University, March 2021
-    Purpose: 
-        Makes all calibration files for a target. 
-    Inputs:
-        sftp (pysftp object): connection to the PINES server. 
-        exptimes (list of floats): list of all exposure times for this target (e.g., [15., 30.] if observed with both 15 
-            and 30 second exposure times).
-        bands (list of str): list of all bands for this target (e.g., ['J', 'H'] if observed in both J and H bands).
-        dark_dates (list of str): list of UT dates on which darks were taken (order matches order of exptimes!).
-        flat_dates (list of str): list of UT dates on which flats were taken (order matches order of bands!)
-        dark_starts (list of int): list of the start filenumbers for darks (order matches order of exptimes!)
-        dark_stops (list of int): list of the stop filenumbers for darks (order matches order of exptimes!)
-        lights_on_starts (list of int): list of the start filenumbers for lights on flats (order matches order of bands!)
-        lights_on_stops (list of int): list of the stop filenumbers for lights on flats (order matches order of bands!)
-        lights_off_starts (list of int): list of the start filenumbers for lights off flats (order matches order of bands!)
-        lights_off_stops (list of int): list of the stop filenumbers for lights off flats (order matches order of bands!)
-        dark (bool): Whether or not to make the master darks. 
-        flat (bool): Whether or not to make the master flats. 
-        variable_pixels (bool): Whether or not to make the variable pixel masks. 
-        hot_pixels (bool): Whether or not to make the hot pixel masks. 
-        dead_pixels (bool): Whether or not to make the dead pixel masks. 
-        bpm (bool): Whether or not to make the bad pixel masks.  
-    Outputs:
-        Writes calibration images to appropriate ~/Documents/PINES_analysis_toolkit/Calibrations/ directory. 
-    TODO:
-        Have to allow for dark_start/stop, lights_on_start/stop, lights_off_start/stop arguments in case you need to specify numbers of dark/flat files. 
-    '''
+    """Makes all calibration files for a target. 
+
+    :param sftp: sftp connection to the PINES server
+    :type sftp: pysftp connection
+    :param exptimes: list of exposure times for this target. E.g., if you observed with 15 and 30 seconds, pass [15, 30]
+    :type exptimes: list of floats
+    :param bands: list of bands used to observe this target. E.g., if you observed in J and H bands, pass ['J', 'H']. 
+    :type bands: list of str
+    :param dark_dates: list of dates on which darks were taken (order must match order of exptimes list, and there should be one entry for every entry in exptimes!)
+    :type dark_dates: list of str
+    :param flat_dates: list of dates on whic flats were taken (order must match order of bands list, and there should be one entry for every entry in exptimes!)
+    :type flat_dates: list of str
+    :param dark_starts: list of the start filenumbers for darks (order matches order of exptimes!), defaults to []
+    :type dark_starts: list of int, optional
+    :param dark_stops: list of the stop filenumbers for darks (order matches order of exptimes!), defaults to []
+    :type dark_stops: list of int, optional
+    :param lights_on_starts: list of the start filenumbers for lights on flats (order matches order of bands!), defaults to []
+    :type lights_on_starts: list of int, optional
+    :param lights_on_stops: list of the stop filenumbers for lights on flats (order matches order of bands!), defaults to []
+    :type lights_on_stops: list of int, optional
+    :param lights_off_starts: list of the start filenumbers for lights off flats (order matches order of bands!), defaults to []
+    :type lights_off_starts: list of int, optional
+    :param lights_off_stops: list of the stop filenumbers for lights off flats (order matches order of bands!), defaults to []
+    :type lights_off_stops: list of int, optional
+    :param dark: Whether or not to make the master darks, defaults to True
+    :type dark: bool, optional
+    :param flat: Whether or not to make the master flats, defaults to True
+    :type flat: bool, optional
+    :param variable_pixels: Whether or not to make the variable pixel masks, defaults to True
+    :type variable_pixels: bool, optional
+    :param hot_pixels: Whether or not to make the hot pixel masks, defaults to True
+    :type hot_pixels: bool, optional
+    :param dead_pixels: Whether or not to make the dead pixel masks, defaults to True
+    :type dead_pixels: bool, optional
+    :param bpm: Whether or not to make the bad pixel masks, defaults to True
+    :type bpm: bool, optional
+    """        
 
     pines_path = pat.utils.pines_dir_check()
     calibration_path = pines_path/('Calibrations/')

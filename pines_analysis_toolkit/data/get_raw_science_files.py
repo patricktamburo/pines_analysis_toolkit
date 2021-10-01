@@ -1,41 +1,23 @@
 import os
-import pathlib
-import pdb
 from pines_analysis_toolkit.utils.pines_dir_check import pines_dir_check
 from pines_analysis_toolkit.utils.short_name_creator import short_name_creator
 from pines_analysis_toolkit.utils.object_directory_creator import object_directory_creator
 from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
 from pines_analysis_toolkit.data.get_master_log import get_master_log
-from pines_analysis_toolkit.data.master_dark_chooser import master_dark_chooser
-from pines_analysis_toolkit.data.master_flat_chooser import master_flat_chooser
 from pines_analysis_toolkit.data.get_calibrations import get_calibrations
-from datetime import datetime
-import getpass 
-import pandas
 import numpy as np
 import time
-import pysftp
-from astropy.io import fits
-import paramiko
 from progressbar import ProgressBar
 
-'''Authors: 
-        Patrick Tamburo, Boston University, June 2020
-   Purpose: 
-        Finds raw science files on the PINES server for a specified target, and downloads them.
-   Inputs:
-        sftp (pysftp.Connection): the sftp connection to the pines server.
-        target_name (str): the target's full 2MASS name, i.e. '2MASS J01234567+0123456' 
-    Outputs:
-        None
-    TODO:
-        Zip files for faster download
-        Allow user to specify run if target is observed during multiple runs 
-        Have program automatically regenerate master_log.txt on the PINES server when run
-        Grab logs automatically.
-'''
-
 def get_raw_science_files(sftp, target_name):
+    """Downloads raw science files for a target
+
+    :param sftp: sftp connection to the PINES server
+    :type sftp: pysftp connection
+    :param target_name: long name for the target
+    :type target_name: str
+    """
+
     t1 = time.time()
     print('')
     print('Starting get_raw_science files for {}.'.format(target_name))

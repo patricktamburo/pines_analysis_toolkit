@@ -1,14 +1,8 @@
-import pdb
 import matplotlib.pyplot as plt
 import numpy as np
 from astropy.io import fits
-import glob
-import pickle
 from pines_analysis_toolkit.utils.pines_dir_check import pines_dir_check
-from pathlib import Path
 from datetime import datetime
-import time
-import os
 
 '''Authors:
 		Patrick Tamburo, Boston University, September 2020
@@ -27,6 +21,21 @@ import os
 '''
 
 def bpm_maker(flat_date, dark_date, exptime, band, upload=False, sftp=''):
+    """Creates a combined bad pixel mask from Kokopelli, variable, hot, and dead pixel masks.
+
+    :param flat_date: date of the master flat used to reduce the image
+    :type flat_date: str
+    :param dark_date: date of the master dark used to reduce the image
+    :type dark_date: str
+    :param exptime: exposure time in seconds
+    :type exptime: float
+    :param band: band of observations (e.g., 'J' or 'H')
+    :type band: str
+    :param upload: whether or not to upload the resulting bpm to the PINES server, defaults to False
+    :type upload: bool, optional
+    :param sftp: sftp connection to the PINES server, only needed if upload == True, defaults to ''
+    :type sftp: str, optional
+    """
     pines_path = pines_dir_check()
 
     #Load in the different masks. 
@@ -51,9 +60,6 @@ def bpm_maker(flat_date, dark_date, exptime, band, upload=False, sftp=''):
     frac_bad = num_bad / 1024**2
 
     print('{} percent of the detector flagged as bad.'.format(np.round(frac_bad*100,1)))
-    # plt.ion()
-    # plt.imshow(bpm, origin='lower')
-
 
     output_filename = 'bpm_'+band+'_'+str(exptime)+'_s_'+flat_date+'.fits'
     output_path = pines_path/('Calibrations/Bad Pixel Masks/'+output_filename)
@@ -65,17 +71,7 @@ def bpm_maker(flat_date, dark_date, exptime, band, upload=False, sftp=''):
     print('')
     print('Writing the file to '+output_filename)
 
-    #Check to see if other files of this name exist.
-    # if os.path.exists(output_path):
-    #     print('')
-    #     print('WARNING: This will overwrite {}!'.format(output_path))
-    #     dark_check = input('Do you want to continue? y/n: ')
-    #     if dark_check == 'y':
-    #         hdu.writeto(output_path,overwrite=True)
-    #         print('Wrote to {}!'.format(output_path))
-    #     else:
-    #         print('Not overwriting!')
-    # else:
+
     hdu.writeto(output_path,overwrite=True)
     print('Wrote to {}!'.format(output_path))
     print('')
@@ -88,15 +84,6 @@ def bpm_maker(flat_date, dark_date, exptime, band, upload=False, sftp=''):
         sftp.chdir('/')
         sftp.chdir('data/calibrations/Bad Pixel Masks')
         upload_name = output_filename
-        # if upload_name in sftp.listdir():
-        #     print('WARNING: This will overwrite {} in pines.bu.edu:data/calibrations/Bad Pixel Masks/'.format(upload_name))
-        #     upload_check = input('Do you want to continue? y/n: ')
-        #     if upload_check == 'y':
-        #         sftp.put(output_path,upload_name)
-        #         print('Uploaded to pines.bu.edu:data/calibrations/Bad Pixel Masks/!')
-        #     else:
-        #         print('Skipping upload!')
-        # else:
         sftp.put(output_path,upload_name)
         print('Uploaded {} to pines.bu.edu:data/calibrations/Bad Pixel Masks/!'.format(upload_name))
    

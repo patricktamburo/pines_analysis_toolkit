@@ -1,24 +1,19 @@
 from datetime import datetime
 import numpy as np
 from astropy.io import fits
-import pathlib
-import pdb
 
-'''Authors: 
-        Patrick Tamburo, Boston University, June 2020
-   Purpose: 
-        Identifies the closest dark in time to the image you want reduce, that has the correct exposure time.
-   Inputs:
-        dark_path (pathlib.Path): path to the local calibrations/darks directory. 
-        header (astropy.io.fits.header.Header): the header of the image you want to reduce. 
-    Outputs:
-        master_dark (np.ndarray): 2D array containing the appropriate master dark data. 
-        master_dark_name (str): the name of the chosen master dark file. 
-    TODO:
-        None
-'''
 
 def master_dark_chooser(dark_path, header):
+    """Identifies the closest dark in time to the image you want reduce, that has the correct exposure time.
+
+    :param dark_path:  path to the ~.../PINES_analysis_toolkit/Calibrations/darks directory. 
+    :type dark_path: pathlib.PosixPath
+    :param header: header of the image you want to reduce
+    :type header: astropy.io fits header
+    :return: path to and name of the selected master dark 
+    :rtype: pathlib.PosixPath, str
+    """
+
     exptime = header['EXPTIME']
     obs_date = datetime.strptime(header['DATE-OBS'].split('T')[0].replace('-',''),'%Y%m%d')
     possible_darks = [x for x in (dark_path/'Master Darks').glob('*'+str(exptime)+'*.fits')]

@@ -32,10 +32,25 @@ import matplotlib.pyplot as plt
 		None
 '''
 
-def hot_pixels(date, exptime, box_l=3, saturation=4000, upload=False, sftp=''):
+def hot_pixels(date, exptime, saturation=4000., upload=False, sftp=''):
+    """Creates a hot pixel mask from master dark. Flags pixels as hot if they exceed clip_lvl * the standard deviation of neighboring pixels in 
+            a box of dimensions box_l x box_l surrounding the target pixel. Iterates through the master dark multiple times until no new bad pixels
+            are found. 
 
-    if box_l % 2 == 0:
-        raise ValueError('box_l must be odd!')
+    :param date: date the master dark was taken (YYYYMMDD)
+    :type date: str
+    :param exptime: exposure time of the master dark
+    :type exptime: float
+    :param box_l: [description], defaults to 3
+    :type box_l: int, optional
+    :param saturation: pixel value in ADUs over which pixels are automatically flagged as hot, defaults to 4000
+    :type saturation: float, optional
+    :param upload: whether or not to upload the resulting hot pixel map to the PINES server, defaults to False
+    :type upload: bool, optional
+    :param sftp: sftp connection to the PINES server, defaults to ''
+    :type sftp: str, optional
+    :raises RuntimeError: if no dark stddev files are found on disk
+    """
 
     pines_path = pines_dir_check()
     darks_path = pines_path/('Calibrations/Darks/Master Darks/')

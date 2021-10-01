@@ -1,22 +1,9 @@
 import pdb
 from pathlib import Path
-import scipy
-from scipy.integrate import *
-from scipy.interpolate import interp1d
-from scipy.interpolate import InterpolatedUnivariateSpline
-import subprocess 
 import os, glob
-import sys, math
-from scipy import stats, signal
 from datetime import datetime
 import numpy as np
-from scipy import optimize
-from scipy.optimize import curve_fit
-from scipy.optimize import fsolve
 import time
-import multiprocessing
-from multiprocessing import Pool
-import pickle
 from astropy.io import fits
 import pdb
 from pathlib import Path
@@ -24,43 +11,37 @@ from astropy.stats import sigma_clipped_stats
 import matplotlib.pyplot as plt
 import natsort
 from pines_analysis_toolkit.utils.pines_dir_check import pines_dir_check
-from pines_analysis_toolkit.utils.short_name_creator import short_name_creator
 from pines_analysis_toolkit.data.master_flat_chooser import master_flat_chooser
 from pines_analysis_toolkit.data.master_dark_chooser import master_dark_chooser
 from pines_analysis_toolkit.data.bpm_chooser import bpm_chooser
-import getpass
-import paramiko
-import pysftp 
 from pines_analysis_toolkit.utils.quick_plot import quick_plot as qp
-from pines_analysis_toolkit.data.bg_2d import bg_2d
 from progressbar import ProgressBar
-from astropy.visualization import ImageNormalize, ZScaleInterval, SquaredStretch, SqrtStretch, SinhStretch
-from copy import deepcopy
-from astropy.convolution import Gaussian2DKernel, interpolate_replace_nans
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-
-'''Authors:
-		Paul Dalba, Boston University, February 2017
-		Patrick Tamburo, Boston University, July 2019 and June 2020
-	Purpose:
-		Reduces raw PINES science images for a specified target and saves the reduced images. 
-	Inputs:
-		target_name (str): the target's full 2MASS name, i.e. '2MASS J01234567+0123456' 
-		upload (bool, optional): whether or not to upload the reduced images to pines.bu.edu. By default, False (so you won't try to upload!).
-		sftp (pysftp.Connection, optional): the sftp connection to the pines server, required if you are going to upload reduced data
-		delete_raw (bool, optional): whether or not to delete raw files from your local directory for this target when done reduction/upload process. 
-		delete_reduced (bool, optional): whether or not to delete reduced files from your local directory for this target when done reduction/upload process.
-		manual_flat_path (pathlib.Path, optional): path to the flat you want to use to reduce the data, if you don't want the code to automatically choose it for you.
-		manual_dark_path (pathlib.Path, optional): path to the dark you want to use to reduce the data, if you don't want the code to automatically choose it for you.
-		manual_bpm_path (pathlib.Path, optional): path to the bad pixel mask you want to use to reduce the data, if you don't want the code to automatically choose it for you.
-		linearity_correction (bool): Whether or not to apply a linearity correction to the data. 
-	Outputs:
-		None
-	TODO:
-		Add check to see if .fits files are the correct size. If they didn't fully download, fits.open() will crash. 
-'''
 	
-def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sftp='', manual_flat_path='', manual_dark_path='', manual_bpm_path='', linearity_correction=False, force_output_path=''):
+def reduce(short_name, upload=False, delete_raw=False, delete_reduced=False, sftp='', manual_flat_path='', manual_dark_path='', manual_bpm_path='', linearity_correction=False, force_output_path=''):
+	"""Reduces raw PINES science images and writes them out to disk.
+
+	:param short_name: the short name for the target
+	:type short_name: str
+	:param upload:  whether or not to upload reduced images to the PINES server, defaults to False
+	:type upload: bool, optional
+	:param delete_raw: whether or not to delete local raw images when done making reduced images, defaults to False
+	:type delete_raw: bool, optional
+	:param delete_reduced: whether or not to delete local reduced images after upload to the server, defaults to False
+	:type delete_reduced: bool, optional
+	:param sftp: sftp connection to the PINES server, defaults to ''
+	:type sftp: str, optional
+	:param manual_flat_path: path to dome flat you want to force the reduction to use, defaults to ''
+	:type manual_flat_path: pathlib.PosixPath, optional
+	:param manual_dark_path: path to dark you want to force the reduction to use, defaults to ''
+	:type manual_dark_path: pathlib.PosixPath, optional
+	:param manual_bpm_path: path to bad pixel mask want to force the reduction to use, defaults to ''
+	:type manual_bpm_path: pathlib.PosixPath, optional
+	:param linearity_correction: whether or not to try a linearity correction, defaults to False
+	:type linearity_correction: bool, optional
+	:param force_output_path: user-chosen directory to use in place of the default ~/Documents/PINES_analysis_toolkit directory for analysis, defaults to ''
+	:type force_output_path: str, optional
+	"""
+
 	t1 = time.time()
 	print('')
 	if (upload is True) and (sftp == ''):
@@ -72,7 +53,6 @@ def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sf
 	else:
 		pines_path = pines_dir_check()
 		
-	short_name = short_name_creator(target_name)
 
 	#Paths
 	raw_path = pines_path/('Objects/'+short_name+'/raw')
@@ -83,7 +63,7 @@ def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sf
 	bpm_path = pines_path/('Calibrations/Bad Pixel Masks')
 
 	#Now begin the loop to load and reduce the raw science data
-	print("Reducing data for {}.".format(target_name))
+	print("Reducing data for {}.".format(short_name))
 	print('Note: any reduced data already in reduced directory will be not be re-reduced.')
 				
 	pbar = ProgressBar()
@@ -170,7 +150,7 @@ def reduce(target_name, upload=False, delete_raw=False, delete_reduced=False, sf
 		time.sleep(1)
 		sftp.chdir('/data/reduced/mimir/')
 		files_to_upload = np.array(natsort.natsorted(np.array([x for x in reduced_path.glob('*.fits')])))
-		print('Uploading reduced {} data to the PINES server!'.format(target_name))
+		print('Uploading reduced {} data to the PINES server!'.format(short_name))
 		pbar = ProgressBar()
 		for i in pbar(range(len(files_to_upload))):
 			file = files_to_upload[i]

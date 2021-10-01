@@ -1,38 +1,22 @@
 import os
-import pathlib
-import pdb
 from pines_analysis_toolkit.utils.pines_dir_check import pines_dir_check
 from pines_analysis_toolkit.utils.short_name_creator import short_name_creator
 from pines_analysis_toolkit.utils.object_directory_creator import object_directory_creator
 from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
 from pines_analysis_toolkit.data.get_master_log import get_master_log
-from pines_analysis_toolkit.data.master_dark_chooser import master_dark_chooser
-from pines_analysis_toolkit.data.master_flat_chooser import master_flat_chooser
 from pines_analysis_toolkit.data.get_calibrations import get_calibrations
-from datetime import datetime
-from astropy.io import fits
-import getpass 
-import pandas
 import numpy as np
 import time
 
-'''Authors: 
-        Patrick Tamburo, Boston University, June 2020
-   Purpose: 
-        Finds reduced science files on the PINES server for a specified target, and downloads them.
-   Inputs:
-        target_name (str): the target's full 2MASS name, i.e. '2MASS J01234567+0123456' 
-    Outputs:
-        None
-    TODO:
-        Zip files for faster download
-        Allow user to specify run if target is observed during multiple runs 
-        Have program automatically regenerate master_log.txt on the PINES server when run
-        Error handling: what if target name is wrong?
-        Grab logs for each night of data, need them in centroider.py.
-'''
-
 def get_reduced_science_files(sftp, target_name):
+    """Downloads reduced science files for a target from the PINES server. 
+
+    :param sftp: sftp connection to the PINES server
+    :type sftp: pysftp connection
+    :param target_name: long name for the target
+    :type target_name: target_name
+    """
+
     t1 = time.time()
     
     #Get the user's pines_analysis_toolkit path 

@@ -3,13 +3,10 @@ import numpy as np
 from astropy.io import fits
 import pdb
 import matplotlib.pyplot as plt
-from astropy.stats import sigma_clipped_stats
 from pines_analysis_toolkit.utils.pines_dir_check import pines_dir_check
 from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
 from pines_analysis_toolkit.utils import quick_plot as qps
-import paramiko
 import time
-import getpass
 import natsort
 import os
 from datetime import datetime
@@ -17,29 +14,25 @@ import pysftp
 from pathlib import Path
 from progressbar import ProgressBar
 
-'''Authors:
-		Paul Dalba, Boston University, February 2017
-		Patrick Tamburo, Boston University, June-September 2020
-	Purpose:
-        Creates a master dark image for a given date and exposure time, and uploads to the PINES calibrations folder. 
-        NOTE: Only admins are able to upload these files!
-	Inputs:
-		sftp (pysftp.Connection): the sftp connection to the pines server. 
-        date (str): the UT date during which the dome flat field data was obtained (i.e., '20200531')
-        exptime (float): the exposure time of the dark images in question, in seconds
-        dark_start (int, optional): The file number that represents the start of the dark sequence for this exptime. Can use these arguments
-            to specify the dark data, in case the appropriate comments weren't entered into the FITS headers when they were created.
-        dark_end (int, optional): The file number that represents the end of the dark sequence for this exptime.
-        upload (bool, optional): Whether or not to upload the master dark to pines.bu.edu. By default, set to False (so you will not attempt to upload!).
-        delete_raw (bool, optional): Whether or not to delete raw data from your local machine when the master dark is created. By default, set to False (won't delete raw dark images by default!).
-    Outputs:
-		Saves master_dark_exptime_s_date.fits to Calibrations/Master Darks/
-        Saves master_dark_stddev_exptime_s_date.fits to Calibrations/Master Darks Stddev/
-	TODO:
-        None
-'''
-
 def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=False, sftp=''):
+    """ Creates a master dark image for a given date and exposure time, and uploads to the PINES calibrations folder
+
+    :param date: date on which dark files were taken (YYYYMMDD)
+    :type date: str
+    :param exptime: exposure time in seconds
+    :type exptime: str
+    :param dark_start: file number indicating the start of a sequence of darks you want to use, defaults to 0
+    :type dark_start: int, optional
+    :param dark_stop: file number indicating the start of a sequence of darks you want to use, defaults to 0
+    :type dark_stop: int, optional
+    :param upload: whether or not to upload to the PINES server, defaults to False
+    :type upload: bool, optional
+    :param delete_raw: whether or not to delete raw dark files, defaults to False
+    :type delete_raw: bool, optional
+    :param sftp: sftp connection to the PINES server, defaults to ''
+    :type sftp: str, optional
+    :raises RuntimeError: breaks if no dark files are found
+    """
     clip_lvl = 3 #The value to use for sigma clipping. 
     pines_path = pines_dir_check()
     np.seterr(invalid='ignore') #Suppress some warnings we don't care about in median combining. 

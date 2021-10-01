@@ -1,24 +1,17 @@
-import pathlib
-import pdb 
 from datetime import datetime
 import numpy as np 
 from astropy.io import fits
 
-'''Authors: 
-        Patrick Tamburo, Boston University, June 2020
-   Purpose: 
-        Idenfities the closest flat field in time to the image you want reduce, that's in the correct band.
-   Inputs:
-        flats_path (pathlib.Path): path to the local calibrations/flats directory. 
-        header (astropy.io.fits.header.Header): the header of the image you want to reduce. 
-    Outputs:
-        master_flat (np.ndarray): 2D array containing the appropriate master flat data. 
-        master_flat_name (str): the name of the chosen master flat file. 
-    TODO:
-        None
-'''
-
 def master_dark_stddev_chooser(dark_std_path, header):
+    """Identifies the closest master_dark_stddev in time to the image you want reduce, that has the correct exposure time.
+
+    :param dark_std_path:  path to the ~.../PINES_analysis_toolkit/Calibrations/dark_std directory. 
+    :type dark_std_path: pathlib.PosixPath
+    :param header: header of the image you want to reduce
+    :type header: astropy.io fits header
+    :return: path to and name of the selected master dark stddev file
+    :rtype: pathlib.PosixPath, str
+    """
 
     exptime = header['EXPTIME']
     obs_date = datetime.strptime(header['DATE-OBS'].split('T')[0].replace('-',''),'%Y%m%d')

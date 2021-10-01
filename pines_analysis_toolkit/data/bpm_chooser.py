@@ -1,23 +1,17 @@
 from datetime import datetime
 import numpy as np
-import pdb
 from astropy.io import fits
 
-'''Authors: 
-        Patrick Tamburo, Boston University, September 2020
-   Purpose: 
-        Identifies the closest bpm in time to the image you want reduce, that has the correct exposure time and is in the right band.
-   Inputs:
-        bpm_path (pathlib.Path): path to the local Calibrations/Bad Pixel Masks/ directory. 
-        header (astropy.io.fits.header.Header): the header of the image you want to reduce. 
-    Outputs:
-        master_bpm (np.ndarray): 2D array containing the appropriate master bad pixel mask. 
-        master_bpm_name (str): the name of the chosen bad pixel mask file. 
-    TODO:
-        None
-'''
-
 def bpm_chooser(bpm_path, header):
+    """Identifies the closest bpm in time to the image you want reduce, that has the correct exposure time and is in the right band.
+
+    :param bpm_path: path to the ~/PINES_analysis_toolkit/Calibrations/Bad Pixel Masks/ directory.
+    :type bpm_path: pathlib.PosixPath
+    :param header: header of the image you want to reduce
+    :type header: astropy.io fits header
+    :return: path to and name of chosen bad pixel mask 
+    :rtype: pathlib.PosixPath, str
+    """
     exptime = header['EXPTIME']
     band = header['FILTNME2']
     obs_date = datetime.strptime(header['DATE-OBS'].split('T')[0].replace('-',''),'%Y%m%d')

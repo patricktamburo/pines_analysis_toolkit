@@ -13,23 +13,18 @@ import matplotlib.pyplot as plt
 from scipy.stats import sigmaclip
 from astropy.stats import histogram
 
-'''Authors:
-		Patrick Tamburo, Boston University, September 2020
-	Purpose:
-		Creates a dead pixel mask from master flat. 
-	Inputs:
-		date (str): the date calibration data was taken 
-        band (str): the band of the flats
-        clip_lvl (float, optional): the sigma level below which to flag dead pixels. 
-		upload (bool, optional): whether or not to upload the dead pixel mask to pines.bu.edu. By default, False (so you won't try to upload!).
-		sftp (pysftp.Connection, optional): the sftp connection to the pines server, required if you are going to upload dead pixel mask.
-	Outputs:
-		Writes dpm_band_date.fits to Calibrations/Dead Pixel Masks/
-	TODO:
-		None
-'''
+def dead_pixels(date, band, upload=False, sftp=''):
+    """Creates a dead pixel mask from a master flat image. 
 
-def dead_pixels(date, band, clip_lvl=4.5, box_l=3, upload=False, sftp=''):
+    :param date: date of the master flat (YYYYMMDD)
+    :type date: str
+    :param band: band of flat image (e.g. 'J' or 'H')
+    :type band: str
+    :param upload: whether or not to upload the resulting dead pixel mask to the PINES server, defaults to False
+    :type upload: bool, optional
+    :param sftp: sftp connection to the PINES server, defaults to ''
+    :type sftp: str, optional
+    """
     pines_path = pines_dir_check()
     flat_path = pines_path/('Calibrations/Flats/Domeflats/'+band+'/Master Flats/')
     flat_file = natsort.natsorted(list(flat_path.rglob('*'+date+'.fits')))[0]

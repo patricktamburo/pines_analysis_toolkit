@@ -23,7 +23,21 @@ import time
 	TODO:
         None
 '''
-def variable_pixels(date, exptime, clip_lvl=5, upload=False, sftp=''):
+def variable_pixels(date, exptime, clip_lvl=5., upload=False, sftp=''):
+    """Creates a map of variable pixels using a dark stddev image
+
+    :param date: UT date during which the dome flat field data was obtained (YYYYMMDD)
+    :type date: str
+    :param exptime: exposure time of the dark images in question
+    :type exptime: float
+    :param clip_lvl: sigma level above which pixels are considered to be variable, defaults to 5
+    :type clip_lvl: float, optional
+    :param upload: whether or not to upload the variable pixel map to the PINES server, defaults to False
+    :type upload: bool, optional
+    :param sftp: sftp connection to the PINES server, defaults to ''
+    :type sftp: pysftp connection, optional
+    :raises RuntimeError: if no dark stddev files are found on disk
+    """
     pines_path = pines_dir_check()
     dark_stddev_path = pines_path/('Calibrations/Darks/Master Darks Stddev/')
     all_dark_stddev_files = natsort.natsorted(list(Path(dark_stddev_path).rglob('*'+date+'.fits')))

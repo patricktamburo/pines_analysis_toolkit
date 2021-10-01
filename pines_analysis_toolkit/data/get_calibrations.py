@@ -1,8 +1,13 @@
-import pdb
-import pdb
-import os
 
 def get_calibrations(sftp, pines_path):
+    """Downloads all calibration files on the PINES server. 
+
+    :param sftp: sftp connection to the PINES server.
+    :type sftp: pysftp connection
+    :param pines_path: path to top-level PINES_analysis_toolkit directory containing the 'Calibrations/' folder
+    :type pines_path: pathlib.PosixPath
+    """
+
     print('Downloading calibration files from pines.bu.edu!')
     print('')
     

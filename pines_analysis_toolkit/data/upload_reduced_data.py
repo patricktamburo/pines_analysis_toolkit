@@ -4,21 +4,15 @@ import pines_analysis_toolkit as pat
 from progressbar import ProgressBar
 import pdb 
 
-def upload_reduced_data(sftp, target): 
-    '''Authors:
-		Patrick Tamburo, Boston University, May 2021
-	Purpose:
-		A standalone program for uploading reduced data to the PINES server.. 
-	Inputs:
-    	sftp (pysftp.Connection, optional): the sftp connection to the PINES server, required if you are going to upload reduced data
-		target (str): the target's full 2MASS name, i.e. '2MASS J01234567+0123456' 
-	Outputs:
-		None
-	TODO:
-        None
-'''
+def upload_reduced_data(sftp, short_name): 
+    """Standalone function for uploading reduced data to the PINES server
+
+    :param sftp: sftp connection to the PINES server
+    :type sftp: pysftp connection
+    :param short_name: short name for the target
+    :type short_name: str 
+    """
     pines_path = pat.utils.pines_dir_check()
-    short_name = pat.utils.short_name_creator(target)
     reduced_path = pines_path/('Objects/'+short_name+'/reduced')
 
     print('')

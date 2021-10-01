@@ -1,6 +1,5 @@
 from astropy.io import fits
 import numpy as np
-import pdb
 import glob 
 import matplotlib.pyplot as plt
 from astropy.stats import sigma_clipped_stats
@@ -9,9 +8,6 @@ import os
 import time
 from pines_analysis_toolkit.utils.pines_dir_check import pines_dir_check
 from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
-import getpass 
-import paramiko
-import pandas
 import natsort
 from datetime import datetime
 import pysftp
@@ -19,32 +15,30 @@ from pathlib import Path
 from progressbar import ProgressBar
 from pines_analysis_toolkit.utils.quick_plot import quick_plot as qp
 
-'''Authors:
-		Paul Dalba, Boston University, February 2017
-		Patrick Tamburo, Boston University, June-September 2020
-	Purpose:
-        Creates a master dome flat field image for a given date and band, and uploads to the PINES calibrations folder. 
-        NOTE: Only admins are able to upload these files!
-	Inputs:
-        sftp (pysftp.Connection): the sftp connection to the pines server.
-		date (str): the UT date during which the dome flat field data was obtained (i.e., '20200531')
-        band (str): the band in which the flat field data was takend, 'J' or 'H'
-        flat_start (int, optional): The file number that represents the start of the lights **on** dome flat sequence. Can use these arguments
-            to specify the lights on/off data, in case the appropriate comments weren't entered into the FITS headers when they were created.
-        flat_end (int, optional): The file number that represents the end of the lights **off** dome flat sequence.
-            NOTE: This will only work if the lights_on sequence and lights_off sequence were taken back-to-back (which should always be the case).
-        upload (bool, optional): Whether or not to upload the master dome flat to pines.bu.edu. By default, set to False (so you will not attempt to upload!).
-        delete_raw (bool, optional): Whether or not to delete raw data from your local machine when the master flat is created. By default, set to False (won't delete raw dome flat images by default!).
-    Outputs:
-		None
-	TODO:
-
-    FIXME:
-        Specifying start/stop numbers without passing an sftp will cause a crash if the flat files do not have 'dome_lamp_on' or 'dome_lamp_off' in the headers. 
-'''
-
-
 def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_start=0, lights_off_stop=0, upload=False, delete_raw=False, sftp=''):
+    """Creates a master dome flat field for a given date and band. 
+
+    :param date: date of flat images (YYYYMMDD)
+    :type date: str
+    :param band: band of observations (e.g., 'J' or 'H')
+    :type band: str
+    :param lights_on_start: start of the sequence of lights on flat images that you want to force the code to use, defaults to 0
+    :type lights_on_start: int, optional
+    :param lights_on_stop: end of the sequence of lights on flat images that you want to force the code to use, defaults to 0
+    :type lights_on_stop: int, optional
+    :param lights_off_start: start of the sequence of lights off flat images that you want to force the code to use, defaults to 0
+    :type lights_off_start: int, optional
+    :param lights_off_stop: end of the sequence of lights off flat images that you want to force the code to use, defaults to 0
+    :type lights_off_stop: int, optional
+    :param upload: whether or not to upload the resulting master flat to the PINES server, defaults to False
+    :type upload: bool, optional
+    :param delete_raw: whether or not to delete the raw flat files off your local machine when the flat is created, defaults to False
+    :type delete_raw: bool, optional
+    :param sftp: sftp connection to the PINES server, defaults to ''
+    :type sftp: str, optional
+    :raises RuntimeError: breaks if no suitable flats are found
+    """
+
     clip_lvl = 3 #The value to use for sigma clipping. 
     np.seterr(invalid='ignore') #Suppress some warnings we don't care about in median combining. 
     plt.ion() #Turn on interactive plotting.

@@ -6,7 +6,15 @@ from natsort import natsorted
 from glob import glob 
 import numpy as np 
 
-def straggler_upload(sftp, targets, delete_raw=False):
+def straggler_upload(sftp, targets):
+    """Uploads images of targets that were not previously logged.
+
+    :param sftp: sftp connection to the PINES server
+    :type sftp: pysftp connection
+    :param targets: list of target full names you want to look for stragglers to upload
+    :type targets: list of str
+    """
+
     sftp.chdir('/data/reduced/mimir/')
     runs = sftp.listdir()
     pines_path = pines_dir_check()
