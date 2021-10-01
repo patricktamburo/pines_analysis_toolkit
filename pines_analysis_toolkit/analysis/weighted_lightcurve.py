@@ -24,30 +24,34 @@ import os
 import fileinput
 import time   
 
-def weighted_lightcurve(short_name, phot_type='aper', convergence_threshold=1e-9, mode='night', plots=False, n_sig_refs=5, sigma_clip_threshold=4, max_iterations=1000, use_pwv=False, red_stars_only=False, blue_stars_only=False, high_correlation_refs=False, force_output_path=''):
+def weighted_lightcurve(short_name, phot_type='aper', convergence_threshold=1e-9, mode='night', n_sig_refs=5, sigma_clip_threshold=4., max_iterations=1000, use_pwv=False, red_stars_only=False, blue_stars_only=False, high_correlation_refs=False, force_output_path=''):
+    """Creates a corrected light curve for the target using a weighted mean of reference star fluxes. 
 
-    '''Authors:
-		Phil Muirhead & Patrick Tamburo, Boston University, November 2020
-	Purpose:
-        Makes an "artificial comparison lightcurve" (ALC) using comparison star fluxes. 
-	Inputs:
-        target (str): the target's full 2MASS name.
-        phot_type (str, optional): 'aper' for aperture photometry.
-        convergence_threshold (float, optional): the threshold for maximum change for each weight between iterations before they're considered converged. By default, 1e-5 (Murray et al. 2020). 
-        mode (str): either 'night' or 'global'. 'night' will make a separate lightcurve for each night of data for the target, while 'global' makes a lightcurve using all nights of data simultaneously. 
-        n_sig_refs (int): the number of reference stars whose standard deviations go into the optimal radius statistic. 
-        sigma_clip_threshold (float): the sigma level used to clip outliers in the final target lightcurve 
-        max_iterations (int): the maximum number of iterations in the reference star weighting loop. 
-        use_pwv (Bool): whether or not to use pwv in the regression.
-        red_stars_only (Bool): whether or not to only use the reddest reference stars when creating the lightcurve.
-        blue_stars_only (Bool): whether or not to only use the bluest reference stars when creating the lightcurve.
-        high_correlation_refs (Bool): whether or not to use only the references with fluxes most highly correlated with the target. 
-        force_output_path (path): if you want to manually set an output directory, specify the top-level here (i.e. the directory containing Logs, Objects, etc.)
-    Outputs:
-
-	TODO:
-        Make compatible with PSF photometry.
-    '''
+    :param short_name: short name of the target
+    :type short_name: str
+    :param phot_type: photometry type, 'aper' or 'psf', defaults to 'aper'
+    :type phot_type: str, optional
+    :param convergence_threshold: threshold in reference star weighting loop to consider weights converged, defaults to 1e-9
+    :type convergence_threshold: float, optional
+    :param mode: 'night' or 'global' normalization mode, defaults to 'night'
+    :type mode: str, optional
+    :param n_sig_refs: n brightest reference stars whose average standard deviation is evaluated to choose the best aperture, defaults to 5
+    :type n_sig_refs: int, optional
+    :param sigma_clip_threshold: threshold for sigma clipping of target light curve, defaults to 4.0
+    :type sigma_clip_threshold: float, optional
+    :param max_iterations: maximum number of iterations allowed in reference star weighting loop, defaults to 1000
+    :type max_iterations: int, optional
+    :param use_pwv: whether or not to use precipitable water vapor data in the regression, defaults to False
+    :type use_pwv: bool, optional
+    :param red_stars_only: whether or not to use only the reddest stars in the field as references, defaults to False
+    :type red_stars_only: bool, optional
+    :param blue_stars_only: whether or not to use only the bluest stars in the field as references, defaults to False
+    :type blue_stars_only: bool, optional
+    :param high_correlation_refs: whether or not to use only the references that are most highly correlated with the raw target flux, defaults to False
+    :type high_correlation_refs: bool, optional
+    :param force_output_path: user-chosen path to use if you do not want to use the default ~/Documents/PINES_analysis_toolkit directory for analysis, defaults to ''
+    :type force_output_path: str, optional
+    """
     print('\nRunning weighted_lightcurve() in {} normalization mode.'.format(mode))
 
     if (phot_type != 'aper') and (phot_type != 'psf'):
@@ -487,18 +491,6 @@ def weighted_lightcurve(short_name, phot_type='aper', convergence_threshold=1e-9
             print('New best lightcurve found!')
             best_metric = optimizing_metric
             best_ap = ap_rad
-
-        #Plot the raw fluxes, normalized fluxes, corrected target flux, and corrected reference star fluxes. 
-        # if plots:
-        #     if mode == 'night':
-        #         raw_flux_plot(all_nights_times, all_nights_raw_targ_flux, all_nights_raw_targ_err, all_nights_raw_ref_flux, all_nights_raw_ref_err, short_name, analysis_path, phot_type, ap_rad, num_refs)   
-        #         normalized_flux_plot(all_nights_times, all_nights_norm_targ_flux, all_nights_norm_targ_err, all_nights_norm_ref_flux, all_nights_norm_ref_err, all_nights_alc_flux, all_nights_alc_err, short_name, analysis_path, phot_type, ap_rad)
-        #         corr_target_plot(all_nights_times, all_nights_corr_targ_flux, all_nights_binned_times, all_nights_binned_corr_targ_flux, all_nights_binned_corr_targ_err, short_name, analysis_path, phot_type, ap_rad, force_y_lim=0.075)
-
-            #elif mode == 'global':
-                # global_normalized_flux_plot(all_nights_times, all_nights_norm_targ_flux, all_nights_norm_targ_err, all_nights_norm_ref_flux, all_nights_norm_ref_err, all_nights_alc_flux, all_nights_alc_err, short_name, analysis_path, phot_type, ap_rad)
-                # global_corr_target_plot(all_nights_times, all_nights_corr_targ_flux, all_nights_binned_times, all_nights_binned_corr_targ_flux, all_nights_binned_corr_targ_err, short_name, analysis_path, phot_type, ap_rad)
-
 
         #Write out the best aperture 
         optimal_aperture_output()
