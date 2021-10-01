@@ -1,9 +1,7 @@
-from pines_analysis_toolkit.utils.short_name_creator import short_name_creator
 from pines_analysis_toolkit.utils.pines_dir_check import pines_dir_check
 from pines_analysis_toolkit.photometry.detect_sources import detect_sources
 from pines_analysis_toolkit.photometry.target_finder import target_finder
 from pines_analysis_toolkit.utils.quick_plot import quick_plot
-import pdb
 import pandas as pd
 import numpy as np
 import matplotlib
@@ -17,39 +15,47 @@ from astropy.convolution import Gaussian2DKernel, interpolate_replace_nans
 from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
 import time
 from natsort import natsorted
-from astropy.visualization import ImageNormalize, ZScaleInterval, SquaredStretch, SqrtStretch, PercentileInterval, AsymmetricPercentileInterval
 
-'''Authors:
-		Patrick Tamburo, Boston University, June 2020
-	Purpose:
-        Chooses suitable reference stars for a target.
-	Inputs:
-        target (str): The target's full 2MASS name
-        source_detect_image (str): The name of the reduced file to use for source detection.
-        seeing_fwhm (float, optional): Seeing in arcsec for the source detection.
-        radius_check (float, optional): The radius (in pixels) of an aperture that will be placed around potential reference stars to see if there are non-linear pixels.
-        non_linear_limit (float, optional): If a potential reference star has a pixel within an aperture of radius radius_check with a value greater than non_linear_limit, it will not be used.
-            NOTE: Mimir data becomes non-linear around 4000 ADU.
-        dimness_tolerance (float, optional): The minimum fraction of the target's brightness that a reference star may have. 
-        closeness_tolerance (float, optional): The closest a potential reference star can be to another source before it's discarded (in pixels). 
-        distance_from_target (float, optional): The furthest a potential reference star can be from the target before it's discarded (in pixels).
-        exclude_lower_left (bool, optional): Whether or not to automatically discard potential references in the lower left quadrant, which is necessary if Mimir's bars problem exists in the data. 
-        restore (bool, optional): Whether or not to restore ref_star_chooser output that already exists. 
-        source_detect_plot (bool, optional): Whether or not to plot the initial source detection, before suitable reference stars have been selected. 
-        force_output_path (path): if you want to manually set an output directory, specify the top-level here (i.e. the directory containing Logs, Objects, etc.)
-    Outputs:
-		ref stars...
-	TODO:
-'''
-
-def ref_star_chooser(target, source_detect_image, guess_position=(700.,382.), radius_check=6., non_linear_limit=3300., 
+def ref_star_chooser(short_name, source_detect_image, guess_position=(700.,382.), radius_check=6., non_linear_limit=3300., 
                     dimness_tolerance=0.5, brightness_tolerance=10., closeness_tolerance=12., distance_from_target=900., edge_tolerance=50., exclude_lower_left=False, restore=False,
                     source_detect_plot=False, force_output_path=''):
+    """Chooses suitable reference stars for a target in a specified source_detect_image.
+
+    :param short_name: the short name for the target
+    :type short_name: str
+    :param source_detect_image: name of the reduced image in which you want to find reference stars
+    :type source_detect_image: str
+    :param guess_position: guess position for the target in the source_detect_image, defaults to (700.,382.)
+    :type guess_position: tuple, optional
+    :param radius_check: the radius in pixels used to perform photometry to compare target and reference brightnesses, defaults to 6.
+    :type radius_check: float, optional
+    :param non_linear_limit: ADU value above which references are considered to be in the non-linear limit of the detecto, defaults to 3300.
+    :type non_linear_limit: float, optional
+    :param dimness_tolerance: minimum multiple of the target's measured brightness that a reference is allowed to have, defaults to 0.5
+    :type dimness_tolerance: float, optional
+    :param brightness_tolerance: maximum multiple of the target's measured brightness that a reference is allowed to have, defaults to 10.
+    :type brightness_tolerance: float, optional
+    :param closeness_tolerance: the closest distance in pixels that a reference star can be to another detected source and still be considered as a reference, defaults to 12.
+    :type closeness_tolerance: float, optional
+    :param distance_from_target: the furthest distance in pixels that a reference star can be from the target and still be considered, defaults to 900.
+    :type distance_from_target: float, optional
+    :param edge_tolerance: the closest distance in pixels that a reference can be to the edge of the detector and still be considered, defaults to 50.
+    :type edge_tolerance: float, optional
+    :param exclude_lower_left: whether or not to exclude reference stars from the lower left quadrant (due to occasional Mimir 'bars' issue), defaults to False
+    :type exclude_lower_left: bool, optional
+    :param restore: whether or not to restore references from previous output, defaults to False
+    :type restore: bool, optional
+    :param source_detect_plot: whenther or not to plot all detected sources, defaults to False
+    :type source_detect_plot: bool, optional
+    :param force_output_path: top-level 'force output path', used if you want to use a folder other than ~/Documents/PINES_analysis_toolkit/, defaults to ''
+    :type force_output_path: str, optional
+    :raises ValueError: If the measured seeing in your selected source_detect_image is Nan
+    :raises ValueError: If the measured x/y shift in your selected_source_detect_image is > 20 pixels
+    :return: Saves a plot of the target/detected reference stars to the object's 'sources' directory. Saves .csv of target/reference pixel positions in the object's 'sources' directory.
+    :rtype: plot/csv
+    """
+
     plt.ion()
-
-    #Get the target's 'short name'
-    short_name = short_name_creator(target)
-
     #Get your local PINES directory
     if force_output_path != '':
         pines_path = force_output_path
@@ -69,7 +75,7 @@ def ref_star_chooser(target, source_detect_image, guess_position=(700.,382.), ra
 
     #If the directory doesn't exist, or there are no reduced files, return nothing. 
     if (not data_dir.exists()) or (len(reduced_files) == 0):
-        print('ERROR: No reduced images exist for {}.'.format(target))
+        print('ERROR: No reduced images exist for {}.'.format(short_name))
         return
 
     #Set path to source directory. 

@@ -2,10 +2,8 @@ from photutils.centroids import centroid_2dg
 from photutils.centroids import centroid_1dg
 from photutils.centroids import centroid_com
 from pines_analysis_toolkit.utils.pines_dir_check import pines_dir_check
-from pines_analysis_toolkit.utils.short_name_creator import short_name_creator
 from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
 from pines_analysis_toolkit.utils.quick_plot import quick_plot
-from pines_analysis_toolkit.utils.gif_utils import gif_maker
 from pines_analysis_toolkit.utils.jd_utc_to_bjd_tdb import jd_utc_to_bjd_tdb
 from pines_analysis_toolkit.analysis.night_splitter import night_splitter
 from pines_analysis_toolkit.analysis.block_splitter import block_splitter
@@ -52,7 +50,24 @@ warnings.simplefilter("ignore", category=AstropyUserWarning)
         Flag bad centroids?
 '''
 
-def centroider(target, sources, output_plots=False, gif=False, restore=False, box_w=8, force_output_path=''):
+def centroider(short_name, sources, output_plots=False, restore=False, box_w=16, force_output_path=''):
+    """Measures pixel positions of sources in a set of reduced images.
+
+    :param short_name: the target's short name
+    :type short_name: str
+    :param sources: dataframe of source names and pixel positions, output from ref_star_chooser
+    :type sources: pandas DataFrame
+    :param output_plots: whether or not to save cutouts of the measured pixel positions, defaults to False
+    :type output_plots: bool, optional
+    :param restore: whether or not to restore centroid output from a previous run, defaults to False
+    :type restore: bool, optional
+    :param box_w: the size in pixels of the cutouts used for centroiding, defaults to 16
+    :type box_w: int, optional
+    :param force_output_path: the top-level path if you don't want to use the default ~/Documents/PINES_analysis_toolkit/ directory for analysis, defaults to ''
+    :type force_output_path: str, optional
+    :return: Saves csv of centroid positions for every source
+    :rtype: csv
+    """
     matplotlib.use('TkAgg')
     plt.ioff()
     t1 = time.time()
@@ -61,8 +76,6 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
         pines_path = force_output_path
     else:
         pines_path = pines_dir_check()
-
-    short_name = short_name_creator(target)
 
     kernel = Gaussian2DKernel(x_stddev=1) #For fixing nans in cutouts.
 
@@ -226,7 +239,7 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
             #TODO: Make all this its own function. 
             
             #Cutout around the expected position and interpolate over any NaNs (which screw up source detection).
-            cutout = interpolate_replace_nans(image[int(y_pos-box_w):int(y_pos+box_w)+1, int(x_pos-box_w):int(x_pos+box_w)+1], kernel=Gaussian2DKernel(x_stddev=0.5))
+            cutout = interpolate_replace_nans(image[int(y_pos-box_w/2):int(y_pos+box_w/2)+1, int(x_pos-box_w/2):int(x_pos+box_w/2)+1], kernel=Gaussian2DKernel(x_stddev=0.5))
 
             #interpolate_replace_nans struggles with edge pixels, so shave off edge_shave pixels in each direction of the cutout. 
             edge_shave = 1      
@@ -369,11 +382,6 @@ def centroider(target, sources, output_plots=False, gif=False, restore=False, bo
                 plt.gca().yaxis.set_major_locator(plt.NullLocator())
                 plt.savefig(plot_output_path, bbox_inches='tight', pad_inches=0, dpi=150)
                 plt.close()
-
-        
-        if gif: 
-            gif_path = (pines_path/('Objects/'+short_name+'/sources/'+sources['Name'][i]+'/'))
-            gif_maker(path=gif_path, fps=10)
 
     output_filename = pines_path/('Objects/'+short_name+'/sources/target_and_references_centroids.csv')
     #centroid_df.to_csv(pines_path/('Objects/'+short_name+'/sources/target_and_references_centroids.csv'))

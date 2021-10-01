@@ -7,7 +7,17 @@ from natsort import natsorted
 import pines_analysis_toolkit as pat 
 import numpy as np 
 
-def profile_reader(profile_path):
+def profile_reader(short_name):
+    """Reads in data from a target's .profile file.
+
+    :param short_name: the short name of the target
+    :type short_name: str
+    :return: dictionary of the profile data
+    :rtype: dict
+    """
+
+    pines_path = pat.utils.pines_dir_check()
+    profile_path = pines_path/('Objects/'+short_name+'/'+short_name.replace(' ','').lower()+'.profile')
 
     if not os.path.exists(profile_path):
         print('{} does not exist, creating profile file with default params!'.format(profile_path.name))
