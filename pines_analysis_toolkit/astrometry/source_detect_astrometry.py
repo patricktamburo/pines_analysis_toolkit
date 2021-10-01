@@ -8,19 +8,15 @@ import os
 import time
 from pathlib import Path
 
-def source_detect_astrometry(target, api_key, filename, download_data=False):
-    '''
-        Authors:
-            Pat Tamburo, Boston University, May 2021
-        Purpose: 
-            Uploads a single reduced image for a target to astrometry.net, downloads solution image, and updates the image header with the astrometry.net wcs. 
-        Inputs:
-            target (str): The target's long 2MASS name (e.g., '2MASS J09161504+2139512')
-            api_key (str): The api key of your account on astrometry.net. 
-            filename (pathlib.Path): Path to the source_detect_image.
-            download_data (bool, optional): Whether or not to first download reduced data for the target from the PINES server. 
-    '''
+def source_detect_astrometry(api_key, filename):
+    """ Uploads a single reduced image for a target to astrometry.net, downloads solution image, and updates the image header with the astrometry.net wcs. 
 
+    :param api_key: the api key of your account on astrometry.net
+    :type api_key: str
+    :param filename: path to the source_detect_image
+    :type filename: pathlib.PosixPath
+    :raises RuntimeError: if astrometry solution fails
+    """
     kernel = Gaussian2DKernel(x_stddev=0.25)
 
     #If the header does not have a HISTORY keyword (which is added by astrometry.net), process it. 

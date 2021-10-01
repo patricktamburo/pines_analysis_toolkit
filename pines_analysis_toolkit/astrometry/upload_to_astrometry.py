@@ -1,24 +1,18 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Thu Feb 18 21:57:40 2021
-
-@authors: davidgracia, Patrick Tamburo 
-"""
-
 import requests
-import json
 from pines_analysis_toolkit.astrometry.astrometry_client import Client
 import time
-import pdb 
 
 astrometry = Client()
     
 def upload_file(apikey, filename, header):
-    
-    """ uploads multiple file to astrometry.net
-    
-        number = number of files to upload
+    """Uploads files to astrometry.net. 
+
+    :param apikey: api key of your account on astrometry.net
+    :type apikey: str
+    :param filename: path to the file to upload
+    :type filename: pathlib.PosixPath
+    :param header: header of the file you want to upload
+    :type header: astropy.io fits header 
     """
     
     astrometry.login(apikey)

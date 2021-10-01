@@ -9,19 +9,15 @@ import time
 from pathlib import Path
 
 def pines_astrometry(target, api_key, download_data=False):
-    '''
-        Authors:
-            Pat Tamburo, Boston University, May 2021
-        Purpose: 
-            Uploads reduced images for a target to astrometry.net, downloads solution image, and updates the image header with the astrometry.net wcs. 
-        Inputs:
-            target (str): The target's long 2MASS name (e.g., '2MASS J09161504+2139512')
-            api_key (str): The api key of your account on astrometry.net. 
-            donwload_data (bool, optional): Whether or not to first download reduced data for the target from the PINES server. 
-        Outputs:
-            Updates the headers of reduced images with wcs information. 
-    '''
+    """Uploads reduced images for a target to astrometry.net, downloads solution image, and updates the image header with the astrometry.net wcs.
 
+    :param target: long name of the target
+    :type target: str
+    :param api_key: he api key of your account on astrometry.net
+    :type api_key: str
+    :param download_data: whether or not to first download reduced data for the target from the PINES server, defaults to False
+    :type download_data: bool, optional
+    """
     pines_path = pat.utils.pines_dir_check()
     short_name = pat.utils.short_name_creator(target)
 

@@ -1,1 +1,2 @@
 julian
+astrometry-net-client
