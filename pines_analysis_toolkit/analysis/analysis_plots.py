@@ -1,11 +1,8 @@
 import matplotlib.pyplot as plt 
 import numpy as np 
-import pdb
 import julian 
-import matplotlib.dates as mdates
 from astropy.stats import sigma_clipped_stats
 import os
-import pines_analysis_toolkit 
 from pines_analysis_toolkit.utils.pines_dir_check import pines_dir_check
 from pines_analysis_toolkit.utils.short_name_creator import short_name_creator
 from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
@@ -45,12 +42,14 @@ def standard_y_range(y, multiple=3.5):
 
 def raw_flux_plot(phot_path, mode='night'): 
     """Creates a plot of raw flux versus time for the target and reference stars. 
+    Plot will save to same diretory as phot_path.
 
     :param phot_path: Path to the photometry csv file. 
     :type phot_path: pathlib.PosixPath
     :param mode: whether to run in 'night' or 'global' mode, defaults to 'night'
     :type mode: str, optional
     """
+
     analysis_path = phot_path.parent.parent/('analysis')
     if 'aper' in phot_path.name:
         phot_type = 'aper'
@@ -108,7 +107,7 @@ def raw_flux_plot(phot_path, mode='night'):
         for j in range(num_refs):
             color = cm(1.*j/num_refs) 
             marker = markers[j % len(markers)]
-            ax.errorbar(times[inds], raw_ref_flux[:,j], raw_ref_err[:,j], marker=marker, linestyle='-', label='Ref. '+str(j+1), color=color)
+            ax.errorbar(times[inds], raw_ref_flux[:,j], raw_ref_err[:,j], marker=marker, linestyle='', label='Ref. '+str(j+1), color=color)
         
         #Set labels. 
         if i == 0:
@@ -122,81 +121,77 @@ def raw_flux_plot(phot_path, mode='night'):
         if i == num_nights - 1:
             ax.legend(bbox_to_anchor=(1.03, 1.1), fontsize=10)
         
-        ax.set_xlim(np.mean(times[i])-standard_time_range/2, np.mean(times[i])+standard_time_range/2)
+        ax.set_xlim(np.mean(times[inds])-standard_time_range/2, np.mean(times[inds])+standard_time_range/2)
         ax.grid(alpha=0.2)
 
     plt.suptitle(sources[0]+' Nightly Raw Flux', fontsize=20)
     plt.subplots_adjust(left=0.07, wspace=0.05, top=0.92, bottom=0.17)
 
-    print('Saving raw flux figure...')
     if phot_type == 'aper':
-        if 'variable' in ap_rad:
-            fact = ap_rad.split('_')[0]
-            filename = sources[0].replace(' ','')+'_variable_'+phot_type+'_phot_f='+fact+'_'+mode+'_raw_flux.png'
-        elif 'fixed' in ap_rad:
-            rad = ap_rad.split('_')[0]
-            filename = sources[0].replace(' ','')+'_fixed_'+phot_type+'_phot_r='+rad+'_'+mode+'_raw_flux.png'
+        filename = mode+'_raw_flux.png'
         if not os.path.exists(analysis_path/('aper_phot_analysis/'+ap_rad)):
             os.mkdir(analysis_path/('aper_phot_analysis/'+ap_rad))
         output_path = analysis_path/('aper_phot_analysis/'+ap_rad+'/'+filename)
+        print('Saving {} raw flux plot to {}.'.format(mode, output_path))
         plt.savefig(output_path, dpi=300)
     else:
         raise RuntimeError("HAVE TO UPDATE!!!")
-        filename = short_name.replace(' ','')+'_'+phot_type+'_phot_nightly_raw_flux.png'
 
-def normalized_flux_plot(times, norm_targ_flux, norm_targ_err, norm_ref_flux, norm_ref_err, alc_flux, alc_err, short_name, analysis_path, phot_type, ap_rad):
-    '''Authors:
-            Patrick Tamburo, Boston University, December 2020
-        Purpose:
-            Creates a standard plot of nightly normalized flux for target and reference stars. 
-        Inputs:
-            times (list of numpy arrays): Times of exposures (as Julian dates) for each night of observation.
-            norm_targ_flux (list of numpy arrays): Normalized flux for the target on each night of observation.
-            norm_targ_err (list of numpy arrays): Normalized flux errors for the target on each night of observation. 
-            norm_ref_flux (list of numpy arrays): Normalized flux for the reference stars on each night of observation. (n nights x n_exp per night x n_refss)
-            norm_ref_err (list of numpy arrays): Normalized flux errors for the reference stars on each night of observation.
-            alc_flux (list of numpy arrays): The artficial comparison lightcurve on each night of observation.
-            short_name (str): The object's short name.
-            analysis_path (pathlib Path object): The path to this object's analysis directory.
-        Outputs:
+def alc_plot(weighted_lc_path, mode='night'):
+    """Creates a standard plot of normalized target and ALC flux. 
+    Plot will save to same directory as weighted_lc_path.
 
-        TODO:
-
-        '''
+    :param weighted_lc_path: path to a weighted lc csv (output from weighted_lightcurve)
+    :type weighted_lc_path: pathlib.PosixPath
+    :param mode: whether to run in 'night' or 'global' mode, defaults to 'night'
+    :type mode: str, optional
+    :param force_output_path: [description], defaults to ''
+    :type force_output_path: str, optional
+    """
     
-    num_nights = len(times)
+    output_path = weighted_lc_path.parent/(mode+'_alc.png')
+    
+    weighted_lc_df = pines_log_reader(weighted_lc_path)
+    sources = get_source_names(weighted_lc_df)
 
-    #cm = plt.get_cmap('viridis_r')
-    #markers = ['+', 'x', '*', 'X']
+    times = np.array(weighted_lc_df['Time BJD TDB'])
 
-    standard_time_range = standard_x_range(times)
-    standard_y = standard_y_range(norm_targ_flux, multiple=3.0)
+    if mode == 'night':
+        night_inds = night_splitter(times)
+    #Or treat all observations as a single "night".
+    elif mode == 'global':
+        night_inds = [list(np.arange(len(times)))]
+    num_nights = len(night_inds)
+
+    norm_targ_flux = np.array(weighted_lc_df[sources[0]+' Normalized Flux'], dtype='float')
+    norm_targ_err = np.array(weighted_lc_df[sources[0]+' Normalized Flux Error'], dtype='float')
+    alc_flux = np.array(weighted_lc_df['ALC Flux'], dtype='float')
+    alc_err = np.array(weighted_lc_df['ALC Flux Error'], dtype='float')
+    broken_times = []
+    broken_flux = []
+    for i in range(num_nights):
+        broken_times.append(np.array(times[night_inds[i]]))
+        broken_flux.append(np.array(norm_targ_flux[night_inds[i]]))
+    standard_time_range = standard_x_range(broken_times)
+    standard_y = standard_y_range(broken_flux, multiple=3.0)
 
     fig, axis = plt.subplots(nrows=1, ncols=num_nights, figsize=(17,5), sharey=True)
     plt.subplots_adjust(left=0.07, wspace=0.05, top=0.92, bottom=0.17)
 
     for i in range(num_nights):
+        inds = night_inds[i]
         #Set the axis behavior depending if there are 1 or more nights. 
         if num_nights == 1:
             ax = axis
         elif num_nights > 1:
             ax = axis[i]
-
-        #Plot the reference stars. 
-        #for j in range(num_refs):
-            #color = cm(1.*j/num_refs) 
-            #marker = markers[j % len(markers)]
-            # if j == 0:
-            #     ax.errorbar(times[i], norm_ref_flux[i][:,j], norm_ref_err[i][:,j], marker='.', linestyle='', label='Ref. flux', color='tab:blue', zorder=0, alpha=0.2)
-            # else:
-            #     ax.errorbar(times[i], norm_ref_flux[i][:,j], norm_ref_err[i][:,j], marker='.', linestyle='', color='tab:blue', zorder=0, alpha=0.2)
         
         if i == 0:
             ax.set_ylabel('Normalized Flux', fontsize=20)
         ax.tick_params(labelsize=16)
         ax.set_xlabel('Time (BJD$_{TDB}$)', fontsize=20)
 
-        if np.nanstd(norm_targ_flux[i]) > np.nanstd(alc_flux[i]):
+        if np.nanstd(norm_targ_flux[inds]) > np.nanstd(alc_flux[inds]):
             targ_zorder = 1
             alc_zorder = 2
         else:
@@ -204,100 +199,23 @@ def normalized_flux_plot(times, norm_targ_flux, norm_targ_err, norm_ref_flux, no
             alc_zorder= 1
         
         #Plot the target. 
-        ax.errorbar(times[i], norm_targ_flux[i], norm_targ_err[i], color='tab:orange', mfc='none', marker='.', ms=7, lw=1.5, linestyle='-', label='Target', mew=2, zorder=targ_zorder)
+        ax.errorbar(times[inds], norm_targ_flux[inds], norm_targ_err[inds], color='tab:orange', mfc='none', marker='.', ms=7, lw=1.5, linestyle='', label='Target', mew=2, zorder=targ_zorder)
         
         #Plot the ALC. 
-        ax.errorbar(times[i], alc_flux[i], alc_err[i], color='tab:blue', lw=2, marker='.', linestyle='-', label='ALC', zorder=alc_zorder, mfc='none', mew=2, ms=5)
+        ax.errorbar(times[inds], alc_flux[inds], alc_err[inds], color='tab:blue', lw=2, marker='.', linestyle='', label='ALC', zorder=alc_zorder, mfc='none', mew=2, ms=5)
         
         if i == num_nights - 1:
-            #ax.legend(bbox_to_anchor=(1.03, 1), fontsize=14)
-            ax.legend(bbox_to_anchor=(1.36, 1), fontsize=12)
+            ax.legend(fontsize=12)
 
-        ax.set_xlim(np.mean(times[i])-standard_time_range/2, np.mean(times[i])+standard_time_range/2)
+        ax.set_xlim(np.mean(times[inds])-standard_time_range/2, np.mean(times[inds])+standard_time_range/2)
         ax.set_ylim(1-standard_y, 1+standard_y)
         ax.grid(alpha=0.2)
-    
-    plt.suptitle(short_name+' Nightly Normalized Flux', fontsize=20)
+    plt.suptitle(sources[0]+' Nightly Normalized Flux', fontsize=20)
 
     #Save the figure. 
-    print('Saving normalized flux figure...')
-    if phot_type == 'aper':
-        if 'variable' in ap_rad:
-            fact = ap_rad.split('_')[0]
-            filename = short_name.replace(' ','')+'_variable_'+phot_type+'_phot_f='+fact+'_nightly_normalized_flux.png'
-        elif 'fixed' in ap_rad:
-            rad = ap_rad.split('_')[0]
-            filename = short_name.replace(' ','')+'_fixed_'+phot_type+'_phot_r='+rad+'_nightly_normalized_flux.png'
-        if not os.path.exists(analysis_path/('aper_phot_analysis/'+ap_rad)):
-            os.mkdir(analysis_path/('aper_phot_analysis/'+ap_rad))
-        output_path = analysis_path/('aper_phot_analysis/'+ap_rad+'/'+filename)
-        plt.savefig(output_path, dpi=300)
-    else:
-        raise RuntimeError("HAVE TO UPDATE!!!")
-        filename = short_name.replace(' ','')+'_'+phot_type+'_phot_nightly_raw_flux.png'
-        
-def global_normalized_flux_plot(times, norm_targ_flux, norm_targ_err, norm_ref_flux, norm_ref_err, alc_flux, alc_err, short_name, analysis_path, phot_type, ap_rad):
-    '''Authors:
-            Patrick Tamburo, Boston University, December 2020
-        Purpose:
-            Creates a standard plot of global normalized flux for target and reference stars. 
-        Inputs:
-            times (list of numpy arrays): Times of exposures (as Julian dates) for each night of observation.
-            norm_targ_flux (list of numpy arrays): Normalized flux for the target on each night of observation.
-            norm_targ_err (list of numpy arrays): Normalized flux errors for the target on each night of observation. 
-            norm_ref_flux (list of numpy arrays): Normalized flux for the reference stars on each night of observation. (n nights x n_exp per night x n_refss)
-            norm_ref_err (list of numpy arrays): Normalized flux errors for the reference stars on each night of observation.
-            alc_flux (list of numpy arrays): The artficial comparison lightcurve on each night of observation.
-            short_name (str): The object's short name.
-            analysis_path (pathlib Path object): The path to this object's analysis directory.
-        Outputs:
-
-        TODO:
-
-        '''
-    times = times[0]
-    num_refs = np.shape(norm_ref_flux[0])[1]
-
-    #cm = plt.get_cmap('viridis_r')
-    #markers = ['+', 'x', '*', 'X']
-
-    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(17,5))
-    
-    #for j in range(num_refs):
-    #    color = cm(1.*j/num_refs) 
-    #    marker = markers[j % len(markers)]
-    #    ax.errorbar(times, norm_ref_flux[0][:,j], norm_ref_err[0][:,j], marker=marker, linestyle='', label='Ref. '+str(j+1), color=color)
-    
-    ax.set_ylabel('Normalized Flux', fontsize=20)
-    ax.tick_params(labelsize=16)
-    ax.set_xlabel('Time (BjD$_{TDB}$)', fontsize=20)
-
-    #Plot the target.
-    ax.errorbar(times, norm_targ_flux[0], norm_targ_err[0], color='tab:orange', mfc='none', marker='.', ms=7, lw=1.5, linestyle='', label='Target', mew=2, zorder=1)
-    
-    #Plot the ALC. 
-    ax.errorbar(times, alc_flux[0], alc_err[0], color='tab:blue', lw=2, marker='.', linestyle='', label='ALC', zorder=2, mfc='none', mew=2, ms=5)
-
-    ax.legend(bbox_to_anchor=(1.11, 1), fontsize=12)
-    ax.grid(alpha=0.2)
-
-    plt.suptitle(short_name+' Global Normalized Flux', fontsize=20)
-    plt.subplots_adjust(left=0.07, wspace=0.055, top=0.92, bottom=0.17)
-
-    print('Saving raw flux figure...')
-    if phot_type == 'aper':
-        if 'variable' in ap_rad:
-            fact = ap_rad.split('_')[0]
-            filename = short_name.replace(' ','')+'_variable_'+phot_type+'_phot_f='+fact+'_global_normalized_flux.png'
-        elif 'fixed' in ap_rad:
-            rad = ap_rad.split('_')[0]
-            filename = short_name.replace(' ','')+'_fixed_'+phot_type+'_phot_r='+rad+'_global_normalized_flux.png'
-        if not os.path.exists(analysis_path/('aper_phot_analysis/'+ap_rad)):
-            os.mkdir(analysis_path/('aper_phot_analysis/'+ap_rad))
-        output_path = analysis_path/('aper_phot_analysis/'+ap_rad+'/'+filename)
-        plt.savefig(output_path, dpi=300)
-    else:
-        raise RuntimeError("HAVE TO UPDATE!!!")
+    output_path = weighted_lc_path.parent/(mode+'_normalized_flux.png')
+    print('Saving {} normalized flux plot to {}.'.format(mode, output_path))
+    plt.savefig(output_path, dpi=300)
 
 def corr_target_plot(times, targ_flux_corr, binned_times, binned_flux, binned_errs, short_name, analysis_path, phot_type, ap_rad, force_y_lim=0):
     '''Authors:

@@ -5,7 +5,7 @@ from pines_analysis_toolkit.utils import pines_dir_check, short_name_creator
 from pines_analysis_toolkit.analysis.night_splitter import night_splitter
 from pines_analysis_toolkit.analysis.block_splitter import block_splitter
 from pines_analysis_toolkit.analysis.block_binner import block_binner
-from pines_analysis_toolkit.analysis.analysis_plots import raw_flux_plot, normalized_flux_plot, global_normalized_flux_plot, corr_target_plot, global_corr_target_plot, corr_all_sources_plot
+from pines_analysis_toolkit.analysis.analysis_plots import raw_flux_plot,corr_target_plot, global_corr_target_plot, corr_all_sources_plot
 from pines_analysis_toolkit.analysis.regression import *
 from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
 from glob import glob
@@ -24,7 +24,7 @@ import os
 import fileinput
 import time   
 
-def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mode='night', plots=False, n_sig_refs=5, sigma_clip_threshold=4, max_iterations=1000, use_pwv=False, red_stars_only=False, blue_stars_only=False, high_correlation_refs=False, force_output_path=''):
+def weighted_lightcurve(short_name, phot_type='aper', convergence_threshold=1e-9, mode='night', plots=False, n_sig_refs=5, sigma_clip_threshold=4, max_iterations=1000, use_pwv=False, red_stars_only=False, blue_stars_only=False, high_correlation_refs=False, force_output_path=''):
 
     '''Authors:
 		Phil Muirhead & Patrick Tamburo, Boston University, November 2020
@@ -124,7 +124,6 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
     else:
         pines_path = pines_dir_check()
 
-    short_name = short_name_creator(target)
     phot_path = pines_path/('Objects/'+short_name+'/'+phot_type+'_phot/')
     phot_files = natsorted(glob(str(phot_path/'*.csv')))
     analysis_path = pines_path/('Objects/'+short_name+'/analysis/')
@@ -490,16 +489,15 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
             best_ap = ap_rad
 
         #Plot the raw fluxes, normalized fluxes, corrected target flux, and corrected reference star fluxes. 
-        if plots:
-            if mode == 'night':
-                raw_flux_plot(all_nights_times, all_nights_raw_targ_flux, all_nights_raw_targ_err, all_nights_raw_ref_flux, all_nights_raw_ref_err, short_name, analysis_path, phot_type, ap_rad, num_refs)   
-                normalized_flux_plot(all_nights_times, all_nights_norm_targ_flux, all_nights_norm_targ_err, all_nights_norm_ref_flux, all_nights_norm_ref_err, all_nights_alc_flux, all_nights_alc_err, short_name, analysis_path, phot_type, ap_rad)
-                corr_target_plot(all_nights_times, all_nights_corr_targ_flux, all_nights_binned_times, all_nights_binned_corr_targ_flux, all_nights_binned_corr_targ_err, short_name, analysis_path, phot_type, ap_rad, force_y_lim=0.075)
-                #corr_all_sources_plot(all_nights_times, all_nights_corr_targ_flux, all_nights_binned_times, all_nights_binned_corr_targ_flux, all_nights_binned_corr_targ_err, all_nights_corr_ref_flux, all_nights_binned_corr_ref_flux, all_nights_binned_corr_ref_err, short_name, analysis_path, phot_type, ap_rad, num_refs, num_nights, norm_night_weights)
-            elif mode == 'global':
-                global_raw_flux_plot(all_nights_times, all_nights_raw_targ_flux, all_nights_raw_targ_err, all_nights_raw_ref_flux, all_nights_raw_ref_err, short_name, analysis_path, phot_type, ap_rad)
-                global_normalized_flux_plot(all_nights_times, all_nights_norm_targ_flux, all_nights_norm_targ_err, all_nights_norm_ref_flux, all_nights_norm_ref_err, all_nights_alc_flux, all_nights_alc_err, short_name, analysis_path, phot_type, ap_rad)
-                global_corr_target_plot(all_nights_times, all_nights_corr_targ_flux, all_nights_binned_times, all_nights_binned_corr_targ_flux, all_nights_binned_corr_targ_err, short_name, analysis_path, phot_type, ap_rad)
+        # if plots:
+        #     if mode == 'night':
+        #         raw_flux_plot(all_nights_times, all_nights_raw_targ_flux, all_nights_raw_targ_err, all_nights_raw_ref_flux, all_nights_raw_ref_err, short_name, analysis_path, phot_type, ap_rad, num_refs)   
+        #         normalized_flux_plot(all_nights_times, all_nights_norm_targ_flux, all_nights_norm_targ_err, all_nights_norm_ref_flux, all_nights_norm_ref_err, all_nights_alc_flux, all_nights_alc_err, short_name, analysis_path, phot_type, ap_rad)
+        #         corr_target_plot(all_nights_times, all_nights_corr_targ_flux, all_nights_binned_times, all_nights_binned_corr_targ_flux, all_nights_binned_corr_targ_err, short_name, analysis_path, phot_type, ap_rad, force_y_lim=0.075)
+
+            #elif mode == 'global':
+                # global_normalized_flux_plot(all_nights_times, all_nights_norm_targ_flux, all_nights_norm_targ_err, all_nights_norm_ref_flux, all_nights_norm_ref_err, all_nights_alc_flux, all_nights_alc_err, short_name, analysis_path, phot_type, ap_rad)
+                # global_corr_target_plot(all_nights_times, all_nights_corr_targ_flux, all_nights_binned_times, all_nights_binned_corr_targ_flux, all_nights_binned_corr_targ_err, short_name, analysis_path, phot_type, ap_rad)
 
 
         #Write out the best aperture 
@@ -514,26 +512,38 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
 
         targ_flux_corr_save = []
         targ_flux_corr_err_save = []
+        targ_flux_norm_save = []
+        targ_err_norm_save = []
+        alc_flux_save = []
+        alc_err_save = []
         ref_flux_corr_save = [[] for x in range(num_refs)]
         ref_flux_corr_err_save = [[] for x in range(num_refs)]
         night_weight_arrays = [[] for x in range(num_refs)]
         for j in range(num_nights):
             targ_flux_corr_save.extend(all_nights_corr_targ_flux[j])
             targ_flux_corr_err_save.extend(all_nights_corr_targ_err[j])
+            targ_flux_norm_save.extend(all_nights_norm_targ_flux[j])
+            targ_err_norm_save.extend(all_nights_norm_targ_err[j])
+            alc_flux_save.extend(all_nights_alc_flux[j])
+            alc_err_save.extend(all_nights_alc_err[j])
             for k in range(num_refs):
                 ref_flux_corr_save[k].extend(all_nights_corr_ref_flux[j][:,k])
                 ref_flux_corr_err_save[k].extend(all_nights_corr_ref_err[j][:,k])
                 night_weight_arrays[k].extend(np.zeros(len(night_inds[j]))+norm_night_weights[j][k])
         
-        output_dict = {'Filename':file_list_save, 'Time BJD TDB':time_save, 'Sigma Clip Flag':sigma_clip_flag_save, short_name+' Corrected Flux':targ_flux_corr_save, short_name+' Corrected Flux Error':targ_flux_corr_err_save}
+        #Create the output dictionary
+        output_dict = {'Filename':file_list_save, 'Time BJD TDB':time_save, 'Sigma Clip Flag':sigma_clip_flag_save, short_name+' Normalized Flux':targ_flux_norm_save, short_name+' Normalized Flux Error':targ_err_norm_save, short_name+' Corrected Flux':targ_flux_corr_save, short_name+' Corrected Flux Error':targ_flux_corr_err_save, 'ALC Flux':alc_flux_save, 'ALC Flux Error':alc_err_save}
         for j in range(num_refs):
             ref = ref_names[j]
             output_dict[ref+' Corrected Flux'] = ref_flux_corr_save[j]
             output_dict[ref+' Corrected Flux Error'] = ref_flux_corr_err_save[j]
+        
+        #Convert to a dataframe
         output_df = pd.DataFrame(data=output_dict)
         output_filename = output_filename_generator(analysis_path, ap_rad, mode)
         print('Saving weighted_lightcurve output to {}.'.format(output_filename))
 
+        #Write out to a csv file.
         with open(output_filename, 'w') as f:
             for j in range(len(output_df)):
                 #Write the header line. 
@@ -541,7 +551,7 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
                     f.write('{:<21s}, '.format('Filename'))
                     f.write('{:<15s}, '.format('Time BJD TDB'))
                     f.write('{:<15s}, '.format('Sigma Clip Flag'))
-                    f.write('{:<30s}, {:<30s}, '.format(short_name+' Corrected Flux', short_name+' Corrected Flux Error'))
+                    f.write('{:<31s}, {:<31s}, {:<30s}, {:<30s}, {:<9s}, {:<15s}, '.format(short_name+' Normalized Flux',short_name+' Normalized Flux Error',short_name+' Corrected Flux', short_name+' Corrected Flux Error', 'ALC Flux','ALC Flux Error'))
 
                     for i in range(len(ref_names)):
                         n = ref_names[i]
@@ -554,7 +564,7 @@ def weighted_lightcurve(target, phot_type='aper', convergence_threshold=1e-9, mo
                 f.write('{:<21s}, '.format(output_df['Filename'][j]))
                 f.write('{:<15.7f}, '.format(output_df['Time BJD TDB'][j]))
                 f.write('{:<15d}, '.format(output_df['Sigma Clip Flag'][j]))
-                f.write('{:<30.6f}, {:<36.6f}, '.format(output_df[short_name+' Corrected Flux'][j], output_df[short_name+' Corrected Flux Error'][j]))
+                f.write('{:<31.6f}, {:<31.6f}, {:<30.6f}, {:<36.6f}, {:<9.6f}, {:<15.6f}, '.format(output_df[short_name+' Normalized Flux'][j],output_df[short_name+' Normalized Flux Error'][j],output_df[short_name+' Corrected Flux'][j], output_df[short_name+' Corrected Flux Error'][j], output_df['ALC Flux'][j], output_df['ALC Flux Error'][j]))
                 
                 for i in range(num_refs):
                     n = ref_names[i]                  
