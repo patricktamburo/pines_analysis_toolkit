@@ -3,6 +3,7 @@ import numpy as np
 import julian 
 from astropy.stats import sigma_clipped_stats
 import os
+from pines_analysis_toolkit.analysis.block_binner import block_binner
 from pines_analysis_toolkit.utils.pines_dir_check import pines_dir_check
 from pines_analysis_toolkit.utils.short_name_creator import short_name_creator
 from pines_analysis_toolkit.utils.pines_log_reader import pines_log_reader
@@ -148,9 +149,7 @@ def alc_plot(weighted_lc_path, mode='night'):
     :param force_output_path: [description], defaults to ''
     :type force_output_path: str, optional
     """
-    
-    output_path = weighted_lc_path.parent/(mode+'_alc.png')
-    
+        
     weighted_lc_df = pines_log_reader(weighted_lc_path)
     sources = get_source_names(weighted_lc_df)
 
@@ -217,33 +216,34 @@ def alc_plot(weighted_lc_path, mode='night'):
     print('Saving {} normalized flux plot to {}.'.format(mode, output_path))
     plt.savefig(output_path, dpi=300)
 
-def corr_target_plot(times, targ_flux_corr, binned_times, binned_flux, binned_errs, short_name, analysis_path, phot_type, ap_rad, force_y_lim=0):
-    '''Authors:
-        Patrick Tamburo, Boston University, November, December 2020
-	Purpose:
-        Creates a standard plot of nightly corrected target flux. 
-	Inputs:
-        target (numpy array): times of exposures (as Julian dates).
-        targ_flux_corr (numpy array): corrected target flux measurements.
-        binned_times (numpy array): times of block midpoints.
-        binned_flux (numpy array): average fluxes of blocks.
-        binned_errs (numpy array): uncertainties on binned fluxes.
-        analysis_path (pathlib Path): path to the object's analysis directory.
-        time_mode (str, optional): either 'UT' or 'JD'. UT for calendar-like times, JD for Julian dates. 
-    Outputs:
+def corr_target_plot(weighted_lc_path, mode='night'):
+    """Creates a plot of the target light curve using output from weighted_lightcurve.
 
-	TODO:
+    :param weighted_lc_path: path to weighted light curve csv
+    :type weighted_lc_path: pathlib.PosixPath
+    :param mode: whether to run in 'night' or 'global' normalization mode, defaults to 'night'
+    :type mode: str, optional
+    """
+    weighted_lc_df = pines_log_reader(weighted_lc_path)
+    sources = get_source_names(weighted_lc_df)
 
-    '''
-    short_name = str(analysis_path).split('/')[-2]
+    times = np.array(weighted_lc_df['Time BJD TDB'])
 
-    num_nights = len(times)
+    if mode == 'night':
+        night_inds = night_splitter(times)
+    #Or treat all observations as a single "night".
+    elif mode == 'global':
+        night_inds = [list(np.arange(len(times)))]
+    num_nights = len(night_inds)
 
-    standard_time_range = standard_x_range(times)
-    if force_y_lim == 0:
-        standard_y = standard_y_range(targ_flux_corr)
-    else:
-        standard_y = force_y_lim
+    corr_targ_flux = np.array(weighted_lc_df[sources[0]+' Corrected Flux'], dtype='float')
+    broken_times = []
+    broken_flux = []
+    for i in range(num_nights):
+        broken_times.append(np.array(times[night_inds[i]]))
+        broken_flux.append(np.array(corr_targ_flux[night_inds[i]]))
+    standard_time_range = standard_x_range(broken_times)
+    standard_y = standard_y_range(broken_flux, multiple=3.0)
     
     #Plot the corrected target flux. 
     fig, axis = plt.subplots(nrows=1,ncols=num_nights,figsize=(17,5), sharey=True)
@@ -251,20 +251,25 @@ def corr_target_plot(times, targ_flux_corr, binned_times, binned_flux, binned_er
     plt.subplots_adjust(left=0.07, wspace=0.05, top=0.92, bottom=0.17)
 
     for i in range(num_nights):
+        inds = night_inds[i]
+        ut_date = julian.from_jd(times[inds][0])
+        ut_date_str = 'UT '+ut_date.strftime('%b. %d %Y')
+
         #Set the axis behavior depending if there are 1 or more nights. 
         if num_nights == 1:
             ax = axis
         elif num_nights > 1:
             ax = axis[i]
 
+        binned_times, binned_flux, binned_errs = block_binner(times[inds], corr_targ_flux[inds])        
         ax.axhline(1, color='r', lw=2, zorder=0)
         ax.grid(alpha=0.2)
         #Plot the corrected target and corrected binned target flux. 
-        ax.plot(times[i], targ_flux_corr[i], linestyle='', marker='o', zorder=1, color='darkgrey', ms=5)
-        ax.errorbar(binned_times[i], binned_flux[i], binned_errs[i], linestyle='', marker='o', zorder=2, color='k', capsize=2, ms=7)
+        ax.plot(times[inds], corr_targ_flux[inds], linestyle='', marker='o', zorder=1, color='darkgrey', ms=5)
+        ax.errorbar(binned_times, binned_flux, binned_errs, linestyle='', marker='o', zorder=2, color='k', capsize=2, ms=7)
         
         #Plot the 5-sigma decrement line. 
-        five_sig = 5*np.nanmean(binned_errs[i])
+        five_sig = 5*np.nanmean(binned_errs)
         ax.axhline(1-five_sig, color='k', lw=2, linestyle='--', zorder=0)
         ax.tick_params(labelsize=16)
         
@@ -272,29 +277,19 @@ def corr_target_plot(times, targ_flux_corr, binned_times, binned_flux, binned_er
         if i == 0:
             ax.set_ylabel('Normalized Flux', fontsize=20)
         ax.set_xlabel('Time (BJD$_{TDB}$)', fontsize=20)
-        ut_date = julian.from_jd(times[i][0])
-        ut_date_str = 'UT '+ut_date.strftime('%b. %d %Y')
-        ax.set_title(ut_date_str, fontsize=20)
-        ax.set_xlim(np.mean(times[i])-standard_time_range/2, np.mean(times[i])+standard_time_range/2)
+        
+        ax.set_xlim(np.mean(times[inds])-standard_time_range/2, np.mean(times[inds])+standard_time_range/2)
+        
         ax.set_ylim(1-standard_y, 1+standard_y)
-    #plt.suptitle(short_name+' Nightly Corrected Target Lightcurve', fontsize=20)
-    #plt.subplots_adjust(left=0.07, wspace=0.05, top=0.92, bottom=0.17)
+        if mode == 'night':
+            ax.text(np.mean(times[inds]), ax.get_ylim()[1],ut_date_str, fontsize=18,ha='center',va='top')
+
+    plt.suptitle(sources[0], fontsize=20)
 
     #Save the figure. 
-    print('Saving target lightcurve...')
-    if phot_type == 'aper':
-        if 'variable' in ap_rad:
-            fact = ap_rad.split('_')[0]
-            filename = short_name.replace(' ','')+'_variable_'+phot_type+'_phot_f='+fact+'_nightly_target_flux.png'
-        elif 'fixed' in ap_rad:
-            rad = ap_rad.split('_')[0]
-            filename = short_name.replace(' ','')+'_fixed_'+phot_type+'_phot_r='+rad+'_nightly_target_flux.png'
-        if not os.path.exists(analysis_path/('aper_phot_analysis/'+ap_rad)):
-            os.mkdir(analysis_path/('aper_phot_analysis/'+ap_rad))
-        output_path = analysis_path/('aper_phot_analysis/'+ap_rad+'/'+filename)
-        plt.savefig(output_path, dpi=300)
-    else:
-        raise RuntimeError("HAVE TO UPDATE!!!")
+    output_path = weighted_lc_path.parent/(mode+'_weighted_lc.png')
+    print('Saving {} normalized flux plot to {}.'.format(mode, output_path))
+    plt.savefig(output_path, dpi=300)
 
 def global_corr_target_plot(times, targ_flux_corr, binned_times, binned_flux, binned_errs, short_name, analysis_path, phot_type, ap_rad):
     '''Authors:
