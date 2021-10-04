@@ -11,6 +11,8 @@ Welcome to pines_analysis_toolkit's documentation!
    :caption: Contents:
 
 
+   intro
+   examples
 
 Indices and tables
 ==================
