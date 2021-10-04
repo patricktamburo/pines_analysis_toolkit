@@ -1,18 +1,18 @@
 from __future__ import print_function
 
-import pines_analysis_toolkit as pat 
+import pines_analysis_toolkit as pat
 
 from astropy.convolution import interpolate_replace_nans, Gaussian2DKernel
-from astropy.io import fits 
+from astropy.io import fits
 from astropy.wcs import WCS
 
-from glob import glob 
-from natsort import natsorted 
+from glob import glob
+from natsort import natsorted
 import numpy as np
-import os 
+import os
 import time
 from pathlib import Path
-import pandas as pd 
+import pandas as pd
 import requests
 
 import sys
@@ -24,10 +24,11 @@ from urllib.error import HTTPError
 
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
-from email.mime.application  import MIMEApplication
+from email.mime.application import MIMEApplication
 from email.encoders import encode_noop
 
 import json
+
 
 def json2python(data):
     try:
@@ -35,19 +36,24 @@ def json2python(data):
     except:
         pass
     return None
+
+
 python2json = json.dumps
+
 
 class MalformedResponse(Exception):
     pass
 
+
 class RequestError(Exception):
     pass
+
 
 class Client(object):
     default_url = 'http://nova.astrometry.net/api/'
 
     def __init__(self,
-                 apiurl = default_url):
+                 apiurl=default_url):
         self.session = None
         self.apiurl = apiurl
 
@@ -60,7 +66,7 @@ class Client(object):
         args: dict
         '''
         if self.session is not None:
-            args.update({ 'session' : self.session })
+            args.update({'session': self.session})
         #print('Python:', args)
         json = python2json(args)
         #print('Sending json:', json)
@@ -70,7 +76,8 @@ class Client(object):
         # If we're sending a file, format a multipart/form-data
         if file_args is not None:
             import random
-            boundary_key = ''.join([random.choice('0123456789') for i in range(19)])
+            boundary_key = ''.join(
+                [random.choice('0123456789') for i in range(19)])
             boundary = '===============%s==' % boundary_key
             headers = {'Content-Type':
                        'multipart/form-data; boundary="%s"' % boundary}
@@ -120,7 +127,7 @@ class Client(object):
             print('Wrote error text to err.html')
 
     def login(self, apikey):
-        args = { 'apikey' : apikey }
+        args = {'apikey': apikey}
         result = self.send_request('login', args)
         sess = result.get('session')
         #print('Got session:', sess)
@@ -130,37 +137,37 @@ class Client(object):
 
     def _get_upload_args(self, **kwargs):
         args = {}
-        for key,default,typ in [('allow_commercial_use', 'd', str),
-                                ('allow_modifications', 'd', str),
-                                ('publicly_visible', 'n', str),
-                                ('scale_units', None, str),
-                                ('scale_type', None, str),
-                                ('scale_lower', None, float),
-                                ('scale_upper', None, float),
-                                ('scale_est', None, float),
-                                ('scale_err', None, float),
-                                ('center_ra', None, float),
-                                ('center_dec', None, float),
-                                ('parity',None,int),
-                                ('radius', None, float),
-                                ('downsample_factor', None, int),
-                                ('positional_error', None, float),
-                                ('tweak_order', None, int),
-                                ('crpix_center', None, bool),
-                                ('invert', None, bool),
-                                ('image_width', None, int),
-                                ('image_height', None, int),
-                                ('x', None, list),
-                                ('y', None, list),
-                                ('album', None, str),
-                                ]:
+        for key, default, typ in [('allow_commercial_use', 'd', str),
+                                  ('allow_modifications', 'd', str),
+                                  ('publicly_visible', 'n', str),
+                                  ('scale_units', None, str),
+                                  ('scale_type', None, str),
+                                  ('scale_lower', None, float),
+                                  ('scale_upper', None, float),
+                                  ('scale_est', None, float),
+                                  ('scale_err', None, float),
+                                  ('center_ra', None, float),
+                                  ('center_dec', None, float),
+                                  ('parity', None, int),
+                                  ('radius', None, float),
+                                  ('downsample_factor', None, int),
+                                  ('positional_error', None, float),
+                                  ('tweak_order', None, int),
+                                  ('crpix_center', None, bool),
+                                  ('invert', None, bool),
+                                  ('image_width', None, int),
+                                  ('image_height', None, int),
+                                  ('x', None, list),
+                                  ('y', None, list),
+                                  ('album', None, str),
+                                  ]:
             if key in kwargs:
                 val = kwargs.pop(key)
                 val = typ(val)
                 args.update({key: val})
             elif default is not None:
                 args.update({key: default})
-        
+
         #print('Upload args:', args)
         return args
 
@@ -183,18 +190,18 @@ class Client(object):
         return self.send_request('upload', args, file_args)
 
     def submission_images(self, subid):
-        result = self.send_request('submission_images', {'subid':subid})
+        result = self.send_request('submission_images', {'subid': subid})
         return result.get('image_ids')
 
     def overlay_plot(self, service, outfn, wcsfn, wcsext=0):
         from astrometry.util import util as anutil
         wcs = anutil.Tan(wcsfn, wcsext)
-        params = dict(crval1 = wcs.crval[0], crval2 = wcs.crval[1],
-                      crpix1 = wcs.crpix[0], crpix2 = wcs.crpix[1],
-                      cd11 = wcs.cd[0], cd12 = wcs.cd[1],
-                      cd21 = wcs.cd[2], cd22 = wcs.cd[3],
-                      imagew = wcs.imagew, imageh = wcs.imageh)
-        result = self.send_request(service, {'wcs':params})
+        params = dict(crval1=wcs.crval[0], crval2=wcs.crval[1],
+                      crpix1=wcs.crpix[0], crpix2=wcs.crpix[1],
+                      cd11=wcs.cd[0], cd12=wcs.cd[1],
+                      cd21=wcs.cd[2], cd22=wcs.cd[3],
+                      imagew=wcs.imagew, imageh=wcs.imageh)
+        result = self.send_request(service, {'wcs': params})
         #print('Result status:', result['status'])
         plotdata = result['plot']
         plotdata = base64.b64decode(plotdata)
@@ -234,7 +241,7 @@ class Client(object):
 
         return stat
 
-    def annotate_data(self,job_id):
+    def annotate_data(self, job_id):
         """
         :param job_id: id of job
         :return: return data for annotations
@@ -258,7 +265,8 @@ class Client(object):
             {},
         )
         return result
-        
+
+
 def pines_astrometry(target, api_key, download_data=False):
     """Uploads reduced images for a target to astrometry.net, downloads solution image, and updates the image header with the astrometry.net wcs.
 
@@ -285,42 +293,46 @@ def pines_astrometry(target, api_key, download_data=False):
     for i in range(0, len(reduced_files)):
         t1 = time.time()
         filename = Path(reduced_files[i])
-        print(short_name+', '+filename.name+', image '+str(i+1)+' of '+str(len(reduced_files)))
+        print(short_name+', '+filename.name+', image ' +
+              str(i+1)+' of '+str(len(reduced_files)))
 
-        #If the header does not have a HISTORY keyword (which is added by astrometry.net), process it. 
+        # If the header does not have a HISTORY keyword (which is added by astrometry.net), process it.
         header = fits.open(filename)[0].header
 
         if 'HISTORY' not in header:
-            #Read in the image data, interpolate NaNs, and save to a temporary fits file. 
-            #Astrometry.net does not work with NaNs in images. 
+            # Read in the image data, interpolate NaNs, and save to a temporary fits file.
+            # Astrometry.net does not work with NaNs in images.
             original_image = fits.open(filename)[0].data
             image = interpolate_replace_nans(original_image, kernel=kernel)
-            temp_filename = filename.parent/(filename.name.split('.fits')[0]+'_temp.fits')
+            temp_filename = filename.parent / \
+                (filename.name.split('.fits')[0]+'_temp.fits')
             hdu = fits.PrimaryHDU(image, header=header)
             hdu.writeto(temp_filename, overwrite=True)
 
-            #Upload the image with interpolated NaNs to astrometry.net. It will solve and download to a new image. 
-            pat.astrometry.upload_to_astrometry.upload_file(api_key, temp_filename, header)
+            # Upload the image with interpolated NaNs to astrometry.net. It will solve and download to a new image.
+            pat.astrometry.upload_to_astrometry.upload_file(
+                api_key, temp_filename, header)
 
-            #Try to donwload the solved image and open it. 
+            # Try to donwload the solved image and open it.
             try:
-                #Grab the header of the astrometry.net solution image, and the original image data. 
-                astrometry_image_path = filename.parent/(temp_filename.name.split('.fits')[0]+'_new_image.fits')
+                # Grab the header of the astrometry.net solution image, and the original image data.
+                astrometry_image_path = filename.parent / \
+                    (temp_filename.name.split('.fits')[0]+'_new_image.fits')
                 wcs_header = fits.open(astrometry_image_path)[0].header
                 wcs_hdu = fits.PrimaryHDU(original_image, header=wcs_header)
 
-                #Save the original image data with the new wcs header. 
+                # Save the original image data with the new wcs header.
                 output_filename = filename
                 wcs_hdu.writeto(output_filename, overwrite=True)
 
-            #If the try clause didn't work, that's because the processing on astrometry.net failed. 
+            # If the try clause didn't work, that's because the processing on astrometry.net failed.
             except:
                 print('Astrometry solution failed!')
-                #Add HISTORY keyword to header so it doesn't get processed in the future. 
+                # Add HISTORY keyword to header so it doesn't get processed in the future.
                 header['HISTORY'] = 'Astrometric solution failed.'
                 fits.writeto(filename, original_image, header, overwrite=True)
 
-            #Delete temporary files. 
+            # Delete temporary files.
             os.remove(temp_filename)
             os.remove(astrometry_image_path)
             time.sleep(1)
@@ -329,10 +341,12 @@ def pines_astrometry(target, api_key, download_data=False):
             print('Average completion time: {:3.1f} s.'.format(np.mean(times)))
             print('')
 
-        #If the header DOES have a HISTORY keyword, skip it, it has already been processed. 
+        # If the header DOES have a HISTORY keyword, skip it, it has already been processed.
         else:
-            print('Astrometric processing already complete for {}, skipping.'.format(filename.name))
+            print('Astrometric processing already complete for {}, skipping.'.format(
+                filename.name))
             print('')
+
 
 def source_detect_astrometry(api_key, filename):
     """ Uploads a single reduced image for a target to astrometry.net, downloads solution image, and updates the image header with the astrometry.net wcs. 
@@ -345,49 +359,54 @@ def source_detect_astrometry(api_key, filename):
     """
     kernel = Gaussian2DKernel(x_stddev=0.25)
 
-    #If the header does not have a HISTORY keyword (which is added by astrometry.net), process it. 
+    # If the header does not have a HISTORY keyword (which is added by astrometry.net), process it.
     header = fits.open(filename)[0].header
 
     if 'HISTORY' not in header:
         print('Uploading {} to astrometry.net.'.format(filename.name))
-        #Read in the image data, interpolate NaNs, and save to a temporary fits file. 
-        #Astrometry.net does not work with NaNs in images. 
+        # Read in the image data, interpolate NaNs, and save to a temporary fits file.
+        # Astrometry.net does not work with NaNs in images.
         original_image = fits.open(filename)[0].data
         image = interpolate_replace_nans(original_image, kernel=kernel)
-        temp_filename = filename.parent/(filename.name.split('.fits')[0]+'_temp.fits')
+        temp_filename = filename.parent / \
+            (filename.name.split('.fits')[0]+'_temp.fits')
         hdu = fits.PrimaryHDU(image, header=header)
         hdu.writeto(temp_filename, overwrite=True)
 
-        #Upload the image with interpolated NaNs to astrometry.net. It will solve and download to a new image. 
+        # Upload the image with interpolated NaNs to astrometry.net. It will solve and download to a new image.
         pat.astrometry.upload_file(api_key, temp_filename, header)
 
-        #Try to donwload the solved image and open it. 
+        # Try to donwload the solved image and open it.
         try:
-            #Grab the header of the astrometry.net solution image, and the original image data. 
-            astrometry_image_path = filename.parent/(temp_filename.name.split('.fits')[0]+'_new_image.fits')
+            # Grab the header of the astrometry.net solution image, and the original image data.
+            astrometry_image_path = filename.parent / \
+                (temp_filename.name.split('.fits')[0]+'_new_image.fits')
             wcs_header = fits.open(astrometry_image_path)[0].header
             wcs_hdu = fits.PrimaryHDU(original_image, header=wcs_header)
 
-            #Save the original image data with the new wcs header. 
+            # Save the original image data with the new wcs header.
             output_filename = filename
             wcs_hdu.writeto(output_filename, overwrite=True)
 
-        #If the try clause didn't work, that's because the processing on astrometry.net failed. 
+        # If the try clause didn't work, that's because the processing on astrometry.net failed.
         except:
-            raise RuntimeError('Astrometry solution failed! Use a different source detect image for choosing reference stars.')            
+            raise RuntimeError(
+                'Astrometry solution failed! Use a different source detect image for choosing reference stars.')
 
-        #Delete temporary files. 
+        # Delete temporary files.
         os.remove(temp_filename)
         os.remove(astrometry_image_path)
         time.sleep(1)
         print('')
 
-    #If the header DOES have a HISTORY keyword, skip it, it has already been processed. 
+    # If the header DOES have a HISTORY keyword, skip it, it has already been processed.
     else:
-        print('Astrometric processing already complete for {}, skipping.'.format(filename.name))
+        print('Astrometric processing already complete for {}, skipping.'.format(
+            filename.name))
         print('')
 
-def source_pixels_to_world(short_name, source_detect_image_path, force_output_path=''): 
+
+def source_pixels_to_world(short_name, source_detect_image_path, force_output_path=''):
     """Gets world coordinates of tracked sources (target + references) in the source_detect_image. 
 
     :param short_name: short name for the target
@@ -405,14 +424,15 @@ def source_pixels_to_world(short_name, source_detect_image_path, force_output_pa
     else:
         pines_path = pat.utils.pines_dir_check()
 
-    sources_csv_path = pines_path/('Objects/'+short_name+'/sources/target_and_references_source_detection.csv')
+    sources_csv_path = pines_path / \
+        ('Objects/'+short_name+'/sources/target_and_references_source_detection.csv')
     sources_df = pd.read_csv(sources_csv_path)
 
-    #Get the WCS information. 
+    # Get the WCS information.
     source_detect_image = fits.open(source_detect_image_path)
     w = WCS(source_detect_image[0].header)
 
-    #Get the world coordinates of all sources
+    # Get the world coordinates of all sources
     source_ras = np.zeros(len(sources_df))
     source_decs = np.zeros(len(sources_df))
     for i in range(len(sources_df)):
@@ -421,15 +441,16 @@ def source_pixels_to_world(short_name, source_detect_image_path, force_output_pa
         sky = w.pixel_to_world(source_x, source_y)
         source_ras[i] = sky.ra.value
         source_decs[i] = sky.dec.value
-    
-    #Add world coordinates to source detection df. 
+
+    # Add world coordinates to source detection df.
     sources_df['Source Detect RA'] = source_ras
     sources_df['Source Detect Dec'] = source_decs
 
-    #Write out to update the source detection csv. 
+    # Write out to update the source detection csv.
     sources_df.to_csv(sources_csv_path, index=0)
     return sources_df
-   
+
+
 def upload_file(apikey, filename, header):
     """Uploads files to astrometry.net. 
 
@@ -443,33 +464,37 @@ def upload_file(apikey, filename, header):
     astrometry = Client()
 
     astrometry.login(apikey)
-    
+
     tel_ra_str = header['TELRA'].split(':')
-    tel_ra_deg = int(tel_ra_str[0])*15 + int(tel_ra_str[1])*(15/60) + float(tel_ra_str[2])*(15/3600)
+    tel_ra_deg = int(tel_ra_str[0])*15 + int(tel_ra_str[1]) * \
+        (15/60) + float(tel_ra_str[2])*(15/3600)
 
     tel_dec_str = header['TELDEC'].split(':')
-    
-    if tel_dec_str[0][0] == '+':
-        tel_dec_deg = int(tel_dec_str[0]) + int(tel_dec_str[1])/60 + float(tel_dec_str[2])/3600
-    elif tel_dec_str[0][0] == '-':
-        tel_dec_deg = int(tel_dec_str[0]) - int(tel_dec_str[1])/60 - float(tel_dec_str[2])/3600
 
-    sub_id = astrometry.upload(filename, scale_units='arcsecperpix', scale_lower=0.575, scale_upper=0.585, center_ra=tel_ra_deg, center_dec=tel_dec_deg, radius=0.116)['subid']
-    print('submission_id: ' , str(sub_id))
-    
+    if tel_dec_str[0][0] == '+':
+        tel_dec_deg = int(
+            tel_dec_str[0]) + int(tel_dec_str[1])/60 + float(tel_dec_str[2])/3600
+    elif tel_dec_str[0][0] == '-':
+        tel_dec_deg = int(
+            tel_dec_str[0]) - int(tel_dec_str[1])/60 - float(tel_dec_str[2])/3600
+
+    sub_id = astrometry.upload(filename, scale_units='arcsecperpix', scale_lower=0.575,
+                               scale_upper=0.585, center_ra=tel_ra_deg, center_dec=tel_dec_deg, radius=0.116)['subid']
+    print('submission_id: ', str(sub_id))
+
     while astrometry.sub_status(sub_id)['jobs'] == [] or astrometry.sub_status(sub_id)['jobs'] == [None]:
         time.sleep(1)
-        
+
     job_id = astrometry.sub_status(sub_id)['jobs'][0]
     print('job_id: ', astrometry.sub_status(sub_id)['jobs'])
-    
+
     while astrometry.job_status(job_id) == 'solving':
         time.sleep(1)
 
-    outfile = filename.parent/(filename.name.split('.fits')[0]+'_new_image.fits')
-    
+    outfile = filename.parent / \
+        (filename.name.split('.fits')[0]+'_new_image.fits')
+
     url = 'http://nova.astrometry.net/new_fits_file/' + str(job_id)
-    
+
     r = requests.get(url, allow_redirects=True)
     open(outfile, 'wb').write(r.content)
-            

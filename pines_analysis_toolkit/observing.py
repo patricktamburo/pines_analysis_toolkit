@@ -1,3 +1,16 @@
+from natsort import natsorted
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib
+import pdb
+import os
+from pathlib import Path
+from matplotlib.patches import Polygon
+from scipy import signal
+from scipy.spatial import ConvexHull, convex_hull_plot_2d
+import scipy.optimize as opt
+from glob import glob
+from photutils import DAOStarFinder, aperture_photometry, CircularAperture, Background2D, MedianBackground
 from pines_analysis_toolkit.utils import pines_dir_check, pines_log_reader, short_name_creator, pines_login, quick_plot as qp
 from pines_analysis_toolkit.data import get_master_synthetic_image
 from pines_analysis_toolkit.photometry import detect_sources
@@ -9,27 +22,13 @@ from astropy.convolution import Gaussian2DKernel, interpolate_replace_nans
 from astropy.io import fits
 from astropy.convolution import Gaussian2DKernel, interpolate_replace_nans
 
-import pandas as pd 
-pd.options.mode.chained_assignment = None  # Suppress some useless warnings. 
-from photutils import DAOStarFinder, aperture_photometry, CircularAperture, Background2D, MedianBackground
-from glob import glob
-import pdb 
+import pandas as pd
+pd.options.mode.chained_assignment = None  # Suppress some useless warnings.
 
-import scipy.optimize as opt
-from scipy.spatial import ConvexHull, convex_hull_plot_2d
-from scipy import signal
 
-import matplotlib 
-from matplotlib.patches import Polygon
 matplotlib.use('TkAgg')
-import matplotlib.pyplot as plt 
 plt.ion()
 
-from pathlib import Path
-import os
-import numpy as np 
-from natsort import natsorted 
-from glob import glob 
 
 def average_seeing(log_path):
     """Calculates average seeing from values in the PINES observing logs. 
@@ -47,11 +46,14 @@ def average_seeing(log_path):
             seeing = seeing[np.where((seeing > 1.2) & (seeing < 7.0))[0]]
             mean_seeing = np.nanmean(seeing)
             std_seeing = np.nanstd(seeing)
-            print('Average seeing for {}: {:1.1f} +/- {:1.1f}"'.format(log_path.split('/')[-1].split('_')[0], mean_seeing, std_seeing))
+            print('Average seeing for {}: {:1.1f} +/- {:1.1f}"'.format(
+                log_path.split('/')[-1].split('_')[0], mean_seeing, std_seeing))
             return mean_seeing
     except:
-        print('{}: No seeing measurements, inspect manually.'.format(log_path.split('/')[-1].split('_')[0]))
+        print('{}: No seeing measurements, inspect manually.'.format(
+            log_path.split('/')[-1].split('_')[0]))
         return np.nan
+
 
 def bad_shift_identifier(target, date, bad_shift_threshold=200.):
     """Identifies bad shift values in PINES observing logs. 
@@ -70,12 +72,13 @@ def bad_shift_identifier(target, date, bad_shift_threshold=200.):
     x_shifts = np.array(log['X shift'][target_inds])
     y_shifts = np.array(log['Y shift'][target_inds])
 
-    bad_shift_inds = np.where((x_shifts > bad_shift_threshold) | (y_shifts > bad_shift_threshold))[0]
+    bad_shift_inds = np.where((x_shifts > bad_shift_threshold) | (
+        y_shifts > bad_shift_threshold))[0]
     shift_flags = np.zeros(len(target_inds), dtype=int)
     shift_flags[bad_shift_inds] = 1
-    
 
-    return 
+    return
+
 
 def log_out_of_order_fixer(log_path, sftp):
     """Fixes logs with out-of-order/duplicate filenames. 
@@ -100,15 +103,15 @@ def log_out_of_order_fixer(log_path, sftp):
     original_lines = myfile.readlines()
     myfile.close()
 
-    #Remove any 'test.fits' lines, if they exist. 
+    # Remove any 'test.fits' lines, if they exist.
     lines = []
     for i in range(len(original_lines)):
         if 'test.fits' in original_lines[i].split(',')[0]:
             continue
         else:
             lines.append(original_lines[i])
-    
-    #Sort everything based on file number. 
+
+    # Sort everything based on file number.
     log_filenums = []
     for i in range(len(lines)):
         if lines[i].strip()[0] == '#':
@@ -121,28 +124,29 @@ def log_out_of_order_fixer(log_path, sftp):
     log_filenums = np.array(log_filenums)[sort_inds]
 
     num_del = 0
-    #Check for lack of entries, multiple entries for this file number in the log. 
+    # Check for lack of entries, multiple entries for this file number in the log.
 
     for i in range(0, np.max(log_filenums)):
         file_num = i + 1
         entry_inds = np.where(log_filenums == file_num)[0]
         num_entries = len(entry_inds)
 
-        #Check if there are no entries for this file number...if not, create one by finding the file on the PINES server,
-        #downloading it, and reading its header. 
+        # Check if there are no entries for this file number...if not, create one by finding the file on the PINES server,
+        # downloading it, and reading its header.
         if num_entries == 0:
             found = False
 
-            missing_filename = log_path.name.split('_')[0]+'.'+str(file_num).zfill(3)+'.fits'
+            missing_filename = log_path.name.split(
+                '_')[0]+'.'+str(file_num).zfill(3)+'.fits'
 
-            if missing_filename != '20200206.607.fits': #corrupt file
+            if missing_filename != '20200206.607.fits':  # corrupt file
                 print('{} missing from log.'.format(missing_filename))
                 print('Searching for file on PINES server...')
 
                 pines_raw_path = '/data/raw/mimir/'
                 runs = sftp.listdir(pines_raw_path)
 
-                #The file will be in one of these directories if it's on the server
+                # The file will be in one of these directories if it's on the server
                 run_guess = missing_filename[0:6]
                 ind = np.where(np.array(runs) == run_guess)[0][0]
 
@@ -153,59 +157,68 @@ def log_out_of_order_fixer(log_path, sftp):
                 else:
                     inds = np.arange(ind-1, ind+2)
                     runs = np.array(runs)[inds]
-                    runs = [runs[1], runs[0], runs[2]] 
+                    runs = [runs[1], runs[0], runs[2]]
 
                 for jj in range(len(runs)):
                     nights = sftp.listdir(pines_raw_path+'/'+runs[jj])
                     nights = [i for i in nights if i[0] == '2']
                     for kk in range(len(nights)):
-                        server_files = sftp.listdir(pines_raw_path+runs[jj]+'/'+nights[kk])
+                        server_files = sftp.listdir(
+                            pines_raw_path+runs[jj]+'/'+nights[kk])
                         if missing_filename in server_files:
-                            print('File found: {}'.format(pines_raw_path+runs[jj]+'/'+nights[kk]+'/'+missing_filename))
+                            print('File found: {}'.format(pines_raw_path +
+                                  runs[jj]+'/'+nights[kk]+'/'+missing_filename))
                             found = True
-                            #Download the file and grab relevant parameters from the header. 
+                            # Download the file and grab relevant parameters from the header.
                             user_download_path = get_download_path()
-                            sftp.get(pines_raw_path+runs[jj]+'/'+nights[kk]+'/'+missing_filename, user_download_path+'/'+missing_filename)
-                            header = fits.open(user_download_path+'/'+missing_filename)[0].header
+                            sftp.get(pines_raw_path+runs[jj]+'/'+nights[kk]+'/' +
+                                     missing_filename, user_download_path+'/'+missing_filename)
+                            header = fits.open(
+                                user_download_path+'/'+missing_filename)[0].header
                             date = header['DATE']
                             if header['OBJECT'] == 'dummy':
-                                print('ERROR: PINES_watchdog logged "dummy" for object filename; inspect the field and update its name manually.')
+                                print(
+                                    'ERROR: PINES_watchdog logged "dummy" for object filename; inspect the field and update its name manually.')
                             else:
-                                target_name = header['OBJECT'].split('J')[0] +' J'+ header['OBJECT'].split('J')[1]
+                                target_name = header['OBJECT'].split(
+                                    'J')[0] + ' J' + header['OBJECT'].split('J')[1]
                             filter_name = header['FILTNME2']
                             exptime = str(header['EXPTIME'])
                             airmass = str(header['AIRMASS'])
-                            #Use these guesses for shifts/seeings. Will be updated at a later step.
+                            # Use these guesses for shifts/seeings. Will be updated at a later step.
                             x_shift = str(0.0)
                             y_shift = str(0.0)
                             x_seeing = str(2.5)
                             y_seeing = str(2.5)
 
-                            #Add the line to the log.
-                            line = pines_logging(missing_filename, date, target_name, filter_name, exptime, airmass, x_shift, y_shift, x_seeing, y_seeing, '0', '0')
+                            # Add the line to the log.
+                            line = pines_logging(missing_filename, date, target_name, filter_name,
+                                                 exptime, airmass, x_shift, y_shift, x_seeing, y_seeing, '0', '0')
                             lines.insert(i+1, line)
 
-                            #Delete the file from the Downloads folder. 
+                            # Delete the file from the Downloads folder.
                             os.remove(user_download_path+'/'+missing_filename)
                             break
-                
+
             if not found:
-                print('{} not found in any raw directories on the PINES server... inspect manually.'.format(missing_filename))
+                print('{} not found in any raw directories on the PINES server... inspect manually.'.format(
+                    missing_filename))
                 pdb.set_trace()
 
-        #Check for multiple entries in the log...if so, delete the extras. 
+        # Check for multiple entries in the log...if so, delete the extras.
         elif num_entries > 1:
-            #Only retain the FIRST entry in the log. Assume later entries are mistakes. 
+            # Only retain the FIRST entry in the log. Assume later entries are mistakes.
             num_del += 1
             for j in range(len(entry_inds)-1, 0, -1):
                 del lines[entry_inds[j]]
-                
-        #Update the log on disk.
+
+        # Update the log on disk.
         with open(log_path, 'w') as f:
             for line in lines:
                 f.write(line)
 
     return
+
 
 def log_updater(date, sftp, shift_tolerance=30., upload=False):
     """Updates x_shift and y_shift measurements from a PINES log. These shifts are measured using *full* resolution images, while at the telescope,
@@ -227,58 +240,66 @@ def log_updater(date, sftp, shift_tolerance=30., upload=False):
 
     def guide_star_seeing(subframe):
         # subframe = subframe - np.median(subframe)
-        subframe = subframe - np.percentile(subframe,5)
+        subframe = subframe - np.percentile(subframe, 5)
         sub_frame_l = int(np.shape(subframe)[0])
         y, x = np.mgrid[:sub_frame_l, :sub_frame_l]
 
         # Fit with constant, bounds, tied x and y sigmas and outlier rejection:
-        gaussian_init = models.Const2D(0.0) + models.Gaussian2D(subframe[int(sub_frame_l/2),int(sub_frame_l/2)],int(sub_frame_l/2),int(sub_frame_l/2),8/2.355,8/2.355,0)
+        gaussian_init = models.Const2D(0.0) + models.Gaussian2D(subframe[int(sub_frame_l/2), int(
+            sub_frame_l/2)], int(sub_frame_l/2), int(sub_frame_l/2), 8/2.355, 8/2.355, 0)
         gaussian_init.x_stddev_1.min = 1.0/2.355
         gaussian_init.x_stddev_1.max = 20.0/2.355
         gaussian_init.y_stddev_1.min = 1.0/2.355
         gaussian_init.y_stddev_1.max = 20.0/2.355
         gaussian_init.y_stddev_1.tied = tie_sigma
         gaussian_init.theta_1.fixed = True
-        fit_gauss = fitting.FittingWithOutlierRemoval(fitting.LevMarLSQFitter(),sigma_clip,niter=3,sigma=3.0)
+        fit_gauss = fitting.FittingWithOutlierRemoval(
+            fitting.LevMarLSQFitter(), sigma_clip, niter=3, sigma=3.0)
         # gaussian, mask = fit_gauss(gaussian_init, x, y, subframe)
-        gain = 8.21 #e per ADU
-        read_noise = 2.43 #ADU
-        weights = gain / np.sqrt(np.absolute(subframe)*gain + (read_noise*gain)**2) #1/sigma for each pixel
+        gain = 8.21  # e per ADU
+        read_noise = 2.43  # ADU
+        # 1/sigma for each pixel
+        weights = gain / np.sqrt(np.absolute(subframe)
+                                 * gain + (read_noise*gain)**2)
         gaussian, mask = fit_gauss(gaussian_init, x, y, subframe, weights)
         fwhm_x = 2.355*gaussian.x_stddev_1.value
         fwhm_y = 2.355*gaussian.y_stddev_1.value
 
         x_seeing = fwhm_x * 0.579
         y_seeing = fwhm_y * 0.579
-        return(x_seeing,y_seeing)
+        return(x_seeing, y_seeing)
 
     pines_path = pines_dir_check()
     log_path = pines_path/('Logs/'+date+'_log.txt')
 
-    #Begin by checking filenames, making sure they're in sequential order, and that there is only one entry for each. 
+    # Begin by checking filenames, making sure they're in sequential order, and that there is only one entry for each.
     log_out_of_order_fixer(log_path, sftp)
-    
-    log = pines_log_reader(log_path) #Get telescope log shifts.
+
+    log = pines_log_reader(log_path)  # Get telescope log shifts.
     myfile = open(log_path, 'r')
     lines = myfile.readlines()
     myfile.close()
 
-    #Now loop over all files in the log, measure shifts in each file and update the line in the log. 
+    # Now loop over all files in the log, measure shifts in each file and update the line in the log.
     for i in range(len(log)):
         if (log['Target'][i].lower() != 'flat') & (log['Target'][i].lower() != 'skyflat') & (log['Target'][i].lower() != 'supersky') & (log['Target'][i].lower() != 'dark') & (log['Target'][i].lower() != 'bias') & (log['Target'][i].lower() != 'dummy') & (log['Target'][i].lower() != 'linearity') & (log['Post-processing flag'][i] != 1):
             filename = log['Filename'][i].split('.fits')[0]+'_red.fits'
             target = log['Target'][i]
             short_name = short_name_creator(target)
-            image_path = pines_path/('Objects/'+short_name+'/reduced/'+filename)
+            image_path = pines_path / \
+                ('Objects/'+short_name+'/reduced/'+filename)
 
-            #Figure out which file you're looking at and its position in the log. 
-            log_ind = np.where(log['Filename'] == filename.split('_')[0]+'.fits')[0][0]
+            # Figure out which file you're looking at and its position in the log.
+            log_ind = np.where(log['Filename'] ==
+                               filename.split('_')[0]+'.fits')[0][0]
 
-            #Measure the shifts and get positions of targets.
-            (measured_x_shift, measured_y_shift, source_x, source_y, check_image) = shift_measurer(target, filename, sftp)
+            # Measure the shifts and get positions of targets.
+            (measured_x_shift, measured_y_shift, source_x, source_y,
+             check_image) = shift_measurer(target, filename, sftp)
 
             if (abs(measured_x_shift) > shift_tolerance) or (abs(measured_y_shift) > shift_tolerance):
-                print('Shift greater than {} pixels measured for {} in {}.'.format(shift_tolerance, short_name, image_path.name))
+                print('Shift greater than {} pixels measured for {} in {}.'.format(
+                    shift_tolerance, short_name, image_path.name))
                 print('Inspect manually.')
                 shift_quality_flag = 1
             elif np.isnan(measured_x_shift) or np.isnan(measured_y_shift):
@@ -286,41 +307,43 @@ def log_updater(date, sftp, shift_tolerance=30., upload=False):
                 shift_quality_flag = 1
             else:
                 shift_quality_flag = 0
-            
-            
-            #Measure the seeing. 
-            guide_star_cut = np.where((source_x > 50) & (source_x < 975) & (source_y > 50) & (source_y < 975))[0]
+
+            # Measure the seeing.
+            guide_star_cut = np.where((source_x > 50) & (
+                source_x < 975) & (source_y > 50) & (source_y < 975))[0]
             if len(guide_star_cut) != 0:
                 x_seeing_array = []
                 y_seeing_array = []
                 for guide_star_ind in guide_star_cut:
                     guide_star_x_int = int(source_x[guide_star_ind])
                     guide_star_y_int = int(source_y[guide_star_ind])
-                    guide_star_subframe = check_image[guide_star_y_int-15:guide_star_y_int+15,guide_star_x_int-15:guide_star_x_int+15]
-                    (x_seeing,y_seeing) = guide_star_seeing(guide_star_subframe)
-                    #Cut unrealistic values/saturated stars. 
+                    guide_star_subframe = check_image[guide_star_y_int -
+                                                      15:guide_star_y_int+15, guide_star_x_int-15:guide_star_x_int+15]
+                    (x_seeing, y_seeing) = guide_star_seeing(guide_star_subframe)
+                    # Cut unrealistic values/saturated stars.
                     if x_seeing > 1.2 and x_seeing < 7.0:
                         x_seeing_array.append(x_seeing)
                         y_seeing_array.append(y_seeing)
                 x_seeing = np.nanmedian(x_seeing_array)
                 y_seeing = np.nanmedian(y_seeing_array)
             else:
-                #Default to the average PINES value if no sources were found for guiding. 
+                # Default to the average PINES value if no sources were found for guiding.
                 x_seeing = 2.6
                 y_seeing = 2.6
 
             print('Log line {} of {}.'.format(i+1, len(log)))
-            print('Measured x shift: {:4.1f}, measured y shift: {:4.1f}'.format(measured_x_shift, measured_y_shift))
+            print('Measured x shift: {:4.1f}, measured y shift: {:4.1f}'.format(
+                measured_x_shift, measured_y_shift))
             print('Measured seeing: {:4.1f}'.format(x_seeing))
             print('')
 
-            #Overwrite the telescope's logged shifts and seeing values with the new measurements. 
-            log['X shift'][log_ind] = str(np.round(measured_x_shift,1))
-            log['Y shift'][log_ind] = str(np.round(measured_y_shift,1))
+            # Overwrite the telescope's logged shifts and seeing values with the new measurements.
+            log['X shift'][log_ind] = str(np.round(measured_x_shift, 1))
+            log['Y shift'][log_ind] = str(np.round(measured_y_shift, 1))
             log['X seeing'][log_ind] = str(np.round(x_seeing, 1))
             log['Y seeing'][log_ind] = str(np.round(y_seeing, 1))
 
-            #Grab entries for log line.
+            # Grab entries for log line.
             filename = log['Filename'][log_ind]
             log_date = log['Date'][log_ind]
             target_name = log['Target'][log_ind]
@@ -332,14 +355,15 @@ def log_updater(date, sftp, shift_tolerance=30., upload=False):
             x_seeing = log['X seeing'][log_ind]
             y_seeing = log['Y seeing'][log_ind]
             post_processing_flag = 1
-            #Generate line of log text following the PINES telescope log format. 
-            log_text = pines_logging(filename, log_date, target_name, filter_name, exptime, airmass, x_shift, y_shift, x_seeing, y_seeing, post_processing_flag, shift_quality_flag)
+            # Generate line of log text following the PINES telescope log format.
+            log_text = pines_logging(filename, log_date, target_name, filter_name, exptime, airmass,
+                                     x_shift, y_shift, x_seeing, y_seeing, post_processing_flag, shift_quality_flag)
 
-            #Overwrite the line with the new shifts.
+            # Overwrite the line with the new shifts.
             line_ind = log_ind + 1
             lines[line_ind] = log_text
 
-            #Update the log on disk.
+            # Update the log on disk.
             with open(log_path, 'w') as f:
                 for line in lines:
                     f.write(line)
@@ -347,13 +371,15 @@ def log_updater(date, sftp, shift_tolerance=30., upload=False):
         elif (log['Post-processing flag'][i] == 1):
             print('File already post-processed, skipping. {} of {}'.format(i+1, len(log)))
         else:
-            print('File not a science target, skipping. {} of {}.'.format(i+1, len(log)))
+            print('File not a science target, skipping. {} of {}.'.format(
+                i+1, len(log)))
 
     if upload:
         sftp.chdir('/data/logs/')
         print('Uploading to /data/logs/{}_log.txt.'.format(date))
-        sftp.put(log_path,date+'_log.txt')
-    return 
+        sftp.put(log_path, date+'_log.txt')
+    return
+
 
 def master_synthetic_image_creator(target, image_name, seeing=2.5, sigma_above_bg=5.):
     """Creates a master synthetic image for a PINES target by detecting sources in a reduced image of the field.
@@ -368,14 +394,16 @@ def master_synthetic_image_creator(target, image_name, seeing=2.5, sigma_above_b
     :type sigma_above_bg: float, optional
     """
 
-    def mimir_source_finder(image_path,sigma_above_bg,fwhm, exclude_lower_left=False):
+    def mimir_source_finder(image_path, sigma_above_bg, fwhm, exclude_lower_left=False):
         """Find sources in Mimir images."""
-        
-        np.seterr(all='ignore') #Ignore invalids (i.e. divide by zeros)
 
-        #Find stars in the master image.
-        avg, med, stddev = sigma_clipped_stats(image,sigma=3.0,maxiters=3) #Previously maxiters = 5!   
-        daofind = DAOStarFinder(fwhm=fwhm, threshold=sigma_above_bg*stddev,sky=med,ratio=0.8)
+        np.seterr(all='ignore')  # Ignore invalids (i.e. divide by zeros)
+
+        # Find stars in the master image.
+        avg, med, stddev = sigma_clipped_stats(
+            image, sigma=3.0, maxiters=3)  # Previously maxiters = 5!
+        daofind = DAOStarFinder(
+            fwhm=fwhm, threshold=sigma_above_bg*stddev, sky=med, ratio=0.8)
         new_sources = daofind(image)
         x_centroids = new_sources['xcentroid']
         y_centroids = new_sources['ycentroid']
@@ -383,118 +411,126 @@ def master_synthetic_image_creator(target, image_name, seeing=2.5, sigma_above_b
         fluxes = new_sources['flux']
         peaks = new_sources['peak']
 
-        #Cut sources that are found within 20 pix of the edges.
+        # Cut sources that are found within 20 pix of the edges.
         use_x = np.where((x_centroids > 20) & (x_centroids < 1004))[0]
         x_centroids = x_centroids[use_x]
         y_centroids = y_centroids[use_x]
         sharpness = sharpness[use_x]
         fluxes = fluxes[use_x]
         peaks = peaks[use_x]
-        use_y = np.where((y_centroids  > 20) & (y_centroids  < 1004))[0]
-        x_centroids  = x_centroids [use_y]
-        y_centroids  = y_centroids [use_y]
+        use_y = np.where((y_centroids > 20) & (y_centroids < 1004))[0]
+        x_centroids = x_centroids[use_y]
+        y_centroids = y_centroids[use_y]
         sharpness = sharpness[use_y]
         fluxes = fluxes[use_y]
         peaks = peaks[use_y]
 
-        #Also cut using sharpness, this seems to eliminate a lot of false detections.
+        # Also cut using sharpness, this seems to eliminate a lot of false detections.
         use_sharp = np.where(sharpness > 0.5)[0]
-        x_centroids  = x_centroids [use_sharp]
-        y_centroids  = y_centroids [use_sharp]
+        x_centroids = x_centroids[use_sharp]
+        y_centroids = y_centroids[use_sharp]
         sharpness = sharpness[use_sharp]
         fluxes = fluxes[use_sharp]
         peaks = peaks[use_sharp]
 
         if exclude_lower_left:
-            #Cut sources in the lower left, if bars are present.
-            use_ll =  np.where((x_centroids > 512) | (y_centroids > 512))
-            x_centroids  = x_centroids [use_ll]
-            y_centroids  = y_centroids [use_ll]
+            # Cut sources in the lower left, if bars are present.
+            use_ll = np.where((x_centroids > 512) | (y_centroids > 512))
+            x_centroids = x_centroids[use_ll]
+            y_centroids = y_centroids[use_ll]
             sharpness = sharpness[use_ll]
             fluxes = fluxes[use_ll]
             peaks = peaks[use_ll]
-        
-        #Cut targets whose y centroids are near y = 512. These are usually bad.
-        use_512 = np.where(np.logical_or((y_centroids < 510),(y_centroids > 514)))[0]
-        x_centroids  = x_centroids [use_512]
-        y_centroids  = y_centroids [use_512]
+
+        # Cut targets whose y centroids are near y = 512. These are usually bad.
+        use_512 = np.where(np.logical_or(
+            (y_centroids < 510), (y_centroids > 514)))[0]
+        x_centroids = x_centroids[use_512]
+        y_centroids = y_centroids[use_512]
         sharpness = sharpness[use_512]
         fluxes = fluxes[use_512]
         peaks = peaks[use_512]
 
-        #Cut sources with negative/saturated peaks
+        # Cut sources with negative/saturated peaks
         use_peaks = np.where((peaks > 30) & (peaks < 3000))[0]
-        x_centroids  = x_centroids [use_peaks]
-        y_centroids  = y_centroids [use_peaks]
+        x_centroids = x_centroids[use_peaks]
+        y_centroids = y_centroids[use_peaks]
         sharpness = sharpness[use_peaks]
         fluxes = fluxes[use_peaks]
         peaks = peaks[use_peaks]
 
-        #Do quick photometry on the remaining sources. 
-        positions = [(x_centroids[i], y_centroids[i]) for i in range(len(x_centroids))]
+        # Do quick photometry on the remaining sources.
+        positions = [(x_centroids[i], y_centroids[i])
+                     for i in range(len(x_centroids))]
         apertures = CircularAperture(positions, r=4)
         phot_table = aperture_photometry(image-med, apertures)
 
-        #Cut based on brightness.
+        # Cut based on brightness.
         phot_table.sort('aperture_sum')
         cutoff = 1*std*np.pi*4**2
         bad_source_locs = np.where(phot_table['aperture_sum'] < cutoff)
         phot_table.remove_rows(bad_source_locs)
-        
+
         x_centroids = phot_table['xcenter'].value
         y_centroids = phot_table['ycenter'].value
 
-        return(x_centroids,y_centroids)
+        return(x_centroids, y_centroids)
 
-    def synthetic_image_maker(x_centroids,y_centroids,fwhm):
-        #Construct synthetic images from centroid/flux data.
-        synthetic_image = np.zeros((1024,1024))
+    def synthetic_image_maker(x_centroids, y_centroids, fwhm):
+        # Construct synthetic images from centroid/flux data.
+        synthetic_image = np.zeros((1024, 1024))
         sigma = fwhm/2.355
         for i in range(len(x_centroids)):
-            #Cut out little boxes around each source and add in Gaussian representations. This saves time. 
+            # Cut out little boxes around each source and add in Gaussian representations. This saves time.
             int_centroid_x = int(np.round(x_centroids[i]))
             int_centroid_y = int(np.round(y_centroids[i]))
-            y_cut, x_cut = np.mgrid[int_centroid_y-10:int_centroid_y+10,int_centroid_x-10:int_centroid_x+10]
+            y_cut, x_cut = np.mgrid[int_centroid_y-10:int_centroid_y +
+                                    10, int_centroid_x-10:int_centroid_x+10]
             dist = np.sqrt((x_cut-x_centroids[i])**2+(y_cut-y_centroids[i])**2)
-            synthetic_image[y_cut,x_cut] += np.exp(-((dist)**2/(2*sigma**2)+((dist)**2/(2*sigma**2))))
+            synthetic_image[y_cut, x_cut] += np.exp(-(
+                (dist)**2/(2*sigma**2)+((dist)**2/(2*sigma**2))))
         return(synthetic_image)
-    
+
     pines_path = pines_dir_check()
     short_name = short_name_creator(target)
-    master_synthetic_path = pines_path/('Calibrations/Master Synthetic Images/'+target+'_master_synthetic.fits')
+    master_synthetic_path = pines_path / \
+        ('Calibrations/Master Synthetic Images/'+target+'_master_synthetic.fits')
     image_path = pines_path/('Objects/'+short_name+'/reduced/'+image_name)
     plt.ion()
 
     seeing = float(seeing)
     daostarfinder_fwhm = seeing*2.355/0.579
 
-
-    #Open the image and calibration files. 
+    # Open the image and calibration files.
     header = fits.open(image_path)[0].header
     image = fits.open(image_path)[0].data
 
-    #Interpolate over bad pixels
+    # Interpolate over bad pixels
     kernel = Gaussian2DKernel(x_stddev=1)
     image = interpolate_replace_nans(image, kernel)
 
-    #Do a simple 2d background model. 
-    box_size=32
+    # Do a simple 2d background model.
+    box_size = 32
     sigma_clip = SigmaClip(sigma=3.)
     bkg_estimator = MedianBackground()
-    bkg = Background2D(image, (box_size, box_size), filter_size=(3, 3), sigma_clip=sigma_clip, bkg_estimator=bkg_estimator)
+    bkg = Background2D(image, (box_size, box_size), filter_size=(
+        3, 3), sigma_clip=sigma_clip, bkg_estimator=bkg_estimator)
     image = image - bkg.background
 
-    avg,med,std = sigma_clipped_stats(image)
+    avg, med, std = sigma_clipped_stats(image)
 
-    #Find sources in the image. 
-    (x_centroids,y_centroids) = mimir_source_finder(image, sigma_above_bg=sigma_above_bg, fwhm=daostarfinder_fwhm)
+    # Find sources in the image.
+    (x_centroids, y_centroids) = mimir_source_finder(
+        image, sigma_above_bg=sigma_above_bg, fwhm=daostarfinder_fwhm)
 
-    #Plot the field with detected sources. 
+    # Plot the field with detected sources.
     qp(image)
-    plt.plot(x_centroids,y_centroids,'rx')
+    plt.plot(x_centroids, y_centroids, 'rx')
     for i in range(len(x_centroids)):
-        plt.text(x_centroids[i]+8,y_centroids[i]+8,str(i),color='r', fontsize=14)
-    plt.title('Inspect to make sure stars were found!\nO for magnification tool, R to reset view')
+        plt.text(x_centroids[i]+8, y_centroids[i] +
+                 8, str(i), color='r', fontsize=14)
+    plt.title(
+        'Inspect to make sure stars were found!\nO for magnification tool, R to reset view')
     plt.tight_layout()
     plt.show()
 
@@ -502,28 +538,31 @@ def master_synthetic_image_creator(target, image_name, seeing=2.5, sigma_above_b
     print('')
     print('')
 
-    
-    #Prompt the user to remove any false detections.
+    # Prompt the user to remove any false detections.
     ids = input('Enter ids of sources to be removed separated by commas (i.e., 4,18,22). If none to remove, hit enter. To break, ctrl + D. ')
     if ids != '':
         ids_to_eliminate = [int(i) for i in ids.split(',')]
-        ids = [int(i) for i in np.linspace(0,len(x_centroids)-1,len(x_centroids))]
+        ids = [int(i) for i in np.linspace(
+            0, len(x_centroids)-1, len(x_centroids))]
         ids_to_keep = []
         for i in range(len(ids)):
             if ids[i] not in ids_to_eliminate:
                 ids_to_keep.append(ids[i])
     else:
-        ids_to_keep = [int(i) for i in np.linspace(0,len(x_centroids)-1,len(x_centroids))]
+        ids_to_keep = [int(i) for i in np.linspace(
+            0, len(x_centroids)-1, len(x_centroids))]
     plt.clf()
-    plt.imshow(image,origin='lower',vmin=med,vmax=med+5*std)
-    plt.plot(x_centroids[ids_to_keep],y_centroids[ids_to_keep],'rx')
+    plt.imshow(image, origin='lower', vmin=med, vmax=med+5*std)
+    plt.plot(x_centroids[ids_to_keep], y_centroids[ids_to_keep], 'rx')
     for i in range(len(x_centroids[ids_to_keep])):
-        plt.text(x_centroids[ids_to_keep][i]+8,y_centroids[ids_to_keep][i]+8,str(i),color='r')
+        plt.text(x_centroids[ids_to_keep][i]+8,
+                 y_centroids[ids_to_keep][i]+8, str(i), color='r')
 
-    #Create the synthetic image using the accepted sources. 
-    synthetic_image = synthetic_image_maker(x_centroids[ids_to_keep],y_centroids[ids_to_keep],8)
-    plt.figure(figsize=(9,7))
-    plt.imshow(synthetic_image,origin='lower')
+    # Create the synthetic image using the accepted sources.
+    synthetic_image = synthetic_image_maker(
+        x_centroids[ids_to_keep], y_centroids[ids_to_keep], 8)
+    plt.figure(figsize=(9, 7))
+    plt.imshow(synthetic_image, origin='lower')
     plt.title('Synthetic image')
     plt.show()
 
@@ -531,10 +570,11 @@ def master_synthetic_image_creator(target, image_name, seeing=2.5, sigma_above_b
     print('')
     print('')
     print('')
-    #Now write to a master synthetic image.fits file.
+    # Now write to a master synthetic image.fits file.
     hdu = fits.PrimaryHDU(synthetic_image)
     hdu.writeto(master_synthetic_path, overwrite=True)
     print('Writing master synthetic image to {}/'.format(master_synthetic_path))
+
 
 def observed_sample_plots(upload=True):
     """Creates observed sample plots for the PINES website
@@ -543,7 +583,7 @@ def observed_sample_plots(upload=True):
     :type upload: bool, optional
     """
 
-    def plot_mwd(RA,Dec,observed_flag,org=0,title='Mollweide projection', projection='mollweide',observed_plot=0):
+    def plot_mwd(RA, Dec, observed_flag, org=0, title='Mollweide projection', projection='mollweide', observed_plot=0):
         ''' 
         Plots targets on the sky in a 'Mollweide' projection.
         RA, Dec are arrays of the same length.
@@ -554,46 +594,54 @@ def observed_sample_plots(upload=True):
         projection is the kind of projection: 'mollweide', 'aitoff', 'hammer', 'lambert'
         '''
 
-        x = np.remainder(RA+360-org,360) # shift RA values
-        ind = x>180
+        x = np.remainder(RA+360-org, 360)  # shift RA values
+        ind = x > 180
         x[ind] -= 360    # scale conversion to [-180, 180]
-        x=-x    # reverse the scale: East to the left
-        x_tick_labels = np.array([150, 120, 90, 60, 30, 0, 330, 300, 270, 240, 210]) #Label in degrees
-        #x_tick_labels = np.array([150,140,130,120,110,100,90,80,70,60,50,40,30,20,10,0,350,340,330,320,310,300,290,280,270,260,250,240,230,220,210]) #FinerLabel in degrees
+        x = -x    # reverse the scale: East to the left
+        x_tick_labels = np.array(
+            [150, 120, 90, 60, 30, 0, 330, 300, 270, 240, 210])  # Label in degrees
+        # x_tick_labels = np.array([150,140,130,120,110,100,90,80,70,60,50,40,30,20,10,0,350,340,330,320,310,300,290,280,270,260,250,240,230,220,210]) #FinerLabel in degrees
 
-        x_tick_labels = np.remainder(x_tick_labels+360+org,360)
+        x_tick_labels = np.remainder(x_tick_labels+360+org, 360)
         # x_tick_labels = np.array([150, 120, 90, 60, 30, 0, 330, 300, 270, 240, 210])/15 #Label in hours
         # x_tick_labels = np.remainder(x_tick_labels+24+org/15,24)
         x_tick_labels = [int(i) for i in x_tick_labels]
         fig = plt.figure(figsize=(15*.8, 7*.8))
         ax = fig.add_subplot(111, projection=projection)
-        #ax.scatter(np.radians(x),np.radians(Dec),color=color,alpha=0.4,zorder=1, label='Targets')  # convert degrees to radians
+        # ax.scatter(np.radians(x),np.radians(Dec),color=color,alpha=0.4,zorder=1, label='Targets')  # convert degrees to radians
         for i in range(len(x)):
             if np.array(observed_flag)[i] == 0:
                 color = 'k'
             else:
                 color = 'k'
                 if observed_plot == 1:
-                    color = 'g' #Turn on observed targest plotting.
-            ax.scatter(np.radians(x[i]),np.radians(Dec[i]),color=color,alpha=0.4,zorder=1,s=25)
-        ax.set_yticklabels([str(int(i))+'$^\circ$' for i in np.round(ax.get_yticks()*180/np.pi)],fontsize=15)
+                    color = 'g'  # Turn on observed targest plotting.
+            ax.scatter(np.radians(x[i]), np.radians(
+                Dec[i]), color=color, alpha=0.4, zorder=1, s=25)
+        ax.set_yticklabels(
+            [str(int(i))+'$^\circ$' for i in np.round(ax.get_yticks()*180/np.pi)], fontsize=15)
         ax.title.set_fontsize(20)
         ax.set_xlabel('RA')
         ax.xaxis.label.set_fontsize(20)
         ax.set_ylabel("Dec")
         ax.yaxis.label.set_fontsize(20)
-        ax.set_xticklabels([],fontsize=16)     # we add the scale on the x axis
-        ax.grid(True,alpha=0.3)
-        month_texts = ['Sep','Aug','Jul','Jun','May','Apr','Mar','Feb','Jan','Dec','Nov','Oct']
+        # we add the scale on the x axis
+        ax.set_xticklabels([], fontsize=16)
+        ax.grid(True, alpha=0.3)
+        month_texts = ['Sep', 'Aug', 'Jul', 'Jun', 'May',
+                       'Apr', 'Mar', 'Feb', 'Jan', 'Dec', 'Nov', 'Oct']
         for i in range(len(month_texts)):
-            ax.text(-180*np.pi/180+15*np.pi/180+30*np.pi/180*i,-35*np.pi/180,month_texts[i],ha='center',va='center',fontsize=14)
+            ax.text(-180*np.pi/180+15*np.pi/180+30*np.pi/180*i, -35*np.pi /
+                    180, month_texts[i], ha='center', va='center', fontsize=14)
         for i in range(len(x_tick_labels)):
-            ax.text(-150*np.pi/180+30*np.pi/180*i,-22.5*np.pi/180,str(x_tick_labels[i])+'$^\circ$',ha='center',va='center',fontsize=15)
-        
-        #Plot monsoon season. 
-        monsoon_x_vertices = np.array([-150,-150,-90,-90,-150])*np.pi/180
-        monsoon_y_vertices = np.array([-90,90,90,-90,-90])*np.pi/180
-        monsoon_polygon = Polygon(np.array([[monsoon_x_vertices[i],monsoon_y_vertices[i]] for i in range(len(monsoon_x_vertices))]),color='r',alpha=0.15,label='Flagstaff monsoon season')    
+            ax.text(-150*np.pi/180+30*np.pi/180*i, -22.5*np.pi/180,
+                    str(x_tick_labels[i])+'$^\circ$', ha='center', va='center', fontsize=15)
+
+        # Plot monsoon season.
+        monsoon_x_vertices = np.array([-150, -150, -90, -90, -150])*np.pi/180
+        monsoon_y_vertices = np.array([-90, 90, 90, -90, -90])*np.pi/180
+        monsoon_polygon = Polygon(np.array([[monsoon_x_vertices[i], monsoon_y_vertices[i]] for i in range(
+            len(monsoon_x_vertices))]), color='r', alpha=0.15, label='Flagstaff monsoon season')
         ax.add_patch(monsoon_polygon)
         plt.show()
         return ax
@@ -605,61 +653,70 @@ def observed_sample_plots(upload=True):
     print('Download from the PINES Google Drive.\n')
 
     df = pd.read_excel(sample_path)
-    df = df.dropna(how='all') #Remove rows that are all NaNs. 
+    df = df.dropna(how='all')  # Remove rows that are all NaNs.
 
-    good_locs = np.where(df['Good'] == 1)[0] #Get only "good" targets
+    good_locs = np.where(df['Good'] == 1)[0]  # Get only "good" targets
     ra = np.array(df['RA (deg)'][good_locs])
     dec = np.array(df['Dec (deg)'][good_locs])
     group_ids = df['Group ID'][good_locs]
     observed_flag = df['Observed?'][good_locs]
-    observed_groups = np.unique(np.array(group_ids)[np.where(observed_flag != 0)[0]]) #Get the groups that have been observed. 
+    # Get the groups that have been observed.
+    observed_groups = np.unique(
+        np.array(group_ids)[np.where(observed_flag != 0)[0]])
     number_observed = len(np.array(group_ids)[np.where(observed_flag != 0)[0]])
-    
-    #Plot 1: Sky map of good targets based on group.
+
+    # Plot 1: Sky map of good targets based on group.
     print('Updating sky plot...')
-    ax = plot_mwd(ra,dec,observed_flag,org=180,projection='mollweide',observed_plot=1)
+    ax = plot_mwd(ra, dec, observed_flag, org=180,
+                  projection='mollweide', observed_plot=1)
     handles, labels = plt.gca().get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
-    ax.legend(by_label.values(), by_label.keys(), loc=1, bbox_to_anchor=(1.1, 1.1), fontsize=16)
+    ax.legend(by_label.values(), by_label.keys(), loc=1,
+              bbox_to_anchor=(1.1, 1.1), fontsize=16)
     ax.grid(alpha=0.2)
 
-    group_id_inds = np.arange(0,max(group_ids)+1)
+    group_id_inds = np.arange(0, max(group_ids)+1)
 
-    #Now loop over group_id inds, and draw boundaries around each group.
+    # Now loop over group_id inds, and draw boundaries around each group.
     for i in group_id_inds:
         targs_in_group = np.where(group_ids == i)[0]
         try:
-            cluster_coords = np.array([[ra[i],dec[i]] for i in targs_in_group])
+            cluster_coords = np.array([[ra[i], dec[i]]
+                                      for i in targs_in_group])
         except:
             pdb.set_trace()
         hull = ConvexHull(cluster_coords)
         for s in range(len(hull.simplices)):
             simplex = hull.simplices[s]
-            x = np.remainder(cluster_coords[simplex, 0]+360-180,360) # shift RA values
-            ind = x>180
+            # shift RA values
+            x = np.remainder(cluster_coords[simplex, 0]+360-180, 360)
+            ind = x > 180
             x[ind] -= 360    # scale conversion to [-180, 180]
-            x=-x    # reverse the scale: East to the left
+            x = -x    # reverse the scale: East to the left
             if i in observed_groups:
-                color =  'g'
-                ax.plot(x*np.pi/180, cluster_coords[simplex, 1]*np.pi/180,color = color,lw=2,zorder=0,alpha=0.6,label='Observed')
+                color = 'g'
+                ax.plot(x*np.pi/180, cluster_coords[simplex, 1]*np.pi/180,
+                        color=color, lw=2, zorder=0, alpha=0.6, label='Observed')
             else:
                 color = 'k'
-                ax.plot(x*np.pi/180, cluster_coords[simplex, 1]*np.pi/180,color = color,lw=2,zorder=0,alpha=0.6,label='Not yet observed')
+                ax.plot(x*np.pi/180, cluster_coords[simplex, 1]*np.pi/180,
+                        color=color, lw=2, zorder=0, alpha=0.6, label='Not yet observed')
 
     ax.grid(alpha=0.4)
     handles, labels = plt.gca().get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
 
-    ax.legend(by_label.values(), by_label.keys(), loc=1, bbox_to_anchor=(0.65, 0.225))
-    ax.set_title('PINES sample \n '+str(int(max(group_ids)+1))+' groups, '+str(len(good_locs))+' targets',fontsize=20)
+    ax.legend(by_label.values(), by_label.keys(),
+              loc=1, bbox_to_anchor=(0.65, 0.225))
+    ax.set_title('PINES sample \n '+str(int(max(group_ids)+1)) +
+                 ' groups, '+str(len(good_locs))+' targets', fontsize=20)
     plt.tight_layout()
     sky_map_output_path = pines_path/('Misc/updated_sky_plot.png')
-    plt.savefig(sky_map_output_path,dpi=300)
-    plt.close() 
-
+    plt.savefig(sky_map_output_path, dpi=300)
+    plt.close()
 
     ntargs = len(df)
-    #Now do magnitude/SpT histograms
+    # Now do magnitude/SpT histograms
     print('Updating target histograms...')
     mags = np.zeros(ntargs)
     observed_SpTs = []
@@ -673,7 +730,8 @@ def observed_sample_plots(upload=True):
             if df['Observed?'][i] != 0:
                 observed_SpTs.append(df['SpT'][i])
                 observed_mags.append(mags[i])
-        except: #Some values don't follow the normal +/- convention (they were upper limits in the Gagne sheet), so have to read them in differently. 
+        # Some values don't follow the normal +/- convention (they were upper limits in the Gagne sheet), so have to read them in differently.
+        except:
             #mags[i] = float(df['2MASS H'][i])
             mags[i] = float(df['2MASS J'][i])
             SpT.append(df['SpT'][i])
@@ -694,7 +752,7 @@ def observed_sample_plots(upload=True):
             SpT_number[i] = float(df['SpT'][i][1:])
             if df['Observed?'][i] != 0:
                 observed_SpT_numbers.append(SpT_number[i])
-        else: 
+        else:
             SpT_number[i] = 10 + float(df['SpT'][i][1:])
             if df['Observed?'][i] != 0:
                 observed_SpT_numbers.append(SpT_number[i])
@@ -705,38 +763,46 @@ def observed_sample_plots(upload=True):
     median_mag = np.median(mags)
 
     scale_factor = 0.5
-    fig,ax = plt.subplots(nrows=2,ncols=1,figsize=(18*scale_factor,15*scale_factor))
-    bins = np.array([11.25,11.75,12.25,12.75,13.25,13.75,14.25,14.75,15.25,15.75, 16.25, 16.75]) - 0.25
-    ax[0].hist(mags, bins=bins, histtype='step',lw=3, ls='--', label='Full sample')
-    ax[0].hist(observed_mags, bins=bins, histtype='bar', label='Observed sample', color='tab:blue')
-    ax[0].axvline(median_mag, color='r', label='Median $m_J$ = {:2.1f}'.format(median_mag))
-    ticks = [11,11.5,12,12.5,13,13.5,14,14.5,15,15.5,16,16.5]
+    fig, ax = plt.subplots(nrows=2, ncols=1, figsize=(
+        18*scale_factor, 15*scale_factor))
+    bins = np.array([11.25, 11.75, 12.25, 12.75, 13.25, 13.75,
+                    14.25, 14.75, 15.25, 15.75, 16.25, 16.75]) - 0.25
+    ax[0].hist(mags, bins=bins, histtype='step',
+               lw=3, ls='--', label='Full sample')
+    ax[0].hist(observed_mags, bins=bins, histtype='bar',
+               label='Observed sample', color='tab:blue')
+    ax[0].axvline(median_mag, color='r',
+                  label='Median $m_J$ = {:2.1f}'.format(median_mag))
+    ticks = [11, 11.5, 12, 12.5, 13, 13.5, 14, 14.5, 15, 15.5, 16, 16.5]
     ax[0].plot()
     ax[0].set_xticks(ticks)
     ax[0].set_xticklabels([str(i) for i in ticks])
-    ax[0].set_xlabel('$m_J$',fontsize=20)
-    ax[0].set_ylabel('Number of targets',fontsize=20)
+    ax[0].set_xlabel('$m_J$', fontsize=20)
+    ax[0].set_ylabel('Number of targets', fontsize=20)
     ax[0].tick_params(axis='both', which='major', labelsize=16)
     ax[0].legend(fontsize=16, loc='upper left')
-    #ax[0].grid(alpha=0.2)
+    # ax[0].grid(alpha=0.2)
 
-    ax[1].hist(SpT_number,bins=np.arange(-0.5,max(SpT_number)+0.5,1),histtype='step',lw=3,color='orange', ls='--', label='Full sample')
-    ax[1].hist(observed_SpT_numbers,bins=np.arange(-0.5,max(SpT_number)+0.5,1),histtype='bar',lw=3,color='orange', label='Observed sample')
-    ticks = np.arange(0,max(SpT_number),1)
+    ax[1].hist(SpT_number, bins=np.arange(-0.5, max(SpT_number)+0.5, 1),
+               histtype='step', lw=3, color='orange', ls='--', label='Full sample')
+    ax[1].hist(observed_SpT_numbers, bins=np.arange(-0.5, max(SpT_number)+0.5, 1),
+               histtype='bar', lw=3, color='orange', label='Observed sample')
+    ticks = np.arange(0, max(SpT_number), 1)
     ax[1].set_xticks(ticks)
-    ax[1].set_xticklabels(['L0','L1','L2','L3','L4','L5','L6','L7','L8','L9','T0','T1','T2','T3','T4','T5','T6','T7'])
-    ax[1].set_xlabel('Spectral Type',fontsize=20)
-    ax[1].set_ylabel('Number of targets',fontsize=20)
+    ax[1].set_xticklabels(['L0', 'L1', 'L2', 'L3', 'L4', 'L5', 'L6',
+                          'L7', 'L8', 'L9', 'T0', 'T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'])
+    ax[1].set_xlabel('Spectral Type', fontsize=20)
+    ax[1].set_ylabel('Number of targets', fontsize=20)
     ax[1].tick_params(axis='both', which='major', labelsize=16)
     ax[1].legend(fontsize=16, loc='upper right')
-    #ax[1].grid(alpha=0.2)
+    # ax[1].grid(alpha=0.2)
 
     plt.tight_layout()
     histogram_output_path = pines_path/'Misc/target_histograms.png'
     plt.savefig(histogram_output_path, dpi=300)
-    plt.close() 
+    plt.close()
 
-    #Edit the observing.html page to update the number of observed targets. 
+    # Edit the observing.html page to update the number of observed targets.
     print('Updating observing.html...')
     if not (pines_path/'Misc/observing.html').exists():
         print('Grabbing copy of observing.html from the PINES server.')
@@ -749,10 +815,12 @@ def observed_sample_plots(upload=True):
 
     with open(str(pines_path/('Misc/observing.html')), 'r') as f:
         lines = f.readlines()
-    
-    edit_line_ind = np.where(['To date, PINES has observed' in i for i in lines])[0][0]
+
+    edit_line_ind = np.where(
+        ['To date, PINES has observed' in i for i in lines])[0][0]
     edit_line = lines[edit_line_ind]
-    edit_line = edit_line.replace(edit_line.split('<u>')[1].split('</u>')[0], str(number_observed))
+    edit_line = edit_line.replace(edit_line.split(
+        '<u>')[1].split('</u>')[0], str(number_observed))
     lines[edit_line_ind] = edit_line
     with open(str(pines_path/('Misc/observing.html')), 'w') as f:
         f.writelines(lines)
@@ -766,6 +834,7 @@ def observed_sample_plots(upload=True):
         sftp.chdir('/web')
         sftp.put(pines_path/('Misc/observing.html'), '/web/observing.html')
         print('PINES website updated!')
+
 
 def pines_logging(filename, date, target_name, filter_name, exptime, airmass, x_shift, y_shift, x_seeing, y_seeing, post_processing_flag,   shift_quality_flag):
     """Exports a line of log text in the same style as the telescope observing logs. 
@@ -796,18 +865,25 @@ def pines_logging(filename, date, target_name, filter_name, exptime, airmass, x_
     :type shift_quality_flag: int
     """
     try:
-        log_text = ' {:<19}, {:<20}, {:<30}, {:<6}, {:<8}, {:<8}, {:<8}, {:<8}, {:<9}, {:<7}, {:<21}, {:<20}\n'.format(filename, date, target_name, 
-                                                                                                        filter_name,str(exptime),
-                                                                                                        str(airmass),str(x_shift),
-                                                                                                        str(y_shift),
-                                                                                                        str(x_seeing),
-                                                                                                        str(y_seeing),
-                                                                                                        str(post_processing_flag),
-                                                                                                        str(shift_quality_flag))
+        log_text = ' {:<19}, {:<20}, {:<30}, {:<6}, {:<8}, {:<8}, {:<8}, {:<8}, {:<9}, {:<7}, {:<21}, {:<20}\n'.format(filename, date, target_name,
+                                                                                                                       filter_name, str(
+                                                                                                                           exptime),
+                                                                                                                       str(airmass), str(
+                                                                                                                           x_shift),
+                                                                                                                       str(
+                                                                                                                           y_shift),
+                                                                                                                       str(
+                                                                                                                           x_seeing),
+                                                                                                                       str(
+                                                                                                                           y_seeing),
+                                                                                                                       str(
+                                                                                                                           post_processing_flag),
+                                                                                                                       str(shift_quality_flag))
     except:
         pdb.set_trace()
 
     return log_text
+
 
 def shift_measurer(target, image_name, sftp, num_sources=15, closeness_tolerance=10.):
     """Measure shifts between an image and the master synthetic image for a target. 
@@ -842,35 +918,38 @@ def shift_measurer(target, image_name, sftp, num_sources=15, closeness_tolerance
     '''
 
     def corr_shift_determination(corr):
-        #Measure shift between the check and master images by fitting a 2D gaussian to corr. This gives sub-pixel accuracy. 
-        y_max, x_max = np.unravel_index(np.argmax(corr), corr.shape) #Find the pixel with highest correlation, then use this as estimate for gaussian fit.
+        # Measure shift between the check and master images by fitting a 2D gaussian to corr. This gives sub-pixel accuracy.
+        # Find the pixel with highest correlation, then use this as estimate for gaussian fit.
+        y_max, x_max = np.unravel_index(np.argmax(corr), corr.shape)
         y, x = np.mgrid[y_max-10:y_max+10, x_max-10:x_max+10]
-        corr_cut =  corr[y,x]
-        gaussian_init = models.Gaussian2D(np.max(corr_cut),x_max,y_max,8/2.355,8/2.355,0)
+        corr_cut = corr[y, x]
+        gaussian_init = models.Gaussian2D(
+            np.max(corr_cut), x_max, y_max, 8/2.355, 8/2.355, 0)
         fit_gauss = fitting.LevMarLSQFitter()
-        gaussian = fit_gauss(gaussian_init, x, y,corr_cut)
+        gaussian = fit_gauss(gaussian_init, x, y, corr_cut)
         fit_x = gaussian.x_mean.value
         fit_y = gaussian.y_mean.value
 
         x_shift = fit_x - 1024
-        y_shift = fit_y - 1024 
-        return(x_shift,y_shift)
-       
+        y_shift = fit_y - 1024
+        return(x_shift, y_shift)
+
     #image_name = '20201005.354_red.fits'
 
     pines_path = pines_dir_check()
     short_name = short_name_creator(target)
     synthetic_filename = target.replace(' ', '')+'_master_synthetic.fits'
-    synthetic_path = pines_path/('Calibrations/Master Synthetic Images/'+synthetic_filename)
+    synthetic_path = pines_path / \
+        ('Calibrations/Master Synthetic Images/'+synthetic_filename)
 
     image_path = pines_path/('Objects/'+short_name+'/reduced/'+image_name)
-    #Check for the appropriate master synthetic image on disk. If it's not there, get from PINES server. 
+    # Check for the appropriate master synthetic image on disk. If it's not there, get from PINES server.
     if not synthetic_path.exists():
         get_master_synthetic_image(sftp, target)
 
     master_synthetic_image = fits.open(synthetic_path)[0].data
-    
-    #If the reduced image doesn't exist, download raw from PINES server and reduce it. 
+
+    # If the reduced image doesn't exist, download raw from PINES server and reduce it.
     if not image_path.exists():
         missing_filename = image_path.name.split('_')[0]+'.fits'
         sftp.chdir('/data/raw/mimir/')
@@ -885,28 +964,32 @@ def shift_measurer(target, image_name, sftp, num_sources=15, closeness_tolerance
         else:
             inds = np.arange(ind-1, ind+2)
             runs = np.array(runs)[inds]
-            runs = [runs[1], runs[0], runs[2]] 
+            runs = [runs[1], runs[0], runs[2]]
 
         for jj in range(len(runs)):
             nights = sftp.listdir('/data/raw/mimir/'+runs[jj])
             nights = [i for i in nights if i[0] == '2']
             for kk in range(len(nights)):
-                server_files = sftp.listdir('/data/raw/mimir/'+runs[jj]+'/'+nights[kk])
+                server_files = sftp.listdir(
+                    '/data/raw/mimir/'+runs[jj]+'/'+nights[kk])
                 if missing_filename in server_files:
-                    print('File found: {}'.format('/data/raw/mimir/'+runs[jj]+'/'+nights[kk]+'/'+missing_filename))
+                    print('File found: {}'.format('/data/raw/mimir/' +
+                          runs[jj]+'/'+nights[kk]+'/'+missing_filename))
                     found = True
-                    #Download the file and grab relevant parameters from the header. 
-                    sftp.get('/data/raw/mimir/'+runs[jj]+'/'+nights[kk]+'/'+missing_filename, pines_path/('Objects/'+short_name+'/raw/'+missing_filename))
+                    # Download the file and grab relevant parameters from the header.
+                    sftp.get('/data/raw/mimir/'+runs[jj]+'/'+nights[kk]+'/'+missing_filename, pines_path/(
+                        'Objects/'+short_name+'/raw/'+missing_filename))
                     break
         reduce(target)
 
-    #Read in the check image and interpolate/background subtract to make source detection easier. 
+    # Read in the check image and interpolate/background subtract to make source detection easier.
     check_image = fits.open(image_path)[0].data
-    check_image = interpolate_replace_nans(check_image, kernel=Gaussian2DKernel(x_stddev=0.5))
+    check_image = interpolate_replace_nans(
+        check_image, kernel=Gaussian2DKernel(x_stddev=0.5))
     bg_2d = Background2D(check_image, box_size=64)
     check_image = check_image - bg_2d.background
 
-    #Read in the log and figure out what seeing FWHM to use. 
+    # Read in the log and figure out what seeing FWHM to use.
     date = image_name.split('.')[0]
     log = pines_log_reader(pines_path/('Logs/'+date+'_log.txt'))
     raw_filename = image_name.split('_')[0]+'.fits'
@@ -915,27 +998,27 @@ def shift_measurer(target, image_name, sftp, num_sources=15, closeness_tolerance
 
     if (seeing <= 1.0) or (seeing >= 7.0) or (np.isnan(seeing)):
         if ind >= 5:
-            seeing = np.nanmedian(np.array(log['X seeing'][ind-5:ind], dtype='float'))
+            seeing = np.nanmedian(
+                np.array(log['X seeing'][ind-5:ind], dtype='float'))
         else:
             seeing = 2.6
-    
 
-
-    #Find sources in the image. 
+    # Find sources in the image.
     sources = detect_sources(image_path, seeing, edge_tolerance=10, thresh=3.5)
-    
-    #Comb the returned sources and cut any that are too close to another one. 
-    #This can happen if the actual seeing differs from that recorded in the log. 
+
+    # Comb the returned sources and cut any that are too close to another one.
+    # This can happen if the actual seeing differs from that recorded in the log.
     bad_inds = []
     for i in range(len(sources)):
         if i not in bad_inds:
             x = sources['xcenter'][i]
             y = sources['ycenter'][i]
-            dists = np.array(np.sqrt((sources['xcenter']-x)**2 + (sources['ycenter']-y)**2))
-            duplicate_inds = np.where((dists < closeness_tolerance) & (dists != 0))[0]
+            dists = np.array(
+                np.sqrt((sources['xcenter']-x)**2 + (sources['ycenter']-y)**2))
+            duplicate_inds = np.where(
+                (dists < closeness_tolerance) & (dists != 0))[0]
             if len(duplicate_inds) >= 1:
                 bad_inds.extend(duplicate_inds)
-    
 
     ap_sum = np.array(sources['aperture_sum'])
     source_x = np.array(sources['xcenter'])
@@ -953,21 +1036,21 @@ def shift_measurer(target, image_name, sftp, num_sources=15, closeness_tolerance
     #     qp(check_image)
     #     plt.plot(source_x, source_y, 'rx')
     #     pdb.set_trace()
-    
+
     check_synthetic_image = synthetic_image_maker(source_x, source_y)
 
-    #Measure the shift between the synthetic images.
-    corr = signal.fftconvolve(master_synthetic_image,check_synthetic_image[::-1,::-1])
+    # Measure the shift between the synthetic images.
+    corr = signal.fftconvolve(master_synthetic_image,
+                              check_synthetic_image[::-1, ::-1])
 
-    (x_shift,y_shift) = corr_shift_determination(corr)
+    (x_shift, y_shift) = corr_shift_determination(corr)
     #print('(X shift, Y shift): ({:3.1f}, {:3.1f})'.format(x_shift, -y_shift))
-    #print('')
-
-
+    # print('')
 
     return (x_shift, -y_shift, source_x, source_y, check_image)
 
-def synthetic_image_maker(x_centroids,y_centroids,fwhm=float):
+
+def synthetic_image_maker(x_centroids, y_centroids, fwhm=float):
     """Construct a synthetic image from centroid data
 
     :param x_centroids: array of x positions
@@ -977,14 +1060,16 @@ def synthetic_image_maker(x_centroids,y_centroids,fwhm=float):
     :param fwhm: fwhm of synthetic sources, defaults to 8
     :type fwhm: float, optional
     """
-    #Construct synthetic images from centroid/flux data.
-    synthetic_image = np.zeros((1024,1024))
+    # Construct synthetic images from centroid/flux data.
+    synthetic_image = np.zeros((1024, 1024))
     sigma = fwhm/2.355
     for i in range(len(x_centroids)):
-        #Cut out little boxes around each source and add in Gaussian representations. This saves time. 
+        # Cut out little boxes around each source and add in Gaussian representations. This saves time.
         int_centroid_x = int(np.round(x_centroids[i]))
         int_centroid_y = int(np.round(y_centroids[i]))
-        y_cut, x_cut = np.mgrid[int_centroid_y-10:int_centroid_y+10,int_centroid_x-10:int_centroid_x+10]
+        y_cut, x_cut = np.mgrid[int_centroid_y-10:int_centroid_y +
+                                10, int_centroid_x-10:int_centroid_x+10]
         dist = np.sqrt((x_cut-x_centroids[i])**2+(y_cut-y_centroids[i])**2)
-        synthetic_image[y_cut,x_cut] += np.exp(-((dist)**2/(2*sigma**2)+((dist)**2/(2*sigma**2))))
+        synthetic_image[y_cut,
+                        x_cut] += np.exp(-((dist)**2/(2*sigma**2)+((dist)**2/(2*sigma**2))))
     return(synthetic_image)
