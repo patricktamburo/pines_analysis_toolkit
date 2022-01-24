@@ -1,20 +1,72 @@
 pines\_analysis\_toolkit package
 ================================
 
-Subpackages
------------
+Submodules
+----------
 
-.. toctree::
-   :maxdepth: 4
+pines\_analysis\_toolkit.analysis module
+----------------------------------------
 
-   pines_analysis_toolkit.analysis
-   pines_analysis_toolkit.astrometry
-   pines_analysis_toolkit.data
-   pines_analysis_toolkit.observing
-   pines_analysis_toolkit.output
-   pines_analysis_toolkit.photometry
-   pines_analysis_toolkit.pwv
-   pines_analysis_toolkit.utils
+.. automodule:: pines_analysis_toolkit.analysis
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+pines\_analysis\_toolkit.astrometry module
+------------------------------------------
+
+.. automodule:: pines_analysis_toolkit.astrometry
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+pines\_analysis\_toolkit.data module
+------------------------------------
+
+.. automodule:: pines_analysis_toolkit.data
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+pines\_analysis\_toolkit.observing module
+-----------------------------------------
+
+.. automodule:: pines_analysis_toolkit.observing
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+pines\_analysis\_toolkit.output module
+--------------------------------------
+
+.. automodule:: pines_analysis_toolkit.output
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+pines\_analysis\_toolkit.photometry module
+------------------------------------------
+
+.. automodule:: pines_analysis_toolkit.photometry
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+pines\_analysis\_toolkit.pwv module
+-----------------------------------
+
+.. automodule:: pines_analysis_toolkit.pwv
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+pines\_analysis\_toolkit.utils module
+-------------------------------------
+
+.. automodule:: pines_analysis_toolkit.utils
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 Module contents
 ---------------

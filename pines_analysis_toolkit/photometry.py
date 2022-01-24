@@ -1,16 +1,15 @@
 import pines_analysis_toolkit as pat
 from pines_analysis_toolkit.analysis import raw_flux_plot
-from pines_analysis_toolkit.utils import jd_utc_to_bjd_tdb
-from pines_analysis_toolkit.utils import pines_dir_check, short_name_creator, pines_log_reader, quick_plot as qp, jd_utc_to_bjd_tdb, get_source_names, gif_maker
-from pines_analysis_toolkit.data import master_dark_stddev_chooser
-from pines_analysis_toolkit.data import bpm_chooser
-from pines_analysis_toolkit.data import bg_2d
+from pines_analysis_toolkit.utils import pines_dir_check, short_name_creator, pines_log_reader, quick_plot as qp, jd_utc_to_bjd_tdb, get_source_names, jd_utc_to_bjd_tdb
+from pines_analysis_toolkit.data import master_dark_stddev_chooser, bpm_chooser, bg_2d
+from pines_analysis_toolkit.analysis import night_splitter, block_splitter
+from pines_analysis_toolkit.observing import seeing_measurer
 
 from astropy.io import fits
 from astropy.stats import sigma_clipped_stats, gaussian_sigma_to_fwhm
 from astropy.table import Table, QTable
 import astropy.units as u
-from astropy.convolution import Gaussian2DKernel, interpolate_replace_nans
+from astropy.convolution import Gaussian2DKernel, interpolate_replace_nans, convolve, Gaussian1DKernel
 from astropy.visualization import ZScaleInterval, ImageNormalize, SquaredStretch, LinearStretch, SqrtStretch, MinMaxInterval, simple_norm
 from astropy.modeling import models, fitting
 from astropy.modeling.fitting import LevMarLSQFitter
@@ -18,18 +17,16 @@ from astropy.nddata import NDData
 from astropy.utils.exceptions import AstropyUserWarning
 from astropy.coordinates import SkyCoord, Angle
 
-from astroquery.vizier import Vizier
-from astroquery.gaia import Gaia
-
-from photutils import CircularAperture, CircularAnnulus, aperture_photometry, make_source_mask
+from photutils import CircularAperture, CircularAnnulus, aperture_photometry, make_source_mask, centroid_2dg, centroid_1dg, centroid_com, EPSFBuilder, aperture_photometry, EPSFFitter
 from photutils.psf import BasicPSFPhotometry, IntegratedGaussianPRF, DAOGroup, extract_stars, IterativelySubtractedPSFPhotometry
 from photutils.utils import calc_total_error
-from photutils.background import MMMBackground, MADStdBackgroundRMS
-from photutils import EPSFBuilder, aperture_photometry, EPSFFitter
-from photutils.detection import IRAFStarFinder
+from photutils.detection import IRAFStarFinder, DAOStarFinder
+from photutils.centroids import centroid_sources
+from photutils.background import MMMBackground
 
-from scipy.stats import sigmaclip
+from scipy.stats import sigmaclip, mode as scipy_mode
 from scipy import optimize
+from scipy import interpolate
 
 import numpy as np
 from natsort import natsorted
@@ -40,9 +37,13 @@ import math
 import shutil
 import warnings
 import os
+import time
+from glob import glob
+import julian
 
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import cm
+from matplotlib.pyplot import Circle
 from progressbar import ProgressBar
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from mpl_toolkits.mplot3d import Axes3D
@@ -138,7 +139,7 @@ def iraf_style_photometry(phot_apertures, bg_apertures, data, dark_std_data, hea
     for i in range(len(phot_apertures.positions)):
         pos = phot_apertures.positions[i]
         # Cutout around the source position
-        cutout_w = 15
+        cutout_w = 30
         x_pos = pos[0]
         y_pos = pos[1]
         cutout = data[int((y_pos-cutout_w)):int(y_pos+cutout_w)+1,
@@ -151,12 +152,10 @@ def iraf_style_photometry(phot_apertures, bg_apertures, data, dark_std_data, hea
         ap_mask = ap.to_mask(method='exact')
         ap_cut = ap_mask.cutout(cutout)
 
-        #non_linear_sum = np.sum(ap_cut/gain > non_linear_threshold)
-
-        # if non_linear_sum > 0:
-        #     print('Pixels in the non-linear range!')
-        #     breakpoint()
-        bad_sum = np.sum(np.isnan(ap_cut))
+        try:
+            bad_sum = np.sum(np.isnan(ap_cut))
+        except:
+            breakpoint
 
         if bad_sum > 0:
             bads = np.where(np.isnan(cutout))
@@ -165,24 +164,6 @@ def iraf_style_photometry(phot_apertures, bg_apertures, data, dark_std_data, hea
 
             # Check if any bad pixels fall within the aperture. If so, set the interpolation flag to True for this source.
             if np.sum(bad_dists < phot_apertures.r+1):
-
-                # if np.sum(bad_dists < 1) == 0:
-                #     #ONLY interpolate if bad pixels lay away from centroid position by at least a pixel.
-                #     #2D gaussian fitting approach
-                #     #Set up a 2D Gaussian model to interpolate the bad pixel values in the cutout.
-                #     model_init = models.Const2D(amplitude=np.nanmedian(cutout))+models.Gaussian2D(amplitude=np.nanmax(cutout), x_mean=x_cutout, y_mean=y_cutout, x_stddev=seeing, y_stddev=seeing)
-                #     xx, yy = np.indices(cutout.shape) #2D grids of x and y coordinates
-                #     mask = ~np.isnan(cutout) #Find locations where the cutout has *good* values (i.e. not NaNs).
-                #     x = xx[mask] #Only use coordinates at these good values.
-                #     y = yy[mask]
-                #     cutout_1d = cutout[mask] #Make a 1D cutout using only the good values.
-                #     fitter = fitting.LevMarLSQFitter()
-                #     model_fit = fitter(model_init, x, y, cutout_1d) #Fit the model to the 1d cutout.
-                #     cutout[~mask] = model_fit(xx,yy)[~mask] #Interpolate the pixels in the cutout using the 2D Gaussian fit.
-                #     breakpoint()
-                #     #TODO: interpolate_replace_nans with 2DGaussianKernel probably gives better estimation of *background* pixels.
-                # else:
-                #     interpolation_flags[i] = True
 
                 # 2D gaussian fitting approach
                 # Set up a 2D Gaussian model to interpolate the bad pixel values in the cutout.
@@ -200,31 +181,16 @@ def iraf_style_photometry(phot_apertures, bg_apertures, data, dark_std_data, hea
                 # Fit the model to the 1d cutout.
                 model_fit = fitter(model_init, x, y, cutout_1d)
 
-                # #Uncomment this block to show inerpolation plots.
-                # norm = ImageNormalize(cutout, interval=ZScaleInterval())
-                # plt.ioff()
-                # fig, ax = plt.subplots(1, 3, figsize=(10,4), sharex=True, sharey=True)
-                # ax[0].imshow(cutout, origin='lower', norm=norm)
-                # ax[0].set_title('Data')
-                # ax[1].imshow(model_fit(xx,yy), origin='lower', norm=norm)
-                # ax[1].set_title('2D Gaussian Model')
-
                 # Interpolate the pixels in the cutout using the 2D Gaussian fit.
                 cutout[~mask] = model_fit(xx, yy)[~mask]
 
-                # ax[2].imshow(cutout, origin='lower', norm=norm)
-                # ax[2].set_title('Data w/ Bad\nPixels Replaced')
-                # plt.tight_layout()
-                # output_path = '/Users/tamburo/Desktop/interp_images/'+ str(i) + '/'+header['FILENAME'].split('.fits')[0]+'.png'
-                # plt.savefig(output_path, dpi=200)
-
                 interpolation_flags[i] = True
 
+                
                 # #Gaussian convolution approach.
                 # cutout = interpolate_replace_nans(cutout, kernel=Gaussian2DKernel(x_stddev=0.5))
-
+        
         phot_source = aperture_photometry(cutout, ap)
-
         # if np.isnan(phot_source['aperture_sum'][0]):
         #     breakpoint()
 
@@ -233,8 +199,7 @@ def iraf_style_photometry(phot_apertures, bg_apertures, data, dark_std_data, hea
     # Add positions/fluxes to a table
     xcenter = phot_apertures.positions[:, 0]*u.pix
     ycenter = phot_apertures.positions[:, 1]*u.pix
-    phot = QTable([xcenter, ycenter, aperture_sum],
-                  names=('xcenter', 'ycenter', 'aperture_sum'))
+    phot = QTable([xcenter, ycenter, aperture_sum], names=('xcenter', 'ycenter', 'aperture_sum'))
 
     # Now measure the background around each source.
     # Make a mask to block out any sources that might show up in the annuli and bias them.
@@ -371,7 +336,7 @@ def calc_aperture_mmm(data, mask, sigma_clip):
         return (mean, median, mode, std, actual_area)
 
 
-def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30., plots=False, gain=8.21, qe=0.9, force_output_path=''):
+def fixed_aper_phot(short_name, centroided_sources, ap_radii, an_in=12., an_out=30., gain=8.21, qe=0.9, force_output_path=''):
     '''Authors:
                 Patrick Tamburo, Boston University, June 2020
         Purpose:
@@ -384,7 +349,6 @@ def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.,
         ap_radii (list of floats): List of aperture radii in pixels for which aperture photometry wil be performed. 
         an_in (float, optional): The inner radius of the annulus used to estimate background, in pixels. 
         an_out (float, optional): The outer radius of the annulus used to estimate background, in pixels. 
-        plots (bool, optional): Whether or not to output surface plots. Images output to aper_phot directory within the object directory.
         gain (float, optional): The gain of the detector in e-/ADU.
         qe (float, optional): The quantum efficiency of the detector.
         force_output_path (path): if you want to manually set an output directory, specify the top-level here (i.e. the directory containing Logs, Objects, etc.)
@@ -398,8 +362,6 @@ def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.,
     else:
         pines_path = pines_dir_check()
 
-    short_name = short_name_creator(target)
-
     # Remove any leading/trailing spaces in the column names.
     centroided_sources.columns = centroided_sources.columns.str.lstrip()
     centroided_sources.columns = centroided_sources.columns.str.rstrip()
@@ -410,162 +372,92 @@ def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.,
         [x.name for x in reduced_path.glob('*red.fits')])
     reduced_files = np.array([reduced_path/i for i in reduced_filenames])
 
-    #source_names = natsorted(list(set([i.replace('X','').replace('Y','').replace('Centroid Warning','').strip() for i in centroided_sources.keys() if i != 'Filename'])))
     source_names = get_source_names(centroided_sources)
 
-    # Create output plot directories for each source.
-    if plots:
-        # Camera angles for surface plots
-        azim_angles = np.linspace(0, 360*1.5, len(reduced_files)) % 360
-        elev_angles = np.zeros(len(azim_angles)) + 25
-        for name in source_names:
-            # If the folders are already there, delete them.
-            source_path = (
-                pines_path/('Objects/'+short_name+'/aper_phot/'+name+'/'))
-            if source_path.exists():
-                shutil.rmtree(source_path)
-            # Create folders.
-            os.mkdir(source_path)
+    
+     # Declare a new dataframe to hold the information for all targets for this aperture.
+    columns = ['Filename', 'Time UT', 'Time JD UTC', 'Time BJD TDB',
+                'Night Number', 'Block Number', 'Airmass', 'Seeing']
+    for i in range(0, len(source_names)):
+        columns.append(source_names[i]+' Flux')
+        columns.append(source_names[i]+' Flux Error')
+        columns.append(source_names[i]+' Background')
+        columns.append(source_names[i]+' Interpolation Flag')
 
-    # Loop over all aperture radii.
-    for ap in ap_radii:
-        print('Doing fixed aperture photometry for {}, aperture radius = {:1.1f} pix, inner annulus radius = {} pix, outer annulus radius = {} pix.'.format(
-            target, ap, an_in, an_out))
+    ap_dfs = []
+    for i in range(len(ap_radii)):
+        ap_dfs.append(pd.DataFrame(index=range(len(reduced_files)), columns=columns))
+    
+    print('Doing fixed aperture photometry with radii = {} pixels.'.format(ap_radii))
+    pbar = ProgressBar()
+    for j in pbar(range(len(reduced_files))):
+        hdu = fits.open(reduced_files[j])[0]
+        data = hdu.data
+        header = hdu.header
 
-        # Declare a new dataframe to hold the information for all targets for this aperture.
-        columns = ['Filename', 'Time UT', 'Time JD UTC', 'Time BJD TDB',
-                   'Night Number', 'Block Number', 'Airmass', 'Seeing']
-        for i in range(0, len(source_names)):
-            columns.append(source_names[i]+' Flux')
-            columns.append(source_names[i]+' Flux Error')
-            columns.append(source_names[i]+' Background')
-            columns.append(source_names[i]+' Interpolation Flag')
+        # Get the source positions in this image.
+        positions = []
+        for i in range(len(source_names)):
+            positions.append((float(centroided_sources[source_names[i]+' Image X'][j]), float(centroided_sources[source_names[i]+' Image Y'][j])))
 
-        ap_df = pd.DataFrame(index=range(len(reduced_files)), columns=columns)
-        output_filename = pines_path/('Objects/'+short_name+'/aper_phot/' +
-                                      short_name+'_fixed_aper_phot_{:1.1f}_pix_radius.csv'.format(float(ap)))
+        # Read in some supporting information.
+        log_path = pines_path / ('Logs/'+reduced_files[j].name.split('.')[0]+'_log.txt')
+        log = pines_log_reader(log_path)
+        log_ind = np.where(log['Filename'] == reduced_files[j].name.split('_')[0]+'.fits')[0][0]
+        
+        # Get the closest date master_dark_stddev image for this exposure time.
+        # We'll use this to measure read noise and dark current.
+        master_dark_stddev = master_dark_stddev_chooser(pines_path/('Calibrations/Darks/Master Darks Stddev/'), header)
 
-        # Loop over all images.
-        pbar = ProgressBar()
-        for j in pbar(range(len(reduced_files))):
-            data = fits.open(reduced_files[j])[0].data
-
-            # Read in some supporting information.
-            log_path = pines_path / \
-                ('Logs/'+reduced_files[j].name.split('.')[0]+'_log.txt')
-            log = pines_log_reader(log_path)
-            log_ind = np.where(
-                log['Filename'] == reduced_files[j].name.split('_')[0]+'.fits')[0][0]
-
-            header = fits.open(reduced_files[j])[0].header
-            date_obs = header['DATE-OBS']
-            # Catch a case that can cause datetime strptime to crash; Mimir headers sometimes have DATE-OBS with seconds specified as 010.xx seconds, when it should be 10.xx seconds.
-            if len(date_obs.split(':')[-1].split('.')[0]) == 3:
-                date_obs = date_obs.split(
-                    ':')[0] + ':' + date_obs.split(':')[1] + ':' + date_obs.split(':')[-1][1:]
-
-            if date_obs.split(':')[-1] == '60.00':
-                date_obs = date_obs.split(
-                    ':')[0]+':'+str(int(date_obs.split(':')[1])+1)+':00.00'
-            # Keep a try/except clause here in case other unknown DATE-OBS formats pop up.
-
-            if '.' not in date_obs:
-                time_fmt = '%Y-%m-%dT%H:%M:%S'
-            else:
-                time_fmt = '%Y-%m-%dT%H:%M:%S.%f'
-
-            try:
-                date = datetime.datetime.strptime(date_obs, time_fmt)
-            except:
-                print(
-                    'Header DATE-OBS format does not match the format code in strptime! Inspect/correct the DATE-OBS value.')
-                breakpoint()
-
-            # Get the closest date master_dark_stddev image for this exposure time.
-            # We'll use this to measure read noise and dark current.
-            date_str = date_obs.split('T')[0].replace('-', '')
-            master_dark_stddev = master_dark_stddev_chooser(
-                pines_path/('Calibrations/Darks/Master Darks Stddev/'), header)
-
-            days = date.day + \
-                hmsm_to_days(date.hour, date.minute,
-                             date.second, date.microsecond)
-            jd = date_to_jd(date.year, date.month, days)
-            ap_df['Filename'][j] = reduced_files[j].name
-            ap_df['Time UT'][j] = header['DATE-OBS']
+        date = pat.utils.mimir_date_reader(header)
+        jd = julian.to_jd(date)
+        filename = reduced_files[j].name
+        time_ut = header['DATE-OBS']
+        time_bjd = jd_utc_to_bjd_tdb(jd, header['TELRA'], header['TELDEC'])
+        night_number = centroided_sources['Night Number'][j]
+        block_number = centroided_sources['Block Number'][j]
+        airmass = header['AIRMASS']
+        seeing = log['X seeing'][log_ind]
+        for i in range(len(ap_radii)):
+            ap_df = ap_dfs[i] 
+            ap_df['Filename'][j] = filename
+            ap_df['Time UT'][j] = time_ut
             ap_df['Time JD UTC'][j] = jd
             # Using the telescope ra and dec should be accurate enough for our purposes
-            ap_df['Time BJD TDB'][j] = jd_utc_to_bjd_tdb(
-                jd, header['TELRA'], header['TELDEC'])
-            ap_df['Night Number'][j] = centroided_sources['Night Number'][j]
-            ap_df['Block Number'][j] = centroided_sources['Block Number'][j]
-            ap_df['Airmass'][j] = header['AIRMASS']
-            ap_df['Seeing'][j] = log['X seeing'][log_ind]
+            ap_df['Time BJD TDB'][j] = time_bjd
+            ap_df['Night Number'][j] = night_number
+            ap_df['Block Number'][j] = block_number
+            ap_df['Airmass'][j] = airmass
+            ap_df['Seeing'][j] = seeing
 
-            # If the shift quality has been flagged, skip this image.
-            if log['Shift quality flag'].iloc[log_ind] == 1:
-                continue
+        # If the shift quality has been flagged, skip this image.
+        if log['Shift quality flag'].iloc[log_ind] == 1:
+            continue
 
-            # Get the source positions in this image.
-            positions = []
-            for i in range(len(source_names)):
-                positions.append((float(centroided_sources[source_names[i]+' Image X'][j]), float(
-                    centroided_sources[source_names[i]+' Image Y'][j])))
+        for i in range(len(ap_radii)):
+            ap_df = ap_dfs[i]
 
             # Create an aperture centered on this position with radius = ap.
-            apertures = CircularAperture(positions, r=ap)
+            try:
+                apertures = CircularAperture(positions, r=ap_radii[i])
+            except:
+                breakpoint()
 
             # Create an annulus centered on this position.
             annuli = CircularAnnulus(positions, r_in=an_in, r_out=an_out)
 
-            photometry_tbl = iraf_style_photometry(
-                apertures, annuli, data*gain, master_dark_stddev*gain, header, ap_df['Seeing'][j])
+            photometry_tbl = iraf_style_photometry(apertures, annuli, data*gain, master_dark_stddev*gain, header, ap_df['Seeing'][j])
 
-            for i in range(len(photometry_tbl)):
-                ap_df[source_names[i]+' Flux'][j] = photometry_tbl['flux'][i]
-                ap_df[source_names[i] +
-                      ' Flux Error'][j] = photometry_tbl['flux_error'][i]
-                ap_df[source_names[i] +
-                      ' Background'][j] = photometry_tbl['background'][i]
-                ap_df[source_names[i]+' Interpolation Flag'][j] = int(
-                    photometry_tbl['interpolation_flag'][i])
-
-            # Make surface plots.
-            if plots:
-                for i in range(len(photometry_tbl)):
-                    x_p = photometry_tbl['X'][i]
-                    y_p = photometry_tbl['Y'][i]
-
-                    fig = plt.figure()
-                    ax = fig.add_subplot(111, projection='3d')
-                    xx, yy = np.meshgrid(
-                        np.arange(int(x_p)-10, int(x_p)+10+1), np.arange(int(y_p)-10, int(y_p)+10+1))
-                    theta = np.linspace(0, 2 * np.pi, 201)
-                    y_circ = ap*np.cos(theta)+y_p
-                    x_circ = ap*np.sin(theta)+x_p
-                    vmin = np.nanmedian(data[yy, xx])
-                    vmax = vmin + 2.5*np.nanstd(data[yy, xx])
-                    ax.plot_surface(xx, yy, data[yy, xx], cmap=cm.viridis, alpha=0.8,
-                                    rstride=1, cstride=1, edgecolor='k', lw=0.2, vmin=vmin, vmax=vmax)
-                    current_z = ax.get_zlim()
-                    ax.set_zlim(current_z[0]-150, current_z[1])
-                    current_z = ax.get_zlim()
-                    cset = ax.contourf(
-                        xx, yy, data[yy, xx], zdir='z', offset=current_z[0], cmap=cm.viridis)
-                    ax.plot(x_circ, y_circ, np.zeros(len(x_circ)) +
-                            current_z[0], color='r', lw=2, zorder=100)
-                    ax.set_xlabel('X')
-                    ax.set_ylabel('Y')
-                    ax.set_zlabel('Counts')
-
-                    ax.set_title('SURFACE DIAGNOSTIC PLOT, '+', Ap. = '+str(ap)+'\n' +
-                                 source_names[i]+', '+reduced_files[j].name+' (image '+str(j+1)+' of '+str(len(reduced_files))+')')
-                    ax.view_init(elev=elev_angles[j], azim=azim_angles[j])
-                    plot_output_path = (
-                        pines_path/('Objects/'+short_name+'/aper_phot/'+source_names[i]+'/'+str(j).zfill(4)+'.jpg'))
-                    plt.tight_layout()
-                    plt.savefig(plot_output_path)
-                    plt.close()
+            for k in range(len(source_names)):
+                ap_df[source_names[k]+ ' Flux'][j] = photometry_tbl['flux'][k]
+                ap_df[source_names[k] + ' Flux Error'][j] = photometry_tbl['flux_error'][k]
+                ap_df[source_names[k] + ' Background'][j] = photometry_tbl['background'][k]
+                ap_df[source_names[k]+ ' Interpolation Flag'][j] = int(photometry_tbl['interpolation_flag'][k])
+    
+    for i in range(len(ap_radii)):
+        ap_df = ap_dfs[i]
+        ap = ap_radii[i] 
+        output_filename = pines_path/('Objects/'+short_name+'/aper_phot/' + short_name+'_fixed_aper_phot_{:1.1f}_pix_radius.csv'.format(float(ap)))
 
         # Write output to file.
         print('Saving ap = {:1.1f} aperture photometry output to {}.'.format(
@@ -619,19 +511,16 @@ def fixed_aper_phot(target, centroided_sources, ap_radii, an_in=12., an_out=30.,
                                 [j], ap_df[source_names[i]+' Background'][j], ap_df[source_names[i]+' Interpolation Flag'][j]))
 
         raw_flux_plot(output_filename, mode='night')
-        raw_flux_plot(output_filename, mode='global')
-    print('')
+        print('')
     return
 
-
-def variable_aper_phot(target, centroided_sources, multiplicative_factors, an_in=12., an_out=30., plots=False, gain=8.21, qe=0.9, plate_scale=0.579, force_output_path=''):
+def variable_aper_phot(short_name, centroided_sources, multiplicative_factors, an_in=12., an_out=30., plots=False, gain=8.21, qe=0.9, plate_scale=0.579, force_output_path='', smoothing_size=5, bin_mins=0.0):
+    plt.ion()
 
     if force_output_path != '':
         pines_path = force_output_path
     else:
         pines_path = pines_dir_check()
-
-    short_name = short_name_creator(target)
 
     # Remove any leading/trailing spaces in the column names.
     centroided_sources.columns = centroided_sources.columns.str.lstrip()
@@ -646,14 +535,79 @@ def variable_aper_phot(target, centroided_sources, multiplicative_factors, an_in
     # Get source names.
     source_names = get_source_names(centroided_sources)
 
-    # Get seeing.
-    seeing = np.array(centroided_sources['Seeing'])
+    # Get seeing from the logs. 
+    # night_inds = night_splitter(centroided_sources['Time BJD TDB'])
+    # log_path = pines_path/'Logs/'
+    # log_times = []
+    # log_seeing = []
+    # for i in range(len(night_inds)):
+    #     log = log_path/(centroided_sources['Filename'][night_inds[i][0]].split('.')[0]+'_log.txt')
+    #     log_df = pines_log_reader(log)
+    #     dates = np.array(log_df['Date'])
+    #     for j in range(len(dates)):
+    #         if len(dates[j].split(':')[-1].split('.')[0]) == 3:
+    #             dates[j] = dates[j].split(':')[0] + ':' + dates[j].split(':')[1] + ':' + dates[j].split(':')[-1][1:]
+
+    #         if dates[j].split(':')[-1] == '60.00':
+    #             dates[j] = dates[j].split(
+    #                 ':')[0]+':'+str(int(dates[j].split(':')[1])+1)+':00.00'
+    #         # Keep a try/except clause here in case other unknown DATE-OBS formats pop up.
+    #         if '.' not in dates[j]:
+    #             date_fmt = '%Y-%m-%dT%H:%M:%S'
+    #         else:
+    #             date_fmt = '%Y-%m-%dT%H:%M:%S.%f'
+    #         date = datetime.datetime.strptime(dates[j], date_fmt)
+    #     jd_utc = julian.to_jd(date)
+
+    #     breakpoint()
+    #     log_times.extend()
+    #     breakpoint()
+    # seeing = np.array(centroided_sources['Seeing'], dtype='float')
+
+    seeing_csv_path = pines_path/('Objects/'+short_name+'/sources/seeing.csv')
+    if not os.path.exists(seeing_csv_path):
+        print('Seeing .csv does not exist! Using log measurements...')
+        #seeing_measurer(pines_path/('Objects/'+short_name))
+        seeing = np.array(centroided_sources['Seeing'], dtype='float')
+    else:
+        seeing_df = pines_log_reader(seeing_csv_path)
+        seeing = np.array(seeing_df['Seeing'], dtype='float')
+    
+    seeing[np.isnan(seeing)] = np.nanmedian(seeing)
+
+    #Get block indices for setting up smoothed seeing. 
+    block_inds = block_splitter(centroided_sources['Time BJD TDB'], bin_mins=bin_mins)
+    #Get running average of seeing. 
+    #Force the size to be odd. 
+    if smoothing_size % 2 == 0:
+        smoothing_size -= 1
+
+#    plt.figure(figsize=(16,5))
+    moving_avg_seeing = []
+    for i in range(len(block_inds)):
+        smoothed_block_seeing = np.convolve(seeing[block_inds[i]], np.ones(smoothing_size)/smoothing_size, mode='same')
+        #Fix the edges. 
+        smoothed_block_seeing[0:int((smoothing_size+1)/2)] = np.mean(smoothed_block_seeing[int((smoothing_size+1)/2):2*int((smoothing_size+1)/2)])
+        smoothed_block_seeing[-int((smoothing_size+1)/2):] = np.mean(smoothed_block_seeing[-2*int((smoothing_size+1)/2):-int((smoothing_size+1)/2)])
+        #Smooth with a Gaussian kernel
+        smoothed_block_seeing = convolve(smoothed_block_seeing, Gaussian1DKernel(1.5), boundary='extend')
+        moving_avg_seeing.extend(smoothed_block_seeing)
+    
+        # plt.plot(centroided_sources['Time BJD TDB'][block_inds[i]], seeing[block_inds[i]]/plate_scale, marker='.', alpha=0.5, color='tab:blue')
+        # plt.plot(centroided_sources['Time BJD TDB'][block_inds[i]], smoothed_block_seeing/plate_scale, lw=2, color='tab:orange')
+    #plt.tight_layout()
+    moving_avg_seeing = np.array(moving_avg_seeing)
 
     # Loop over multiplicative factors
     for i in range(len(multiplicative_factors)):
         fact = multiplicative_factors[i]
-        print('Doing variable aperture photometry for {}, multiplicative seeing factor = {}, inner annulus radius = {} pix, outer annulus radius = {} pix.'.format(
-            target, fact, an_in, an_out))
+        if np.max(moving_avg_seeing) * fact / plate_scale > an_in:
+            an_in = int(np.max(moving_avg_seeing) * fact / plate_scale)+1
+            an_out = int(np.max(moving_avg_seeing) * fact / plate_scale)+19
+
+            print('WARNING: this will use apertures larger than inner annulus radius, extending it outward to {} pixels.'.format(an_in))
+
+        print('Doing variable aperture photometry for {}, multiplicative seeing factor = {}, inner annulus radius = {} pix, outer annulus radius = {} pix.'.format(short_name, fact, an_in, an_out))
 
         # Declare a new dataframe to hold the information for all targets for this aperture.
         columns = ['Filename', 'Time UT', 'Time JD UTC', 'Time BJD TDB',
@@ -665,8 +619,7 @@ def variable_aper_phot(target, centroided_sources, multiplicative_factors, an_in
             columns.append(source_names[j]+' Interpolation Flag')
 
         var_df = pd.DataFrame(index=range(len(reduced_files)), columns=columns)
-        output_filename = pines_path/('Objects/'+short_name+'/aper_phot/' +
-                                      short_name+'_variable_aper_phot_'+str(float(fact))+'_seeing_factor.csv')
+        output_filename = pines_path/('Objects/'+short_name+'/aper_phot/' + short_name+'_variable_aper_phot_{:1.2f}_seeing_factor.csv'.format(fact))
 
         # Loop over all images.
         pbar = ProgressBar()
@@ -690,19 +643,15 @@ def variable_aper_phot(target, centroided_sources, multiplicative_factors, an_in
                 date_obs = date_obs.split(
                     ':')[0]+':'+str(int(date_obs.split(':')[1])+1)+':00.00'
             # Keep a try/except clause here in case other unknown DATE-OBS formats pop up.
-            try:
-                date = datetime.datetime.strptime(
-                    date_obs, '%Y-%m-%dT%H:%M:%S.%f')
-            except:
-                print(
-                    'Header DATE-OBS format does not match the format code in strptime! Inspect/correct the DATE-OBS value.')
-                breakpoint()
+            if '.' not in date_obs:
+                date_fmt = '%Y-%m-%dT%H:%M:%S'
+            else:
+                date_fmt = '%Y-%m-%dT%H:%M:%S.%f'
+            date = datetime.datetime.strptime(date_obs, date_fmt)
 
             # Get the closest date master_dark_stddev image for this exposure time.
             # We'll use this to measure read noise and dark current.
-            date_str = date_obs.split('T')[0].replace('-', '')
-            master_dark_stddev = master_dark_stddev_chooser(
-                pines_path/('Calibrations/Darks/Master Darks Stddev/'), header)
+            master_dark_stddev = master_dark_stddev_chooser(pines_path/('Calibrations/Darks/Master Darks Stddev/'), header)
 
             days = date.day + \
                 hmsm_to_days(date.hour, date.minute,
@@ -730,11 +679,7 @@ def variable_aper_phot(target, centroided_sources, multiplicative_factors, an_in
                     (centroided_sources[source_names[k]+' Image X'][j], centroided_sources[source_names[k]+' Image Y'][j]))
 
             # Create an aperture centered on this position with radius (in pixels) of (seeing*multiplicative_factor[j])/plate_scale.
-            try:
-                apertures = CircularAperture(
-                    positions, r=(seeing[j]*fact)/plate_scale)
-            except:
-                breakpoint()
+            apertures = CircularAperture(positions, r=(moving_avg_seeing[j]*fact)/plate_scale)
 
             # Create an annulus centered on this position.
             annuli = CircularAnnulus(positions, r_in=an_in, r_out=an_out)
@@ -801,11 +746,12 @@ def variable_aper_phot(target, centroided_sources, multiplicative_factors, an_in
                             format_string = '{:22.5f}, {:28.5f}, {:28.5f}, {:34f}\n'
                         f.write(format_string.format(var_df[source_names[i]+' Flux'][j], var_df[source_names[i]+' Flux Error']
                                 [j], var_df[source_names[i]+' Background'][j], var_df[source_names[i]+' Interpolation Flag'][j]))
+        raw_flux_plot(output_filename, mode='night')
         print('')
     return
 
 
-def basic_psf_phot(target, centroided_sources, plots=False):
+def basic_psf_phot(short_name, centroided_sources, plots=False):
     warnings.simplefilter("ignore", category=AstropyUserWarning)
 
     def hmsm_to_days(hour=0, min=0, sec=0, micro=0):
@@ -903,14 +849,12 @@ def basic_psf_phot(target, centroided_sources, plots=False):
         return p
 
     pines_path = pines_dir_check()
-    short_name = short_name_creator(target)
     reduced_path = pines_path/('Objects/'+short_name+'/reduced/')
     reduced_files = np.array(
         natsorted([x for x in reduced_path.glob('*.fits')]))
 
     centroided_sources.columns = centroided_sources.columns.str.strip()
-    source_names = natsorted(list(set([i[0:-2].replace('X', '').replace(
-        'Y', '').rstrip().lstrip() for i in centroided_sources.keys()])))
+    source_names = get_source_names(centroided_sources)
 
     # Declare a new dataframe to hold the information for all targets for this .
     columns = ['Filename', 'Time UT', 'Time JD', 'Airmass', 'Seeing']
@@ -960,8 +904,8 @@ def basic_psf_phot(target, centroided_sources, plots=False):
 
         for j in range(len(source_names)):
             source = source_names[j]
-            x[j] = centroided_sources[source+' X'][i]
-            y[j] = centroided_sources[source+' Y'][i]
+            x[j] = centroided_sources[source+' Image X'][i]
+            y[j] = centroided_sources[source+' Image Y'][i]
 
          # The extract_stars() function requires the input data as an NDData object.
         nddata = NDData(data=data)
@@ -1041,7 +985,7 @@ def basic_psf_phot(target, centroided_sources, plots=False):
                 ax[j, 2].set_title('Data - Model')
 
             plt.tight_layout()
-
+        breakpoint()
         output_filename = pines_path/('Objects/'+short_name+'/basic_psf_phot/' +
                                       reduced_files[i].name.split('_')[0]+'_'+'source_modeling.pdf')
         plt.savefig(output_filename)
@@ -1050,7 +994,7 @@ def basic_psf_phot(target, centroided_sources, plots=False):
     return
 
 
-def centroider(short_name, sources, output_plots=False, restore=False, box_w=16, force_output_path=''):
+def centroider(short_name, sources, output_plots=False, restore=False, box_w=16, force_output_path='', bin_mins=0.0, shift_tolerance=2.0):
     """Measures pixel positions of sources in a set of reduced images.
 
     :param short_name: the target's short name
@@ -1065,11 +1009,18 @@ def centroider(short_name, sources, output_plots=False, restore=False, box_w=16,
     :type box_w: int, optional
     :param force_output_path: the top-level path if you don't want to use the default ~/Documents/PINES_analysis_toolkit/ directory for analysis, defaults to ''
     :type force_output_path: str, optional
+    :param bin_mins: number of minutes to bin data for staring observations, defaults to 0.0
+    :type bin_mins: float, optional
+    :param shift_tolerance: number of pixels in x/y a measured source centroid can be from the expected position before alternate methods are tried
+    :type shift_tolerance: float, optional
     :return: Saves csv of centroid positions for every source
     :rtype: csv
     """
     # Turn off warnings from Astropy because they're incredibly annoying.
     warnings.simplefilter("ignore", category=AstropyUserWarning)
+
+    #Gaussian filter cutouts for better centroiding SNR
+    kernel = Gaussian2DKernel(x_stddev=0.2) 
 
     matplotlib.use('TkAgg')
     plt.ioff()
@@ -1093,8 +1044,7 @@ def centroider(short_name, sources, output_plots=False, restore=False, box_w=16,
 
     # Create subdirectories in sources folder to contain output plots.
     if output_plots:
-        subdirs = glob(
-            str(pines_path/('Objects/'+short_name+'/sources'))+'/*/')
+        subdirs = glob(str(pines_path/('Objects/'+short_name+'/sources'))+'/*/')
         # Delete any source directories that are already there.
         for name in subdirs:
             shutil.rmtree(name)
@@ -1155,9 +1105,6 @@ def centroider(short_name, sources, output_plots=False, restore=False, box_w=16,
                 i+'_log.txt', log_path))
             breakpoint()
 
-    # Number of pixels that the measured centroid can be away from the expected position in either x or y before trying other centroiding algorithms.
-    shift_tolerance = 2.0
-
     # Get times before the main loop.
     for j in range(len(reduced_files)):
         file = reduced_files[j]
@@ -1189,7 +1136,7 @@ def centroider(short_name, sources, output_plots=False, restore=False, box_w=16,
     # On each night...
     for k in range(len(night_inds)):
         # Generate block indices...
-        block_inds = block_splitter(centroid_df['Time BJD TDB'][night_inds[k]])
+        block_inds = block_splitter(centroid_df['Time BJD TDB'][night_inds[k]], bin_mins=bin_mins)
         # Convert them to block numbers...
         night_block_numbers = [
             np.zeros(len(block_inds[i]), dtype='int')+i+1 for i in range(len(block_inds))]
@@ -1221,7 +1168,7 @@ def centroider(short_name, sources, output_plots=False, restore=False, box_w=16,
             log = pines_log_reader(
                 log_path/(file.name.split('.')[0]+'_log.txt'))
             log_ind = np.where(log['Filename'] ==
-                               file.name.split('_')[0]+'.fits')[0][0]
+                            file.name.split('_')[0]+'.fits')[0][0]
 
             x_shift = float(log['X shift'][log_ind])
             y_shift = float(log['Y shift'][log_ind])
@@ -1263,123 +1210,69 @@ def centroider(short_name, sources, output_plots=False, restore=False, box_w=16,
             # TODO: Make all this its own function.
 
             # Cutout around the expected position and interpolate over any NaNs (which screw up source detection).
-            cutout = interpolate_replace_nans(image[int(y_pos-box_w/2):int(y_pos+box_w/2)+1, int(
-                x_pos-box_w/2):int(x_pos+box_w/2)+1], kernel=Gaussian2DKernel(x_stddev=0.5))
-
+            cutout = interpolate_replace_nans(image[int(y_pos-box_w/2):int(y_pos+box_w/2)+1,int(x_pos-box_w/2):int(x_pos+box_w/2)+1], kernel=Gaussian2DKernel(x_stddev=0.5))
+            
             # interpolate_replace_nans struggles with edge pixels, so shave off edge_shave pixels in each direction of the cutout.
             edge_shave = 1
-            cutout = cutout[edge_shave:len(
-                cutout)-edge_shave, edge_shave:len(cutout)-edge_shave]
+            cutout = cutout[edge_shave:len(cutout)-edge_shave, edge_shave:len(cutout)-edge_shave]
 
-            # Get sigma clipped stats on the cutout
+            # #Check for cosmic rays in the cutout. 
+            # avg, med, std = sigma_clipped_stats(cutout, sigma=4)
+            # counts, bins = np.histogram(cutout.flatten(), bins=20)
+            # mode = bins[np.where(counts == max(counts))[0][0]]
+            # gap_threshold = 3*std
+            # zero_count_bins = np.where(counts == 0)[0]
+            # def consecutive(data, stepsize=1):
+            #     return np.split(data, np.where(np.diff(data) != stepsize)[0]+1)
+            # consecutive_zero_count_bins = consecutive(zero_count_bins)
+
+            # if np.max([len(i) for i in consecutive_zero_count_bins]) > 1:
+            #     for v in range(len(consecutive_zero_count_bins)):
+            #         start = consecutive_zero_count_bins[v][0]
+            #         end = consecutive_zero_count_bins[v][-1]+1
+            #         gap = bins[end]-bins[start]
+            #         if gap > gap_threshold:
+            #             breakpoint()
+
+            #Smooth the cutout with a 2D Gaussian filter for better centroiding SNR.
+            cutout = convolve(cutout, kernel, boundary='wrap')
+
+            # Get sigma clipped     stats on the cutout
             vals, lower, upper = sigmaclip(cutout, low=1.5, high=2.5)
             med = np.nanmedian(vals)
-            std = np.nanstd(vals)
 
-            try:
-                # Perform centroid detection on the cutout.
-                centroid_x_cutout, centroid_y_cutout = centroid_2dg(
-                    cutout - med)
-            except:
-                breakpoint()
+            # cs = centroid_sources(cutout-med, (box_w-edge_shave)/2, (box_w-edge_shave)/2)
 
+            # centroid_x_cutout = cs[0][0]
+            # centroid_y_cutout = cs[1][0]
+
+            g = centroid_2dg(cutout-med)
+            centroid_x_cutout = g[0]
+            centroid_y_cutout = g[1]
+            
+            relative_x_cutout = centroid_x_cutout / (box_w-edge_shave)
+            relative_y_cutout = centroid_y_cutout / (box_w-edge_shave)
+            
+            if (abs(relative_x_cutout - 0.5) > 1) or (abs(relative_y_cutout - 0.5) > 1):
+                #breakpoint()
+                centroid_x_cutout = (box_w-edge_shave)/2
+                centroid_y_cutout = (box_w-edge_shave)/2
+                
             # Translate the detected centroid from the cutout coordinates back to the full-frame coordinates.
-            centroid_x = centroid_x_cutout + int(x_pos) - box_w + edge_shave
-            centroid_y = centroid_y_cutout + int(y_pos) - box_w + edge_shave
+            centroid_x = centroid_x_cutout + int(x_pos) - box_w/2 + edge_shave
+            centroid_y = centroid_y_cutout + int(y_pos) - box_w/2 + edge_shave
 
-            # if i == 0:
-            #     qp(cutout)
-            #     plt.plot(centroid_x_cutout, centroid_y_cutout, 'rx')
-
-            #     # qp(image)
-            #     # plt.plot(centroid_x, centroid_y, 'rx')
-            #     breakpoint()
-
-            # If the shifts in the log are not 'nan' or > 200 pixels, check if the measured shifts are within shift_tolerance pixels of the expected position.
-            #   If they aren't, try alternate centroiding methods to try and find it.
-
-            # Otherwise, use the shifts as measured with centroid_1dg. PINES_watchdog likely failed while observing, and we don't expect the centroids measured here to actually be at the expected position.
-            if not nan_flag:
-                # Try a 2D Gaussian detection.
-                if (abs(centroid_x - x_pos) > shift_tolerance) or (abs(centroid_y - y_pos) > shift_tolerance):
-                    centroid_x_cutout, centroid_y_cutout = centroid_2dg(
-                        cutout - med)
-                    centroid_x = centroid_x_cutout + int(x_pos) - box_w
-                    centroid_y = centroid_y_cutout + int(y_pos) - box_w
-
-                    # If that fails, try a COM detection.
-                    if (abs(centroid_x - x_pos) > shift_tolerance) or (abs(centroid_y - y_pos) > shift_tolerance):
-                        centroid_x_cutout, centroid_y_cutout = centroid_com(
-                            cutout - med)
-                        centroid_x = centroid_x_cutout + int(x_pos) - box_w
-                        centroid_y = centroid_y_cutout + int(y_pos) - box_w
-
-                        # If that fails, try masking source and interpolate over any bad pixels that aren't in the bad pixel mask, then redo 1D gaussian detection.
-                        if (abs(centroid_x - x_pos) > shift_tolerance) or (abs(centroid_y - y_pos) > shift_tolerance):
-                            mask = make_source_mask(
-                                cutout, nsigma=4, npixels=5, dilate_size=3)
-                            vals, lo, hi = sigmaclip(cutout[~mask])
-                            bad_locs = np.where((mask == False) & (
-                                (cutout > hi) | (cutout < lo)))
-                            cutout[bad_locs] = np.nan
-                            cutout = interpolate_replace_nans(
-                                cutout, kernel=Gaussian2DKernel(x_stddev=0.5))
-
-                            centroid_x_cutout, centroid_y_cutout = centroid_1dg(
-                                cutout - med)
-                            centroid_x = centroid_x_cutout + int(x_pos) - box_w
-                            centroid_y = centroid_y_cutout + int(y_pos) - box_w
-
-                            # Try a 2D Gaussian detection on the interpolated cutout
-                            if (abs(centroid_x - x_pos) > shift_tolerance) or (abs(centroid_y - y_pos) > shift_tolerance):
-                                centroid_x_cutout, centroid_y_cutout = centroid_2dg(
-                                    cutout - med)
-                                centroid_x = centroid_x_cutout + \
-                                    int(x_pos) - box_w
-                                centroid_y = centroid_y_cutout + \
-                                    int(y_pos) - box_w
-
-                                # Try a COM on the interpolated cutout.
-                                if (abs(centroid_x - x_pos) > shift_tolerance) or (abs(centroid_y - y_pos) > shift_tolerance):
-                                    centroid_x_cutout, centroid_y_cutout = centroid_com(
-                                        cutout)
-                                    centroid_x = centroid_x_cutout + \
-                                        int(x_pos) - box_w
-                                    centroid_y = centroid_y_cutout + \
-                                        int(y_pos) - box_w
-
-                                    # Last resort: try cutting off the edge of the cutout. Edge pixels can experience poor interpolation, and this sometimes helps.
-                                    if (abs(centroid_x - x_pos) > shift_tolerance) or (abs(centroid_y - y_pos) > shift_tolerance):
-                                        cutout = cutout[1:-1, 1:-1]
-                                        centroid_x_cutout, centroid_y_cutout = centroid_1dg(
-                                            cutout - med)
-                                        centroid_x = centroid_x_cutout + \
-                                            int(x_pos) - box_w + 1
-                                        centroid_y = centroid_y_cutout + \
-                                            int(y_pos) - box_w + 1
-
-                                        # Try with a 2DG
-                                        if (abs(centroid_x - x_pos) > shift_tolerance) or (abs(centroid_y - y_pos) > shift_tolerance):
-                                            centroid_x_cutout, centroid_y_cutout = centroid_2dg(
-                                                cutout - med)
-                                            centroid_x = centroid_x_cutout + \
-                                                int(x_pos) - box_w + 1
-                                            centroid_y = centroid_y_cutout + \
-                                                int(y_pos) - box_w + 1
-
-                                            # If ALL that fails, report the expected position as the centroid.
-                                            if (abs(centroid_x - x_pos) > shift_tolerance) or (abs(centroid_y - y_pos) > shift_tolerance):
-                                                print(
-                                                    'WARNING: large centroid deviation measured, returning predicted position')
-                                                print('')
-                                                centroid_df[sources['Name']
-                                                            [i]+' Centroid Warning'][j] = 1
-                                                centroid_x = x_pos
-                                                centroid_y = y_pos
-                                                # breakpoint()
-
+            #Make sure you found a centroid in the cutout.
+            if (centroid_x_cutout < 0) or (centroid_x_cutout > cutout.shape[1]) or (centroid_y_cutout < 0) or (centroid_y_cutout > cutout.shape[0]):
+                print('Centroid found outside of cutout, returning expected position.')
+                centroid_x_cutout = cutout.shape[1]/2
+                centroid_y_cutout = cutout.shape[0]/2
+                centroid_x = x_pos
+                centroid_y = y_pos
+            
+            
             # Check that your measured position is actually on the detector.
-            if (centroid_x < 0) or (centroid_y < 0) or (centroid_x > 1023) or (centroid_y > 1023):
+            if (centroid_x < 0) or (centroid_y < 0) or (centroid_x > image.shape[1]) or (centroid_y > image.shape[0]):
                 # Try a quick mask/interpolation of the cutout.
                 mask = make_source_mask(
                     cutout, nsigma=3, npixels=5, dilate_size=3)
@@ -1405,7 +1298,7 @@ def centroider(short_name, sources, output_plots=False, restore=False, box_w=16,
             if np.isnan(centroid_x):
                 centroid_x = x_pos
                 print(
-                    'NaN returned from centroid algorithm, defaulting to target position in source_detct_image.')
+                    'NaN returned from centroid algorithm, defaulting to target position in source_detect_image.')
             if np.isnan(centroid_y):
                 centroid_y = y_pos
                 print(
@@ -1414,24 +1307,24 @@ def centroider(short_name, sources, output_plots=False, restore=False, box_w=16,
             # Record the image and relative cutout positions.
             centroid_df[sources['Name'][i]+' Image X'][j] = centroid_x
             centroid_df[sources['Name'][i]+' Image Y'][j] = centroid_y
-            centroid_df[sources['Name'][i]+' Cutout X'][j] = centroid_x_cutout
-            centroid_df[sources['Name'][i]+' Cutout Y'][j] = centroid_y_cutout
+            centroid_df[sources['Name'][i]+' Cutout X'][j] = relative_x_cutout #save coutout as fraction of box_w
+            centroid_df[sources['Name'][i]+' Cutout Y'][j] = relative_y_cutout
 
             if output_plots:
                 # Plot
                 lock_x = int(centroid_df[sources['Name'][i]+' Image X'][0])
                 lock_y = int(centroid_df[sources['Name'][i]+' Image Y'][0])
                 norm = ImageNormalize(data=cutout, interval=ZScaleInterval())
-                plt.imshow(image, origin='lower', norm=norm)
-                plt.plot(centroid_x, centroid_y, 'rx')
-                ap = CircularAperture((centroid_x, centroid_y), r=5)
+                plt.imshow(cutout, origin='lower', norm=norm)
+                plt.plot(centroid_x_cutout, centroid_y_cutout, 'rx')
+                ap = CircularAperture((centroid_x_cutout, centroid_y_cutout), r=5)
                 ap.plot(lw=2, color='b')
-                plt.ylim(lock_y-30, lock_y+30-1)
-                plt.xlim(lock_x-30, lock_x+30-1)
+                #plt.ylim(lock_y-box_w/2, lock_y+box_w/2-1)
+                #plt.xlim(lock_x-box_w/2, lock_x+box_w/2-1)
                 plt.title('CENTROID DIAGNOSTIC PLOT\n'+sources['Name'][i]+', '+reduced_files[j].name+' (image '+str(
                     j+1)+' of '+str(len(reduced_files))+')', fontsize=10)
-                plt.text(centroid_x, centroid_y+0.5, '('+str(np.round(centroid_x, 1)) +
-                         ', '+str(np.round(centroid_y, 1))+')', color='r', ha='center')
+                plt.text(centroid_x_cutout, centroid_y_cutout+0.5, '('+str(np.round(centroid_x_cutout, 1)) +
+                         ', '+str(np.round(centroid_y_cutout, 1))+')', color='r', ha='center')
                 plot_output_path = (pines_path/('Objects/'+short_name+'/sources/'+sources['Name'][i]+'/'+file.name.split('_')[
                                     0]+'_night_'+str(centroid_df['Night Number'][j]).zfill(2)+'_block_'+str(centroid_df['Block Number'][j]).zfill(2)+'.jpg'))
                 plt.gca().set_axis_off()
@@ -1496,7 +1389,6 @@ def centroider(short_name, sources, output_plots=False, restore=False, box_w=16,
     print('')
     return centroid_df
 
-
 def detect_sources(image_path, seeing_fwhm, edge_tolerance, thresh=6.0, plot=False):
     """Finds sources in a Mimir image.
 
@@ -1515,8 +1407,9 @@ def detect_sources(image_path, seeing_fwhm, edge_tolerance, thresh=6.0, plot=Fal
     """
 
     fwhm = seeing_fwhm/0.579  # FIXED
+
     # Radius of aperture in pixels for doing quick photometry on detected sources.
-    ap_rad = 4
+    ap_rad = 7
 
     # Read in the image.
     image = fits.open(image_path)[0].data
@@ -1548,10 +1441,7 @@ def detect_sources(image_path, seeing_fwhm, edge_tolerance, thresh=6.0, plot=Fal
     print('Finding sources in {}.'.format(image_path.name))
 
     # Detect sources using DAOStarFinder.
-    try:
-        daofind = DAOStarFinder(fwhm=fwhm, threshold=thresh*std, sharplo=0.2)
-    except:
-        pdb.set_trace()
+    daofind = DAOStarFinder(fwhm=fwhm, threshold=thresh*std, sharplo=0.2)
 
     initial_sources = daofind(image - med)
 
@@ -1601,7 +1491,6 @@ def detect_sources(image_path, seeing_fwhm, edge_tolerance, thresh=6.0, plot=Fal
     # Resort remaining sources so that the brightest are listed firsts.
     sources = phot_table[::-1].to_pandas()
     return sources
-
 
 def epsf_phot(target, centroided_sources, plots=False):
     def hmsm_to_days(hour=0, min=0, sec=0, micro=0):
@@ -1874,137 +1763,6 @@ def epsf_phot(target, centroided_sources, plots=False):
                     psf_df[source_names[i]+' Flux'][j], psf_df[source_names[i]+' Flux Error'][j]))
     print('')
     return
-
-
-def gaia_cmd(short_name, sources, catalog='eDR3', plot=True, force_output_path=''):
-    """Queries Gaia for sources and creates a CMD for them. 
-        Adds Gaia M_G and BP-RP to the source csv file
-
-
-    :param short_name: the target's short name
-    :type short_name: str
-    :param sources: dataframe of sources, output from ref_star_chooser
-    :type sources: pandas DataFrame
-    :param catalog: which Gaia data release to query, either 'DR2' or 'eDR3', defaults to 'eDR3'
-    :type catalog: str, optional
-    :param plot: whether or not to save a plot of the CMD to the sources directory, defaults to True
-    :type plot: bool, optional
-    :param force_output_path: user-chosen top-level path for analysis if you don't want to use the default ~/Documents/PINES_analysis_toolkit/ folder, defaults to ''
-    :type force_output_path: str, optional
-    :raises ValueError: if catalog != 'DR2' | 'eDR3'
-    :return: dataframe with new Gaia information added. Also updates the source csv. 
-    :rtype: pandas DataFrame
-    """
-
-    if force_output_path != '':
-        pines_path = force_output_path
-    else:
-        pines_path = pat.utils.pines_dir_check()
-
-    # Set the Gaia data release to query.
-    if catalog == 'DR2':
-        Gaia.MAIN_GAIA_TABLE = "gaiadr2.gaia_source"
-    elif catalog == 'eDR3':
-        Gaia.MAIN_GAIA_TABLE = "gaiaedr3.gaia_source"
-    else:
-        raise ValueError('catalog must be DR2 or eDR3.')
-
-    num_s = len(sources)
-    bp_rp = np.zeros(num_s)  # Gaia Bp - Rp color
-    p_mas = np.zeros(num_s)  # Parallax in mas
-    M_G = np.zeros(num_s)  # Absolute Gaia Rp
-
-    print('Querying sources in Gaia {}.'.format(catalog))
-
-    for i in range(num_s):
-        ra = sources['Source Detect RA'][i]
-        dec = sources['Source Detect Dec'][i]
-        c = SkyCoord(ra=ra, dec=dec, unit=(u.deg, u.deg))
-
-        # Query Gaia
-        #query_gaia = Gaia.cone_search(c, radius=5*u.arcsec)
-        #result_gaia = query_gaia.get_results()
-
-        result_gaia = Gaia.query_object_async(coordinate=c, width=u.Quantity(
-            5, u.arcsec), height=u.Quantity(5, u.arcsec))
-
-        # If no sources at this position, return NaNs.
-        if len(result_gaia) == 0:
-            bp_rp[i] = np.nan
-            p_mas[i] = np.nan
-            M_G[i] = np.nan
-            print('No source found in Gaia {} at ({:1.4f},{:1.4f}). Returning NaNs.'.format(
-                catalog, ra, dec))
-        # If one source found, return values
-        else:
-            bp_rp[i] = result_gaia['bp_rp'][0]
-            m_G = result_gaia['phot_g_mean_mag'][0]
-            p_mas[i] = result_gaia['parallax'][0]
-            dist_pc = 1/(p_mas[i]/1000)
-            M_G[i] = m_G + 5 - 5*np.log10(dist_pc)
-
-    if plot:
-        plt.figure(figsize=(6, 9))
-        plt.scatter(bp_rp, M_G)
-        plt.title(sources['Name'][0]+' field CMD', fontsize=18)
-        plt.xlabel('G$_{BP}$ - G$_{RP}$', fontsize=16)
-        plt.ylabel('M$_G$', fontsize=16)
-        plt.xlim(-1, 5)
-        plt.ylim(-5, 16)
-        plt.gca().invert_yaxis()
-        plt.tight_layout()
-        plt.savefig(pines_path/('Objects/'+short_name +
-                    '/sources/gaia_cmd.png'), dpi=300)
-
-    sources['M_G'] = M_G
-    sources['bp_rp'] = bp_rp
-
-    sources = mamajek_spts(sources)
-
-    sources.to_csv(pines_path/('Objects/'+short_name +
-                   '/sources/target_and_references_source_detection.csv'), index=0, na_rep='NaN')
-
-    return sources
-
-
-def mamajek_spts(sources):
-    """Uses a table from Eric Mamajek to estimate soure SpTs from their Gaia Bp-Rp colors. 
-
-    :param sources: dataframe of sources with Gaia Bp-Rp column
-    :type sources: pandas DataFrame
-    :return: dataframe with source SpTs added. 
-    :rtype: pandas DataFrame
-    """
-
-    pines_path = pat.utils.pines_dir_check()
-    mamajek_path = pines_path/('Misc/mamajek_spts.txt')
-    mamajek_df = pd.read_csv(mamajek_path, sep=r"[ ]{1,}")
-    mamajek_spectral_types = np.array(mamajek_df['#SpT'])
-    mamajek_teffs = np.array(mamajek_df['Teff'])
-
-    mamajek_bp_rp = np.array(mamajek_df['Bp-Rp'])
-    mamajek_bp_rp[mamajek_bp_rp == '...'] = np.nan
-    mamajek_bp_rp = np.array([float(i) for i in mamajek_bp_rp])
-
-    source_bp_rps = np.array(sources['bp_rp'])
-    source_spts = []
-    source_teffs = []
-    for i in range(len(source_bp_rps)):
-        source_bp_rp = source_bp_rps[i]
-        if (not np.isnan(source_bp_rp)) and (source_bp_rp > -0.120) and (source_bp_rp < 4.0):
-            closest_spt_ind = np.where(abs(
-                mamajek_bp_rp-source_bp_rp) == np.nanmin(abs(mamajek_bp_rp-source_bp_rp)))[0][0]
-            source_spts.append(mamajek_spectral_types[closest_spt_ind])
-            source_teffs.append(mamajek_teffs[closest_spt_ind])
-        else:
-            source_spts.append(np.nan)
-            source_teffs.append(np.nan)
-
-    sources['SpT'] = source_spts
-    sources['Teff'] = source_teffs
-
-    return sources
-
 
 def ref_star_chooser(short_name, source_detect_image, guess_position=(700., 382.), radius_check=6., non_linear_limit=3300.,
                      dimness_tolerance=0.5, brightness_tolerance=10., closeness_tolerance=12., distance_from_target=900., edge_tolerance=50., exclude_lower_left=False, restore=False,
@@ -2280,7 +2038,6 @@ def ref_star_chooser(short_name, source_detect_image, guess_position=(700., 382.
             'Try changing arguments of ref_star_chooser or detect_sources and try again.')
     else:
         return
-
 
 def target_finder(sources, guess_position):
     """Identifies the ID of the target given an initial guess of its pixel position.

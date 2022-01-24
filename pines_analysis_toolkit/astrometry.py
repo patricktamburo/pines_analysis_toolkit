@@ -5,6 +5,10 @@ import pines_analysis_toolkit as pat
 from astropy.convolution import interpolate_replace_nans, Gaussian2DKernel
 from astropy.io import fits
 from astropy.wcs import WCS
+from astropy.coordinates import SkyCoord
+import astropy.units as u
+
+import matplotlib.pyplot as plt
 
 from glob import glob
 from natsort import natsorted
@@ -29,6 +33,8 @@ from email.encoders import encode_noop
 
 import json
 
+from astroquery.vizier import Vizier
+from astroquery.gaia import Gaia
 
 def json2python(data):
     try:
@@ -266,6 +272,189 @@ class Client(object):
         )
         return result
 
+def gaia_cmd(short_name, sources, catalog='eDR3', plot=True, force_output_path=''):
+    """Queries Gaia for sources and creates a CMD for them.
+        Adds Gaia M_G and BP-RP to the source csv file
+
+
+    :param short_name: the target's short name
+    :type short_name: str
+    :param sources: dataframe of sources, output from ref_star_chooser
+    :type sources: pandas DataFrame
+    :param catalog: which Gaia data release to query, either 'DR2' or 'eDR3', defaults to 'eDR3'
+    :type catalog: str, optional
+    :param plot: whether or not to save a plot of the CMD to the sources directory, defaults to True
+    :type plot: bool, optional
+    :param force_output_path: user-chosen top-level path for analysis if you don't want to use the default ~/Documents/PINES_analysis_toolkit/ folder, defaults to ''
+    :type force_output_path: str, optional
+    :raises ValueError: if catalog != 'DR2' | 'eDR3'
+    :return: dataframe with new Gaia information added. Also updates the source csv.
+    :rtype: pandas DataFrame
+    """
+
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pat.utils.pines_dir_check()
+
+    # Set the Gaia data release to query.
+    if catalog == 'DR2':
+        Gaia.MAIN_GAIA_TABLE = "gaiadr2.gaia_source"
+    elif catalog == 'eDR3':
+        Gaia.MAIN_GAIA_TABLE = "gaiaedr3.gaia_source"
+    else:
+        raise ValueError('catalog must be DR2 or eDR3.')
+
+    num_s = len(sources)
+    bp_rp = np.zeros(num_s)  # Gaia Bp - Rp color
+    p_mas = np.zeros(num_s)  # Parallax in mas
+    M_G = np.zeros(num_s)  # Absolute Gaia Rp
+
+    print('Querying sources in Gaia {}.'.format(catalog))
+
+    for i in range(num_s):
+        ra = sources['Source Detect RA'][i]
+        dec = sources['Source Detect Dec'][i]
+        c = SkyCoord(ra=ra, dec=dec, unit=(u.deg, u.deg))
+
+        # Query Gaia
+        #query_gaia = Gaia.cone_search(c, radius=5*u.arcsec)
+        #result_gaia = query_gaia.get_results()
+
+        result_gaia = Gaia.query_object_async(coordinate=c, width=u.Quantity(
+            5, u.arcsec), height=u.Quantity(5, u.arcsec))
+
+        # If no sources at this position, return NaNs.
+        if len(result_gaia) == 0:
+            bp_rp[i] = np.nan
+            p_mas[i] = np.nan
+            M_G[i] = np.nan
+            print('No source found in Gaia {} at ({:1.4f},{:1.4f}). Returning NaNs.'.format(
+                catalog, ra, dec))
+        # If one source found, return values
+        else:
+            bp_rp[i] = result_gaia['bp_rp'][0]
+            m_G = result_gaia['phot_g_mean_mag'][0]
+            p_mas[i] = result_gaia['parallax'][0]
+            dist_pc = 1/(p_mas[i]/1000)
+            M_G[i] = m_G + 5 - 5*np.log10(dist_pc)
+
+    if plot:
+        plt.figure(figsize=(6, 9))
+        plt.scatter(bp_rp, M_G)
+        plt.title(sources['Name'][0]+' field CMD', fontsize=18)
+        plt.xlabel('G$_{BP}$ - G$_{RP}$', fontsize=16)
+        plt.ylabel('M$_G$', fontsize=16)
+        plt.xlim(-1, 5)
+        plt.ylim(-5, 16)
+        plt.gca().invert_yaxis()
+        plt.tight_layout()
+        plt.savefig(pines_path/('Objects/'+short_name +
+                    '/sources/gaia_cmd.png'), dpi=300)
+
+    sources['p (mas)'] = p_mas
+    sources['M_G'] = M_G
+    sources['bp_rp'] = bp_rp
+
+    sources = source_spts(sources)
+
+    sources.to_csv(pines_path/('Objects/'+short_name +
+                   '/sources/target_and_references_source_detection.csv'), index=0, na_rep='NaN')
+
+    return sources
+
+def source_spts(sources):
+    """Uses a table from Eric Mamajek to estimate reference SpTs from their Gaia Bp-Rp colors.
+    Uses a Teff-SpT relation from Faherty et al. (2016) to generate temperature estimates for the target.
+
+    :param sources: dataframe of sources with Gaia Bp-Rp column
+    :type sources: pandas DataFrame
+    :return: dataframe with source SpTs added.
+    :rtype: pandas DataFrame
+    """
+
+    pines_path = pat.utils.pines_dir_check()
+    mamajek_path = pines_path/('Misc/mamajek_spts.txt')
+    mamajek_df = pd.read_csv(mamajek_path, sep=r"[ ]{1,}")
+    mamajek_spectral_types = np.array(mamajek_df['#SpT'])
+    mamajek_teffs = np.array(mamajek_df['Teff'])
+
+    mamajek_bp_rp = np.array(mamajek_df['Bp-Rp'])
+    mamajek_bp_rp[mamajek_bp_rp == '...'] = np.nan
+    mamajek_bp_rp = np.array([float(i) for i in mamajek_bp_rp])
+   
+   
+    #Set up some lines, approximately parallel to the main sequence, that sources need to lie between in M_G vs. BP-RP to be considered dwarfs. Otherwise, discard them for being WDs or Giants.
+    
+    bp_rp_x = np.linspace(-0.5, 5.5, 1000)
+    slope = 3
+    lower_line = slope*bp_rp_x + 5 #Approximate WD separator
+    upper_line = slope*bp_rp_x - 3 #Approximate giant separator
+    
+    source_bp_rps = np.array(sources['bp_rp'])
+    source_M_Gs = np.array(sources['M_G'])
+    source_spts = []
+    source_teffs = []
+    for i in range(len(source_bp_rps)):
+        source_bp_rp = source_bp_rps[i]
+        source_M_G = source_M_Gs[i]
+        if not np.isnan(source_bp_rp):
+            wd_giant_check_ind = np.where(abs(bp_rp_x-source_bp_rp) == np.min(abs(bp_rp_x-source_bp_rp)))[0][0]
+        if (not np.isnan(source_bp_rp)) and (source_bp_rp > -0.120) and (source_bp_rp < 4.8) and (source_M_G < lower_line[wd_giant_check_ind]) and (source_M_G > upper_line[wd_giant_check_ind]):
+            closest_spt_ind = np.where(abs(
+                mamajek_bp_rp-source_bp_rp) == np.nanmin(abs(mamajek_bp_rp-source_bp_rp)))[0][0]
+            source_spts.append(mamajek_spectral_types[closest_spt_ind])
+            source_teffs.append(mamajek_teffs[closest_spt_ind])
+        else:
+            if i != 0:
+                #TODO: Have to update to actually toss references identified as WDs or giants.
+                breakpoint()
+            source_spts.append(np.nan)
+            source_teffs.append(np.nan)
+
+    sources['SpT'] = source_spts
+    sources['Teff'] = source_teffs
+    
+    #Add info for the target, which probably wasn't found in Gaia
+    pines_sample_path = pines_path/('Misc/PINES Sample.xlsx')
+    pines_sample_df = pd.read_excel(pines_sample_path)
+    sample_entry = np.where(np.array(pines_sample_df['Short Name'] == 'J'+sources['Name'][0].split(' ')[1]))[0][0]
+    target_spt = pines_sample_df['SpT'][sample_entry]
+    sources['SpT'][0] = target_spt
+    target_temp = faherty_2016_spt_teff_relation(target_spt)
+    sources['Teff'][0] = np.round(target_temp)
+    return sources
+
+def faherty_2016_spt_teff_relation(spt):
+    """Calculates a temperature given a spectral type using a relation from Faherty et al. (2016)
+    https://iopscience.iop.org/article/10.3847/0067-0049/225/1/10/pdf#%FE%FF%00b%00m%00_%00a%00p%00j%00s%00a%00a%002%005%009%00d%00t%001%009
+
+
+    :param spt: string specifying the spectral type (e.g., 'L5')
+    :type spt: str
+    :return: temperature of the spectral type
+    :rtype: float
+    """
+    spectral_class = spt[0]
+    if spectral_class == 'M':
+        num = float(spt[1:])
+    elif spectral_class == 'L':
+        num = float(spt[1:]) + 10
+    elif spectral_class == 'T':
+        num = float(spt[1:]) + 20
+    
+    #Coefficients from T_eff FLD relation, Table 19 of Faherty + 2016. 
+    c0 = 4.747e3
+    c1 = -7.005e2
+    c2 = 1.155e2
+    c3 = -1.191e1
+    c4 = 6.318e-1
+    c5 = -1.606e-2
+    c6 = 1.546e-4
+
+    temp = c0*num**0 + c1*num**1 + c2*num**2 + c3*num**3 + c4*num**4 + c5*num**5 + c6*num**6
+
+    return temp
 
 def pines_astrometry(target, api_key, download_data=False):
     """Uploads reduced images for a target to astrometry.net, downloads solution image, and updates the image header with the astrometry.net wcs.
@@ -348,28 +537,39 @@ def pines_astrometry(target, api_key, download_data=False):
             print('')
 
 
-def source_detect_astrometry(api_key, filename):
+def source_detect_astrometry(short_name, api_key, filename, force_output_path=''):
     """ Uploads a single reduced image for a target to astrometry.net, downloads solution image, and updates the image header with the astrometry.net wcs. 
-
+    
+    :param short_name: the short name of the target
+    :type short_name: str
     :param api_key: the api key of your account on astrometry.net
     :type api_key: str
-    :param filename: path to the source_detect_image
-    :type filename: pathlib.PosixPath
+    :param filename: name of the image you want to process
+    :type filename: str
+    :param force_output_path: if you want to manually set an output directory, specify the top-level here (i.e. the directory containing Logs, Objects, etc.), defaults to ''
+    :type force_output_path: str, optional
     :raises RuntimeError: if astrometry solution fails
     """
-    kernel = Gaussian2DKernel(x_stddev=0.25)
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pat.utils.pines_dir_check()
+    
+    image_path = pines_path/('Objects/'+short_name+'/reduced/'+filename)
+    
+    kernel = Gaussian2DKernel(x_stddev=0.5)
 
     # If the header does not have a HISTORY keyword (which is added by astrometry.net), process it.
-    header = fits.open(filename)[0].header
+    header = fits.open(image_path)[0].header
 
     if 'HISTORY' not in header:
-        print('Uploading {} to astrometry.net.'.format(filename.name))
+        print('Uploading {} to astrometry.net.'.format(image_path.name))
         # Read in the image data, interpolate NaNs, and save to a temporary fits file.
         # Astrometry.net does not work with NaNs in images.
-        original_image = fits.open(filename)[0].data
+        original_image = fits.open(image_path)[0].data
         image = interpolate_replace_nans(original_image, kernel=kernel)
-        temp_filename = filename.parent / \
-            (filename.name.split('.fits')[0]+'_temp.fits')
+        temp_filename = image_path.parent / \
+            (image_path.name.split('.fits')[0]+'_temp.fits')
         hdu = fits.PrimaryHDU(image, header=header)
         hdu.writeto(temp_filename, overwrite=True)
 
@@ -379,13 +579,13 @@ def source_detect_astrometry(api_key, filename):
         # Try to donwload the solved image and open it.
         try:
             # Grab the header of the astrometry.net solution image, and the original image data.
-            astrometry_image_path = filename.parent / \
+            astrometry_image_path = image_path.parent / \
                 (temp_filename.name.split('.fits')[0]+'_new_image.fits')
             wcs_header = fits.open(astrometry_image_path)[0].header
             wcs_hdu = fits.PrimaryHDU(original_image, header=wcs_header)
 
             # Save the original image data with the new wcs header.
-            output_filename = filename
+            output_filename = image_path
             wcs_hdu.writeto(output_filename, overwrite=True)
 
         # If the try clause didn't work, that's because the processing on astrometry.net failed.
@@ -402,17 +602,17 @@ def source_detect_astrometry(api_key, filename):
     # If the header DOES have a HISTORY keyword, skip it, it has already been processed.
     else:
         print('Astrometric processing already complete for {}, skipping.'.format(
-            filename.name))
+            image_path.name))
         print('')
 
 
-def source_pixels_to_world(short_name, source_detect_image_path, force_output_path=''):
+def source_pixels_to_world(short_name, wcs_filename, force_output_path=''):
     """Gets world coordinates of tracked sources (target + references) in the source_detect_image. 
 
     :param short_name: short name for the target
     :type short_name: str
-    :param source_detect_image_path: path to the source_detect_image
-    :type source_detect_image_path: pathlib.PosixPath
+    :param wcs_filename: name of the file with wcs information from source_detect_astrometry processing
+    :type wcs_filename: str
     :param force_output_path: if you want to manually set an output directory, specify the top-level here (i.e. the directory containing Logs, Objects, etc.), defaults to ''
     :type force_output_path: str, optional
     :return: updates the csv of target/reference source_detect_centroids with world coordinates
@@ -429,6 +629,7 @@ def source_pixels_to_world(short_name, source_detect_image_path, force_output_pa
     sources_df = pd.read_csv(sources_csv_path)
 
     # Get the WCS information.
+    source_detect_image_path = pines_path/('Objects/'+short_name+'/reduced/'+wcs_filename)
     source_detect_image = fits.open(source_detect_image_path)
     w = WCS(source_detect_image[0].header)
 

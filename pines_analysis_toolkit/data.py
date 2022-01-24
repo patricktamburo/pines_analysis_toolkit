@@ -1065,13 +1065,15 @@ def get_master_synthetic_image(sftp, target_name):
     print('Downloaded {} to {}!'.format(synthetic_filename, download_path))
 
 
-def get_raw_science_files(sftp, target_name):
+def get_raw_science_files(sftp, target_name, force_output_path=''):
     """Downloads raw science files for a target
 
     :param sftp: sftp connection to the PINES server
     :type sftp: pysftp connection
     :param target_name: long name for the target
     :type target_name: str
+    :param force_output_path: user-chosen directory to use in place of the default ~/Documents/PINES_analysis_toolkit directory for analysis, defaults to ''
+    :type force_output_path: str, optional
     """
 
     t1 = time.time()
@@ -1079,7 +1081,10 @@ def get_raw_science_files(sftp, target_name):
     print('Starting get_raw_science files for {}.'.format(target_name))
 
     # Get the user's pines_analysis_toolkit path
-    pines_path = pines_dir_check()
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pines_dir_check()
 
     # Get the target's short name and set up a data directory, if necessary.
     short_name = short_name_creator(target_name)
@@ -1564,8 +1569,7 @@ def make_calibrations(sftp, exptimes, bands, dark_dates, flat_dates, dark_starts
             else:
                 print(
                     'Making hot pixel mask for {}-s exposure time on {}.'.format(exptime, dark_date))
-                pat.data.hot_pixels(dark_date, exptime,
-                                    box_l=5, upload=True, sftp=sftp)
+                pat.data.hot_pixels(dark_date, exptime, upload=True, sftp=sftp)
 
     print('')
 
@@ -1785,7 +1789,6 @@ def reduce(short_name, upload=False, delete_raw=False, delete_reduced=False, sft
             master_flat = fits.open(manual_flat_path)[0].data
             master_flat_name = manual_flat_path.name
 
-        breakpoint()
         if manual_dark_path == '':
             master_dark, master_dark_name = master_dark_chooser(
                 dark_path, header)

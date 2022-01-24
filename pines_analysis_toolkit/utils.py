@@ -18,7 +18,9 @@ from natsort import natsorted
 import numpy as np
 import matplotlib.pyplot as plt
 import numpy as np
-
+from pathlib import Path
+from scipy.stats import sigmaclip
+from datetime import datetime
 
 def bjd_tdb_to_jd_utc(bjd_tdb, ra, dec, location='lowell'):
     """Converts a Barycentric Julian Date in TDB timescale to Julian Date in UTC timescale.
@@ -34,7 +36,14 @@ def bjd_tdb_to_jd_utc(bjd_tdb, ra, dec, location='lowell'):
     :return: time in jd utc
     :rtype: float
     """
-    site = coord.EarthLocation.of_site(location)
+    if location == 'lowell':
+        #Specify the location of lowell without needing to download the sites.json file.
+        #The values used are the geocentric coordinates of lowell in meters, and I got them from:
+        #   coord.EarthLocation.of_site('lowell')
+        site = coord.EarthLocation.from_geocentric(-1918329.73705223*u.m, -4861253.21396165*u.m, 3647910.33904671*u.m)
+    else:
+        site = coord.EarthLocation.of_site(location)
+
     input_bjd_tdb = Time(bjd_tdb, format='jd', scale='tdb', location=site)
     target = coord.SkyCoord(ra, dec, unit=(u.hourangle, u.deg), frame='icrs')
     ltt_bary = input_bjd_tdb.light_travel_time(target)
@@ -95,18 +104,31 @@ def jd_utc_to_bjd_tdb(jd_utc, ra, dec, location='lowell'):
 
     :param jd_utc: julian date in utc
     :type jd_utc: float
-    :param ra: the ra of the target (e.g., '23:06:30.0')
-    :type ra: str
-    :param dec: the dec of the target (e.g, '-05:01:57')
-    :type dec: [type]
+    :param ra: the ra of the target as an hour angle (e.g., '23:06:30.0') or decimal degrees (e.g., 346.622013)
+    :type ra: str or float
+    :param dec: the dec of the target as a string (e.g, '-05:01:57') or decimal degrees (e.g., -5.041274)
+    :type dec: str or float
     :param location: the site of observations, must match a location in the astropy .of_site json file, defaults to 'lowell'
     :type location: str, optional
     :return: time in bjd tdb
     :rtype: float
     """
-    site = coord.EarthLocation.of_site(location)
+
+    if type(ra) == str:
+        ra_unit = u.hourangle
+    elif type(ra) == np.float64:
+        ra_unit = u.deg
+
+    if location == 'lowell':
+        #Specify the location of lowell without needing to download the sites.json file.
+        #The values used are the geocentric coordinates of lowell in meters, and I got them from:
+        #   coord.EarthLocation.of_site('lowell')
+        site = coord.EarthLocation.from_geocentric(-1918329.73705223*u.m, -4861253.21396165*u.m, 3647910.33904671*u.m)
+    else:
+        site = coord.EarthLocation.of_site(location)
+
     input_jd_utc = Time(jd_utc, format='jd', scale='utc', location=site)
-    target = coord.SkyCoord(ra, dec, unit=(u.hourangle, u.deg), frame='icrs')
+    target = coord.SkyCoord(ra, dec, unit=(ra_unit, u.deg), frame='icrs')
     ltt_bary = input_jd_utc.light_travel_time(target)
     return (input_jd_utc.tdb + ltt_bary).value
 
@@ -177,6 +199,30 @@ def pines_log_reader(path):
 
     return df
 
+def mimir_date_reader(header):
+    date_obs = header['DATE-OBS']
+    # Catch a case that can cause datetime strptime to crash; Mimir headers sometimes have DATE-OBS with seconds specified as 010.xx seconds, when it should be 10.xx seconds.
+    if len(date_obs.split(':')[-1].split('.')[0]) == 3:
+        date_obs = date_obs.split(
+            ':')[0] + ':' + date_obs.split(':')[1] + ':' + date_obs.split(':')[-1][1:]
+
+    if date_obs.split(':')[-1] == '60.00':
+        date_obs = date_obs.split(
+            ':')[0]+':'+str(int(date_obs.split(':')[1])+1)+':00.00'
+    if '.' not in date_obs:
+        time_fmt = '%Y-%m-%dT%H:%M:%S'
+    else:
+        time_fmt = '%Y-%m-%dT%H:%M:%S.%f'
+
+    # Keep a try/except clause here in case other unknown DATE-OBS formats pop up.
+    try:
+        date = datetime.strptime(date_obs, time_fmt)
+        return date
+    except:
+        print(
+            'Header DATE-OBS format does not match the format code in strptime! Inspect/correct the DATE-OBS value.')
+        breakpoint()
+
 
 def pines_login():
     """Establishes an sftp connection with the PINES server.
@@ -208,29 +254,33 @@ def pines_login():
                 print('ERROR: login failed after {} tries.'.format(i))
 
 
-def profile_reader(short_name):
+def profile_reader(short_name, force_output_path=''):
     """Reads in data from a target's .profile file.
 
     :param short_name: the short name of the target
     :type short_name: str
+    :param force_output_path: user-chosen directory to use in place of the default ~/Documents/PINES_analysis_toolkit directory for analysis, defaults to ''
+    :type force_output_path: pathlib.PosixPath
     :return: dictionary of the profile data
     :rtype: dict
     """
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pines_dir_check()    
 
-    pines_path = pat.utils.pines_dir_check()
-    profile_path = pines_path / \
-        ('Objects/'+short_name+'/'+short_name.replace(' ', '').lower()+'.profile')
+    profile_path = pines_path/('Objects/'+short_name+'/'+short_name.replace(' ', '').lower()+'.profile')
+
 
     if not os.path.exists(profile_path):
         print('{} does not exist, creating profile file with default params!'.format(
             profile_path.name))
         pines_path = pat.utils.pines_dir_check()
-        red_path = pines_path / \
-            ('Objects/'+str(profile_path).split('/')[-2]+'/reduced/')
+        red_path = pines_path/('Objects/'+str(profile_path).split('/')[-2]+'/reduced/')
         red_images = np.array(natsorted(glob(str(red_path)+'/*.fits')))
         source_detect_image = red_images[40].split('/')[-1]
         exclude_lower_left = 'False'
-        dimness_tolerance = '0.33'
+        dimness_tolerance = '0.40'
         brightness_tolerance = '3.0'
         distance_from_target = '900'
         non_linear_limit = '3750'
@@ -285,16 +335,17 @@ def quick_plot(array, interp=False):
 
 
 def ref_counter():
-    """Counts the number of reference stars that each object in your ~/PINES_analysis_toolkit/Objects/ directory has
+    """Counts the number of reference stars that each object in your ~/PINES_analysis_toolkit/Objects/ directory. 
+    Prints the mean of the distribution and +/- 1-sigma range. 
     """
     pines_path = pat.utils.pines_dir_check()
     objects_path = pines_path/('Objects/')
     targets = natsorted(os.listdir(objects_path))
     targets = np.array(targets[0:-1])
-    # Remove staring sdM target.
-    targets = np.delete(targets, np.where(targets == '2MASS 0438+4349')[0][0])
-    # Remove target that is saturated.
-    targets = np.delete(targets, np.where(targets == '2MASS 1333-0215')[0][0])
+#    # Remove staring sdM target.
+#    targets = np.delete(targets, np.where(targets == '2MASS 0438+4349')[0][0])
+#    # Remove target that is saturated.
+#    targets = np.delete(targets, np.where(targets == '2MASS 1333-0215')[0][0])
     num_refs = np.zeros(len(targets))
     for i in range(len(targets)):
         source_path = objects_path / \
@@ -307,9 +358,8 @@ def ref_counter():
 
     num_refs = num_refs[~np.isnan(num_refs)]
     v, l, h = sigmaclip(num_refs, 3, 3)
-    breakpoint()
-    return
-
+    res = np.percentile(v, [15.9, 50, 84.1])
+    print('{}^+{}_-{}'.format(res[1], res[1]-res[0], res[2]-res[1]))
 
 def short_name_creator(long_name):
     """Tries to create a 'short name' out of a full 2MASS identifier. 
@@ -322,9 +372,13 @@ def short_name_creator(long_name):
     """
     name = long_name.replace(' ', '')
 
+    if 'UT' in name:
+        long_name = long_name.split('UT')[0].rstrip()
+        name = name.split('UT')[0]
+
     if '2MASS' in name:
         # If the user already passed a 2MASS short name (i.e., 2MASS XXXX+YYYY), just return it.
-        if len(name) == 14:
+        if len(name) == 14 or len(name) == 16:
             short_name = long_name
 
         # Otherwise, create the short name.

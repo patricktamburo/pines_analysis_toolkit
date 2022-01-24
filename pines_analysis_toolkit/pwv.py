@@ -1,4 +1,4 @@
-from pines_analysis_toolkit.utils import pines_dir_check, short_name_creator
+from pines_analysis_toolkit.utils import pines_dir_check, short_name_creator, jd_utc_to_bjd_tdb, pines_log_reader
 
 from astropy import units as u
 from astropy.coordinates import SkyCoord
@@ -6,6 +6,8 @@ from astropy.coordinates import EarthLocation, AltAz
 from astropy.time import Time
 from astropy.utils.data import clear_download_cache
 from astropy.constants import R_earth
+from astropy.io import fits
+from astropy.convolution import convolve, Gaussian1DKernel
 
 from netCDF4 import Dataset
 import os
@@ -14,17 +16,24 @@ import time
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-import glob
 import requests
 from bs4 import BeautifulSoup
+from pines_analysis_toolkit.utils import get_source_names
 import wget
 from multiprocessing.pool import ThreadPool
-import pdb
 from datetime import datetime
 import julian
-from scipy import interpolate
+from glob import glob
+import re
+import math
+from pathlib import Path
 
-__all__ = ['rename_nc', 'download_nc', 'pwv']
+from scipy import interpolate
+import scipy.signal
+from scipy.ndimage.filters import maximum_filter, uniform_filter
+from scipy.stats import norm 
+   
+#__all__ = ['rename_nc', 'download_nc', 'pwv']
 
 clear_download_cache()
 
@@ -39,8 +48,7 @@ def rename_nc(directory):
     directory : str
         Directory path containing the files.
     """
-    os.chdir(str(directory))
-    full_direc = os.listdir()
+    full_direc = os.listdir(directory)
     for i in range(len(full_direc)):
         try:
             tmp = int(full_direc[i].split('.')[0])
@@ -68,7 +76,7 @@ def download_file_wget(url):
     return url
 
 
-def download_nc(url, directory, date, n_threads=5):
+def download_nc(url, directory, date, n_threads=8):
     """
     Download .nc files from the NOAA webpage after manually requesting the dataset and store them in a new folder 
 
@@ -99,22 +107,22 @@ def download_nc(url, directory, date, n_threads=5):
         Contentt = TableContent[i]['href'].split('/')[-1]
         Content.append(Contentt)
 
-    if len(str(date[7])) == 1:
-        subs = '{}'.format(date[0]) + '00' + '{}'.format(date[7])
-    elif len(str(date[7])) == 2:
-        subs = '{}'.format(date[0]) + '0' + '{}'.format(date[7])
-    elif len(str(date[7])) == 3:
-        subs = '{}'.format(date[0]) + '{}'.format(date[7])
+#    if len(str(date[7])) == 1:
+#        subs = '{}'.format(date[0]) + '00' + '{}'.format(date[7])
+#    elif len(str(date[7])) == 2:
+#        subs = '{}'.format(date[0]) + '0' + '{}'.format(date[7])
+#    elif len(str(date[7])) == 3:
+#        subs = '{}'.format(date[0]) + '{}'.format(date[7])
 
     # Modified this so that we know how many files to download before we start.
-    FileName = [i for i in Content if subs in i]
+    FileName = [i for i in Content]
     FileName = [path for path in FileName if not os.path.exists('./' + path)]
 
     urls = []
     for i in range(0, len(FileName)):
         urlstemp = url + "/" + FileName[i]
         urls.append(urlstemp)
-
+    
     print('There are %s files to download' % len(urls))
 
     for ii in range(0, len(urls), n_threads):
@@ -124,12 +132,12 @@ def download_nc(url, directory, date, n_threads=5):
             download_file_wget, urls[slice_item])
         # Need to do this print so that it waits before starting the next batch.
         for f in files:
-            print('%s complete' % f)
+            print('%s complete' % f.split('/')[-1])
 
     print("All files downloaded!")
 
 
-def pwv(target, directory, P_min, P_max, line_of_sight='target', RA=None, Dec=None, plot=False, csv=False):
+def fyodor_pwv(short_name, directory, P_min, P_max, line_of_sight='target', RA=None, Dec=None, plot=False, csv=False, force_output_path=''):
     """
     Compute the precipitable water vapor (PWV) at the PTO at zenith or in direction of
     ``target``.
@@ -165,15 +173,18 @@ def pwv(target, directory, P_min, P_max, line_of_sight='target', RA=None, Dec=No
     latdeg = 35.097289793027436
     londeg = -111.53686622502691
     site = 'Perkins Telescope Observatory'
+    
+    #Fix the names of files so they appear in order. 
+    rename_nc(directory)
 
     # Access working directory
-    os.chdir(directory)
+
     # nc_filesT = glob.glob('*OR_ABI-L2-LVTPF*') #MODIFIED TO WORK WITH CONUS DATA
-    nc_filesT = glob.glob('*OR_ABI-L2-LVTP*')
+    nc_filesT = glob(str((directory/'*OR_ABI-L2-LVTP*.nc')))
 
     nc_filesT = sorted(nc_filesT)
     #nc_filesM = glob.glob('*OR_ABI-L2-LVMPF*')
-    nc_filesM = glob.glob('*OR_ABI-L2-LVMP*')
+    nc_filesM = glob(str((directory/'*OR_ABI-L2-LVMP*.nc')))
     nc_filesM = sorted(nc_filesM)
 
     # Open the first file to retrieve earth parameters
@@ -212,9 +223,12 @@ def pwv(target, directory, P_min, P_max, line_of_sight='target', RA=None, Dec=No
         hourtemp = time.strftime("%H:%M:%S", time.gmtime(epoch[i]))
         hour.append(hourtemp)
 
-    # Check if the output already exists, if so return.
-    pines_path = pines_dir_check()
-    short_name = short_name_creator(target)
+    # Get the user's pines_analysis_toolkit path
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pines_dir_check()
+
     out_date = day[1][-4:]+day[1][3:5]+day[1][0:2]
     # Make the object's pwv directory if it doesn't already exist.
     if not os.path.isdir(pines_path/('Objects/'+short_name+'/pwv/')):
@@ -592,42 +606,70 @@ def pwv(target, directory, P_min, P_max, line_of_sight='target', RA=None, Dec=No
 
     return
 
+def los_pwv_data_generator(short_name, ut_dates, centroided_sources, interp_type='linear', force_output_path=''):
+    """Runs fyodor_pwv and interpolates PWV measurements onto same time grid as observations for a chosen target.
 
-def los_pwv_data_generator(target, ut_dates, centroided_sources, interp_type='linear'):
-    pines_path = pat.utils.pines_dir_check()
-    short_name = pat.utils.short_name_creator(target)
+    :param short_name: short name of the target
+    :type short_name: str
+    :param ut_dates: list of UT dates on which to generate PWV data. You must have a directory in your Calibrations/PWV/ directory for each UT data containing the LVMP and LVTP data from NOAA CLASS. 
+    :type ut_dates: list of str
+    :param centroided_sources: dataframe of source centroids
+    :type centroided_sources: pandas DataFrame
+    :param interp_type: 'linear' or 'cubicspline', the interpolation method used to interpolate from NOAA CLASS time stamps to Mimir time stamps, defaults to 'linear'
+    :type interp_type: str, optional
+    :param force_output_path: user-chosen directory to use in place of the default ~/Documents/PINES_analysis_toolkit directory for analysis, defaults to ''
+    :type force_output_path: str, optional
+    """
+    
+    # Get the user's pines_analysis_toolkit path
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pines_dir_check()
+
+    sources = get_source_names(centroided_sources)
+    #Find the coordinates of the target using the PINES sample excel file.
     pines_sample_path = pines_path/('Misc/PINES sample.xlsx')
     sample_df = pd.read_excel(pines_sample_path)
-    target_row = np.where(
-        np.array(sample_df['2MASS Name']) == target.split('J')[1])[0][0]
+    target_row = np.where(np.array(sample_df['Short Name']) == sources[0])[0][0]
     target_ra = sample_df['RA (deg)'][target_row]
     target_dec = sample_df['Dec (deg)'][target_row]
+
+    #Loop over dates and generate Fyodor data.
     for date in ut_dates:
         fyodor_data_path = pines_path/('Calibrations/PWV/'+date)
-        pat.pwv.fyodor.pwv(target, fyodor_data_path, P_min=785,
-                           P_max=300, RA=target_ra, Dec=target_dec, csv=True)
-
-    # Interpolate PWV data onto grid of PINES times
+        fyodor_pwv(short_name, fyodor_data_path, P_min=775, P_max=300, RA=target_ra, Dec=target_dec, csv=True, force_output_path=force_output_path)
+    
+    #Now interpolate PWV data onto grid of PINES times.
+    #Start by grabbing times and pwv values from fyodor output.
     time_strs = []
     pwv = []
     for date in ut_dates:
         fyodor_data_path = pines_path/('Objects/'+short_name+'/pwv/')
+        #Read in the output csv from the previous step
         csv_path = fyodor_data_path/('PWV_los_'+date+'.csv')
         df = pd.read_csv(csv_path)
         time_strs.extend(df['Time'])
         pwv.extend(df['PWV'])
 
+    #Convert the times to BJD TDB. 
     time_strs = np.array(time_strs)
     fyodor_dates = np.array(
         [datetime.strptime(i, '%Y-%m-%d %H:%M:%S') for i in time_strs])
-    fyodor_times = np.array([julian.to_jd(i)
-                            for i in fyodor_dates])  # Convert to JD UTC
+    fyodor_times_jd_utc = np.array([julian.to_jd(i) for i in fyodor_dates])  # Convert to JD UTC
+    
+    #Convert JD UTC to BJD TDB
+    fyodor_times_bjd_tdb = jd_utc_to_bjd_tdb(fyodor_times_jd_utc, target_ra, target_dec)
+
     pwv = np.array(pwv)
-    fyodor_times = fyodor_times[~np.isnan(pwv)]
+
+    #Remove any NaN entries
+    fyodor_times = fyodor_times_bjd_tdb[~np.isnan(pwv)]
     pwv = pwv[~np.isnan(pwv)]
 
+    #Get the times of the PINES observations.
     centroided_sources.columns = centroided_sources.columns.str.strip()
-    pines_times = centroided_sources['Time (JD UTC)']
+    pines_times = np.array(centroided_sources['Time BJD TDB'])
 
     # Interpolate Fyodor full disk pwv data onto the PINES data grid.
     if interp_type == 'linear':
@@ -638,8 +680,281 @@ def los_pwv_data_generator(target, ut_dates, centroided_sources, interp_type='li
         tck = interpolate.splrep(fyodor_times, pwv)
         pwv_interp = interpolate.splev(pines_times, tck, der=0)
 
-    pwv_output_dict = {'Time (JD UTC)': pines_times, 'PWV': pwv_interp}
+    #Write out interpolated PWV data to the object's pwv/ directory. 
+    pwv_output_dict = {'Time BJD TDB': pines_times, 'PWV': pwv_interp}
     pwv_output_df = pd.DataFrame(pwv_output_dict)
     pwv_output_path = pines_path / \
         ('Objects/'+short_name+'/pwv/'+short_name+'_fyodor_pwv.csv')
     pwv_output_df.to_csv(pwv_output_path, index=0)
+    
+def readBT(file, R=None, npix=3.0, samp=2.5E7, waverange=None, air=False, DF=0.0,
+           verbose=False, wave=None, flam=None):
+    """
+    Returns wavelength in Angstroms and flux in erg s^-1 cm^-2 A^-1
+    
+    Arguments
+    file - name of file to read from, ignored if wave and flam are set
+    R    - resolution to convolve spectrum to, default to not change resolution
+    npix - number of pixels per resolution element of output spectrum, most spectrographs use 2-4
+    samp - sampling to interpolate wavelength grid to for convolution, must be higher than original sampling
+    waverange - two-element array with start and end wavelengths of output ***IN MICRONS***
+    air  - set to True to convert output wavelengths from vacuum to air
+    DF   - logarithmic offset, 0.0 for Public Veyette models, -8.0 for other raw PHOENIX output
+    verbose - set to True to print timing info
+    wave - input wavelength array to process instead of reading in from file
+    flam - input flux array to process instead of reading from file
+    """
+    
+    #Default to no broadening
+    if R is None:
+        asIs = True
+    else:
+        asIs = False
+    
+    if waverange is None and not asIs:
+        raise ValueError("You really don't want to run this without setting a waverange or reading in asIs. "
+              "Your computer will probably freeze.")
+    
+    if verbose:
+        stime = time.time()
+        print('Starting File: ' + str(file))
+    
+    #NOT IMPLEMENTED YET
+    # if vsini == 0:
+        # vsini = 3.0 # km/s
+        # rotBroad = 0
+    # else:
+        # rotbroad = 1
+    
+    #Read in data unless passed
+    if verbose: stime1 = time.time()
+    if wave is None or flam is None:
+    
+        readin = []
+        if os.path.splitext(file)[1] == '.xz':
+            import lzma
+            openit = lzma.open
+        else:
+            openit = open
+        with openit(file, 'rt') as file1:
+            for line in file1:
+                if '#' not in line:
+                    subbed = re.sub(r'(\d)-(\d)', r'\1 -\2', line).replace('D','E')
+                    readin.append(subbed.split())
+
+        wave = []
+        flam = []    
+        for line in readin:
+            if waverange[0] < float(line[0])/1e4 < waverange[1]:
+                wave.append(float(line[0]))
+                flam.append(float(line[1]))
+            
+        wave = np.array(wave)
+        #flam = 10.0**(np.array(flam) + DF)
+        flam = np.array(flam)
+        
+        wave, uwave = np.unique(wave, return_index=True)
+        flam = flam[uwave]
+
+    #breakpoint()
+    if verbose: print('Reading file took ' + str(int(round(time.time() - stime1))) + ' seconds')
+    
+    #Return without processing if asIs is True
+    if asIs:
+        if waverange is not None:
+            keep = (waverange[0] <= wave/1e4) & (wave/1e4 <= waverange[1])
+            wave = wave[keep]
+            flam = flam[keep]
+    
+        if verbose:
+            etime = time.time()
+            print('Finished in ' + str(int(round(etime-stime))) + ' seconds.')
+        return wave, flam
+        
+    ss = 10.0 * npix
+    
+    #Default to full data range
+    if waverange is None: waverange = np.array([wave[ss+1], wave[-1*ss - 2]]) * 1e-4
+    
+    #Interpolate to higher sampling
+    if verbose: stime1 = time.time()
+    sampBump = math.ceil(samp / R / npix)
+    iWaveStart = waverange[0] * 1e4
+    iWaveEnd = waverange[1] * 1e4
+    #if np.min(wave) > iWaveStart or np.max(wave) < iWaveEnd:
+    #    print('Oh no! Not enough wavelength range. File: ' + file)
+    iWaveFull = iWaveStart * np.exp( np.arange( samp * np.log(iWaveEnd/iWaveStart) ) / samp )
+    w = (iWaveFull > np.min(wave)) & (iWaveFull < np.max(wave))
+    iWaveOffset = np.where(w)[0][0]
+    iWave = iWaveFull[w]
+    ww = (wave >= 0.9*iWaveStart) & (wave <= 1.1*iWaveEnd)
+    tck = interpolate.splrep(wave[ww], flam[ww], s=0)
+    iflam = np.array(interpolate.splev(iWave, tck, der=0))
+
+
+    if verbose: print('Interpolation took ' + str(int(round(time.time() - stime1))) + ' seconds')
+    
+    #Convolve with spectrograph resolution
+    if verbose: stime1 = time.time()
+    fwhm = samp / R
+    stdv = fwhm / ( 2.0 * math.sqrt( 2.0 * math.log(2.0) ) )
+    #Create Kernel and normalize
+    lsf  = np.array(scipy.signal.gaussian(int(4.0 * fwhm), stdv))
+    lsf /= lsf.sum()
+    #Convolve
+    specflam = scipy.signal.fftconvolve(iflam, lsf, mode='same')
+    if verbose: print('Convolution took ' + str(int(round(time.time() - stime1))) + ' seconds')
+    
+    #Integrate over sampBump to get npix per resolution element
+    if verbose: stime1 = time.time()
+    i1Full  = ( float(sampBump) * np.arange( np.floor(
+              (np.size(iWaveFull)-1.0) / sampBump ) ) )        # beginning index of each integral
+    i1sampFull = i1Full + sampBump
+    w = (iWaveFull[i1Full.astype('int').tolist()] > np.min(wave)) & (iWaveFull[i1sampFull.astype('int').tolist()] < np.max(wave))
+    i1     = (i1Full.astype('int')[w] - iWaveOffset).tolist()
+    i1samp = (i1sampFull.astype('int')[w] - iWaveOffset).tolist()
+    trapA   = ( ( iWave[1:] - iWave[0:-1] ) *
+              0.5 * ( specflam[0:-1] + specflam[1:] ) )         # trapezoidal area under each samp point
+    intFlux = np.sum((trapA[int(i1[0]):int(i1[-1]+sampBump)]
+                      ).reshape(len(i1), sampBump), axis=1)     # sum over sampBump points for each pixel
+    #import pdb ; pdb.set_trace()
+    delLam  = iWave[i1samp] - iWave[i1]   # delta lambda
+    intWave = ( (iWave[i1samp]**2  - iWave[i1]**2)
+              / ( 2.0 * delLam ) )                              # mean wavelength of each pixel
+    intflam = intFlux / delLam
+    nSpec   = len(intWave)
+    if verbose: print('Integration took ' + str(int(round(time.time() - stime1))) + ' seconds')
+    
+    if air: intWave /= (1.0 + 2.735182e-4 + 131.4182 / intWave**2 + 2.76249e8 / intWave**4)
+    
+    if verbose:
+        etime = time.time()
+        print('Finished in ' + str(int(round(etime-stime))) + ' seconds.')
+    
+    return intWave/1e4, intflam
+
+def pwv_spectrum_time_series(short_name, reference_id, band='J', force_output_path=''):
+    plate_scale = 0.579
+
+    # Get the user's pines_analysis_toolkit path
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pines_dir_check()
+    
+    if band == 'J':
+        waverange = [1.125, 1.375]
+        waverange_readBT = [0.5, 2.0]
+        filter_path = pines_path/('Misc/'+'mimir_'+band+'_bandpass.txt')
+        filter_df = pd.read_csv(filter_path, sep='\t', names=['Wavelength', 'Throughput'])
+        mimir_w =  np.array(filter_df['Wavelength'])
+        mimir_thru = np.array(filter_df['Throughput'])/100
+        inds = np.where((waverange[0]-0.01 < mimir_w) & (mimir_w < waverange[1]+0.01))[0]
+        mimir_w = mimir_w[inds]
+        mimir_thru = mimir_thru[inds]
+    else:
+        print('Have not implemented anything other than J band, returning!')
+        return
+    
+    object_path = pines_path/('Objects/'+short_name)
+    centroid_df = pines_log_reader(object_path/('sources/target_and_references_centroids.csv'))
+    airmass = np.array(centroid_df['Airmass'])
+    seeing = np.array(centroid_df['Seeing'])
+    zenith_angle = np.arccos(1/airmass)*180/np.pi
+    bt_settl_path = pines_path/('Calibrations/BT-Settl')
+
+    atran_path = pines_path/('Calibrations/PWV/ATRAN_spectra')
+    #Get info about the reference star
+    source_df = pd.read_csv(object_path/('sources/target_and_references_source_detection.csv'))
+    entry = source_df.iloc[reference_id]
+    temp = entry['Teff']
+
+    #Get the reference star's spectrum. Units are erg cm^-2 s^-1 A^-1
+    if int(temp/100) <= 25:
+        bt_settl_filename = 'lte0'+str(int(temp/100))+'-4.5-0.0.BT-Settl.7.dat.txt'
+    else:
+        bt_settl_filename = 'lte0'+str(int(temp/100))+'-4.5-0.0a+0.0.BT-NextGen.7.dat.txt'
+
+    print('Source {} temp. = {} K, using {} BT-Settl model.'.format(reference_id, temp, bt_settl_filename))
+    spectrum_w, spectrum_flam = readBT(bt_settl_path/bt_settl_filename, R=100, waverange=waverange_readBT)
+
+    #Convert from ergs, [J cm^-2 s^-1 A^-1]
+    spectrum_flam = spectrum_flam / 1e7
+
+    #Multiply by wavelength in Angstrom, [J cm^-2 s^-1]
+    spectrum_flam = spectrum_flam * spectrum_w * 1e4 / (100*3)
+
+    #Multiply by the area of Perkins in cm^2, [J s^-1]
+    A = (1-0.05)*np.pi*(1.83*100/2)**2
+    spectrum_flam = spectrum_flam * A
+
+    #Multiply by exposure time, [J]
+    exptime = 20 
+    spectrum_flam = spectrum_flam * exptime
+
+    #Divide by Joules/photon, [photons]
+    h = 6.62607015e-34
+    c = 2.99792458e8
+    E_phot = h*c/(spectrum_w*1e-6) #[J/photon]
+    spectrum_flam = spectrum_flam/E_phot
+
+    # #Multiply by (R/D)**2
+    # if reference_id == 1:
+    #     R_star = 0.8 #solar radii
+    #     p = 0.665 #mas
+    # elif reference_id == 5:
+    #     R_star = 0.3 #solar radii 
+    #     p = 5.269 #mas
+    # else:
+    #     breakpoint()
+    # D = 1/(p/1000) * 3.086e16
+    # R = R_star * 7e8
+    # print((R/D)**2)
+    # spectrum_flam = spectrum_flam *  (R/D)**2 
+    
+    #Get the PWV data.
+    pines_pwv_path = object_path/('pwv/'+short_name+'_fyodor_pwv.csv')
+    pines_pwv_df = pd.read_csv(pines_pwv_path)
+    pines_times = np.array(pines_pwv_df['Time BJD TDB'])
+    pines_pwv = np.array(pines_pwv_df['PWV'])
+
+    integrated_response = np.zeros(len(pines_times))
+    seeing_factors = np.zeros(len(pines_times))
+    pwv_factors = np.zeros(len(pines_times))
+    for i in range(len(pines_times)):
+        #Round zenith angle to the nearest 5 degrees. 
+        z = round(zenith_angle[i]/5)*5
+        #Round PWV to the nearest 0.5
+        pwv = round(pines_pwv[i]*2)/2
+
+        #Get the appropriate ATRAN sky spectrum given z and pwv
+        atran_file = 'atran_{:1.2f}_{:1d}.dat'.format(pwv, z)
+        #atran_file = 'atran_{:1.2f}_35.dat'.format(pwv)
+
+        atran_df = pd.read_csv(atran_path/atran_file, delim_whitespace=True, names=['Wavelength', 'Transmission'])
+        atran_w = np.array(atran_df['Wavelength'])
+        atran_tran = np.array(atran_df['Transmission'])
+        
+        #Interpolate Mimir throughput, sky transmission, and stellar spectrum onto the same wavelength grid. 
+        interp_w = np.linspace(waverange[0], waverange[1], 1000)
+
+        f_mimir = scipy.interpolate.interp1d(mimir_w, mimir_thru)
+        f_sky = scipy.interpolate.interp1d(atran_w, atran_tran)
+        f_star = scipy.interpolate.interp1d(spectrum_w, spectrum_flam)
+
+        interp_mimir = f_mimir(interp_w)
+        interp_sky = f_sky(interp_w)
+        interp_star = f_star(interp_w)
+
+        seeing_sigma = seeing[i]/(plate_scale)
+        seeing_factors[i] = norm(0, seeing_sigma).cdf(4)-norm(0, seeing_sigma).cdf(-4)
+
+        #Sum over wavelength and correct for seeing effects
+        pwv_factors[i] = np.sum(interp_star*interp_sky*interp_mimir)
+        integrated_response[i] = pwv_factors[i]
+        #integrated_response[i] = pwv_factors[i] * seeing_factors[i] * 0.058 #Extra 0.058 to account for Mimir throughput
+    
+    integrated_response = integrated_response/np.mean(integrated_response)
+    integrated_response = convolve(integrated_response, Gaussian1DKernel(31), boundary='extend')
+
+    return integrated_response

@@ -13,6 +13,8 @@ Welcome to pines_analysis_toolkit's documentation!
 
    intro
    examples
+   usefulfuncs
+   modules
 
 Indices and tables
 ==================

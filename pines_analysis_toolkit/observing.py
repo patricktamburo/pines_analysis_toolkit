@@ -6,21 +6,24 @@ import pdb
 import os
 from pathlib import Path
 from matplotlib.patches import Polygon
-from scipy import signal
-from scipy.spatial import ConvexHull, convex_hull_plot_2d
-import scipy.optimize as opt
+
 from glob import glob
 from photutils import DAOStarFinder, aperture_photometry, CircularAperture, Background2D, MedianBackground
-from pines_analysis_toolkit.utils import pines_dir_check, pines_log_reader, short_name_creator, pines_login, quick_plot as qp
-from pines_analysis_toolkit.data import get_master_synthetic_image
-from pines_analysis_toolkit.photometry import detect_sources
+
+from pines_analysis_toolkit.utils import get_source_names, pines_dir_check, pines_log_reader, short_name_creator, pines_login, quick_plot as qp
+from pines_analysis_toolkit.data import get_master_synthetic_image, bg_2d, reduce
 
 from astropy.modeling import models, fitting
 from astropy.stats import sigma_clip, sigma_clipped_stats, SigmaClip
 from astropy.modeling import models, fitting
 from astropy.convolution import Gaussian2DKernel, interpolate_replace_nans
 from astropy.io import fits
-from astropy.convolution import Gaussian2DKernel, interpolate_replace_nans
+from astropy.visualization import ImageNormalize, ZScaleInterval, LinearStretch
+
+from scipy import signal
+from scipy.spatial import ConvexHull, convex_hull_plot_2d
+import scipy.optimize as opt
+from scipy.stats import sigmaclip
 
 import pandas as pd
 pd.options.mode.chained_assignment = None  # Suppress some useless warnings.
@@ -29,31 +32,246 @@ pd.options.mode.chained_assignment = None  # Suppress some useless warnings.
 matplotlib.use('TkAgg')
 plt.ion()
 
+def detect_sources(image_path, seeing_fwhm, edge_tolerance, thresh=6.0, plot=False):
+    """Finds sources in a Mimir image.
 
-def average_seeing(log_path):
-    """Calculates average seeing from values in the PINES observing logs. 
+    :param image_path: path to the image
+    :type image_path: pathlib.PosixPath
+    :param seeing_fwhm: seeing FWHM in arcsec
+    :type seeing_fwhm: float
+    :param edge_tolerance: how close a source can be to the edge (pixels)
+    :type edge_tolerance: float
+    :param thresh: significance threshold, defaults to 6.0
+    :type thresh: float, optional
+    :param plot: whether or not to plot detected sources, defaults to False
+    :type plot: bool, optional
+    :return: dataframe of sources
+    :rtype: pandas DataFrame
+    """
+
+    fwhm = seeing_fwhm/0.579  # FIXED
+
+    # Radius of aperture in pixels for doing quick photometry on detected sources.
+    ap_rad = 7
+
+    # Read in the image.
+    image = fits.open(image_path)[0].data
+    header = fits.open(image_path)[0].header
+
+    # Interpolate nans if any in image.
+    kernel = Gaussian2DKernel(x_stddev=0.5)
+    image = interpolate_replace_nans(image, kernel)
+
+    # Do a quick background model subtraction (makes source detection easier).
+    image = bg_2d(image, box_size=32)
+
+    # Get the sigma_clipped_stats for the image.
+    avg, med, std = sigma_clipped_stats(image)
+
+    norm = ImageNormalize(
+        data=image, interval=ZScaleInterval(), stretch=LinearStretch())
+
+    if plot:
+        title = image_path.name
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 9))
+        ax.set_aspect('equal')
+        im = ax.imshow(image, origin='lower', norm=norm)
+        cax = fig.add_axes([0.94, 0.15, 0.015, 0.7])
+        fig.colorbar(im, cax=cax, orientation='vertical', label='ADU')
+        ax.set_title(title+' Initial Source Detection')
+
+    print('')
+    print('Finding sources in {}.'.format(image_path.name))
+
+    # Detect sources using DAOStarFinder.
+    daofind = DAOStarFinder(fwhm=fwhm, threshold=thresh*std, sharplo=0.2)
+
+    initial_sources = daofind(image - med)
+
+    # Do a cut based on source sharpness to get rid of some false detections.
+    initial_sources.sort('sharpness')
+    bad_sharpness_locs = np.where(initial_sources['sharpness'] < 0.3)[0]
+    initial_sources.remove_rows(bad_sharpness_locs)
+
+    # Cut sources that are found within edge_tolerance pix of the edges.
+    bad_x = np.where((initial_sources['xcentroid'] < edge_tolerance) | (
+        initial_sources['xcentroid'] > 1023-edge_tolerance))[0]
+    initial_sources.remove_rows(bad_x)
+    bad_y = np.where((initial_sources['ycentroid'] < edge_tolerance) | (
+        initial_sources['ycentroid'] > 1023-edge_tolerance))[0]
+    initial_sources.remove_rows(bad_y)
+
+    # Cut sources near y = 512, these are frequently bad.
+    bad_512 = np.where((initial_sources['ycentroid'] > 506) & (
+        initial_sources['ycentroid'] < 518))
+    initial_sources.remove_rows(bad_512)
+
+    # Cut sources near the top and bottom edges to avoid issues with the Mimir "ski jump" feature that can sometimes occur.
+    bad_ski_jump = np.where((initial_sources['ycentroid'] < 100) | (
+        initial_sources['ycentroid'] > 924))
+    initial_sources.remove_rows(bad_ski_jump)
+
+    # Do quick photometry on the remaining sources.
+    positions = [(initial_sources['xcentroid'][i], initial_sources['ycentroid'][i])
+                 for i in range(len(initial_sources))]
+    apertures = CircularAperture(positions, r=ap_rad)
+    phot_table = aperture_photometry(image-med, apertures)
+
+    # Cut based on brightness.
+    phot_table.sort('aperture_sum')
+    cutoff = 1*std*np.pi*ap_rad**2
+    bad_source_locs = np.where(phot_table['aperture_sum'] < cutoff)
+    phot_table.remove_rows(bad_source_locs)
+    initial_sources.remove_rows(bad_source_locs)
+
+    if plot:
+        # Plot detected sources.
+        # TODO: indicate saturated sources, sources near edge, etc. with different color markers.
+        ax.plot(phot_table['xcenter'], phot_table['ycenter'],
+                'ro', markerfacecolor='none')
+
+    #print('Found {} sources.'.format(len(phot_table)))
+    # Resort remaining sources so that the brightest are listed firsts.
+    sources = phot_table[::-1].to_pandas()
+    return sources
+
+def seeing(log_path):
+    """Returns seeing from a PINES observing log. 
 
     :param log_path: ~/PINES_analysis_toolkit/Logs/ path
     :type log_path: pathlib.PosixPath
-    :return: average seeing 
-    :rtype: float
+    :return: array of seeing values
+    :rtype: numpy array 
     """
-    try:
-        df = pines_log_reader(log_path)
-        if 'X seeing' in df.keys():
-            seeing = np.array(df['X seeing'], dtype=float)
-            seeing = np.array(seeing[np.where(~np.isnan(seeing))], dtype=float)
-            seeing = seeing[np.where((seeing > 1.2) & (seeing < 7.0))[0]]
-            mean_seeing = np.nanmean(seeing)
-            std_seeing = np.nanstd(seeing)
-            print('Average seeing for {}: {:1.1f} +/- {:1.1f}"'.format(
-                log_path.split('/')[-1].split('_')[0], mean_seeing, std_seeing))
-            return mean_seeing
-    except:
-        print('{}: No seeing measurements, inspect manually.'.format(
-            log_path.split('/')[-1].split('_')[0]))
-        return np.nan
+    df = pines_log_reader(log_path)
+    if 'X seeing' in df.keys():
+        seeing = np.array(df['X seeing'], dtype=float)
+        seeing = np.array(seeing[np.where(~np.isnan(seeing))], dtype=float)
+        seeing = seeing[np.where((seeing > 1.2) & (seeing < 7.0))[0]]
+        return seeing
+        
+def seeing_measurer(object_path, box_w=30, plate_scale=0.579, plots=False):
+    """Remeasures seeing for all reduced file for the target, and saves a seeing.csv file to the sources directory.
 
+    :param object_path: path to the object directory
+    :type object_path: pathlib.PosixPath
+    :param box_w: width of boxes to use for measuring source FWHMs, defaults to 30
+    :type box_w: int, optional
+    :param plate_scale: plate scale of the detector in ''/pixel, defaults to 0.579
+    :type plate_scale: float, optional
+    :param plots: whether or not to make plots of the fitted gaussians, defaults to False
+    :type plots: bool, optional
+    """
+    def tie_sigma(model):
+        return model.x_stddev_1
+
+    red_files = np.array(natsorted(glob(str(object_path/'reduced')+'/*.fits')))
+
+    centroid_df = pines_log_reader(object_path/('sources/target_and_references_centroids.csv'))
+    sources = get_source_names(centroid_df)
+    centroid_x = np.zeros((len(sources), len(centroid_df)))
+    centroid_y = np.zeros((len(sources), len(centroid_df)))
+    for i in range(len(sources)):
+        centroid_x[i,:] = np.array(centroid_df[sources[i]+' Image X'], dtype='float')
+        centroid_y[i,:] = np.array(centroid_df[sources[i]+' Image Y'], dtype='float')
+    
+    if len(red_files) != len(centroid_x[0,:]):
+        print('ERROR: number of reduced files does not equal the number of centroid measurements. Skipping seeing measurements.')
+        return
+
+    seeings = np.zeros(len(red_files))
+
+    y, x = np.mgrid[:box_w-2,:box_w-2]
+
+    for i in range(len(red_files)):
+        print('{} of {}'.format(i+1, len(red_files)))
+        im = fits.open(red_files[i])[0].data
+        fwhms = []
+        for j in range(len(sources)):
+            if np.isnan(centroid_x[j,i]):
+                seeings[i] = np.nan
+                continue
+            #Get the cutout from the centroid position
+            cutout = im[int(centroid_y[j,i]-box_w/2):int(centroid_y[j,i]+box_w/2), int(centroid_x[j,i]-box_w/2):int(centroid_x[j,i]+box_w/2)]
+            #Interpolate any nans in the cutout
+            cutout = interpolate_replace_nans(cutout, Gaussian2DKernel(0.25))
+            #If any nans persist, interpolate again.
+            if sum(sum(np.isnan(cutout))) > 0:
+                cutout = interpolate_replace_nans(cutout, Gaussian2DKernel(0.25))
+
+            #Shave 1 pixel of the edges to limit edge effects.
+            cutout = cutout[1:cutout.shape[1]-1, 1:cutout.shape[0]-1]
+            #Subtract a background estimate.
+            cutout = cutout - np.percentile(cutout,5)
+
+            # Fit with constant, bounds, tied x and y sigmas and outlier rejection:
+            gaussian_init = models.Const2D(0.0) + models.Gaussian2D(np.max(cutout),cutout.shape[0]/2, cutout.shape[1]/2, 8/2.355,8/2.355,0)
+            gaussian_init.x_stddev_1.min = 1.0/2.355
+            gaussian_init.x_stddev_1.max = 20.0/2.355
+            gaussian_init.y_stddev_1.min = 1.0/2.355
+            gaussian_init.y_stddev_1.max = 20.0/2.355
+            gaussian_init.y_stddev_1.tied = tie_sigma
+            gaussian_init.theta_1.fixed = True
+            fit_gauss = fitting.FittingWithOutlierRemoval(fitting.LevMarLSQFitter(),sigma_clip,niter=3,sigma=3.0)
+            gain = 8.21 #e per ADU
+            read_noise = 19 #ADU
+            weights = gain / np.sqrt(np.absolute(cutout)*gain + (read_noise*gain)**2) #1/sigma for each pixel
+
+            try:
+                gaussian, mask = fit_gauss(gaussian_init, x, y, cutout, weights)
+            except:
+                breakpoint()
+            fwhm_x = 2.355*gaussian.x_stddev_1.value * plate_scale
+            fwhms.append(fwhm_x)
+
+        v,l,h = sigmaclip(fwhms, 2.5, 2.5)
+
+        if np.isnan(np.nanmean(v)) and not np.isnan(centroid_x[j,i]):
+            breakpoint()
+        seeings[i] = np.nanmean(v)
+        
+        if plots:
+            norm = ImageNormalize(cutout, interval=ZScaleInterval())
+            fig, ax = plt.subplots(1,2,figsize=(10,5))
+            ax[0].imshow(cutout, origin='lower', norm=norm)
+            ax[1].imshow(gaussian(x,y), origin='lower', norm=norm)
+            plt.show()
+
+
+    seeing_df = pd.DataFrame(seeings,columns=['Seeing'])
+    output_path = object_path/('sources/seeing.csv')
+    seeing_df.to_csv(output_path, index=0)
+    return
+    
+def background(phot_path):
+    """Returns target background values from a PINES photometry file
+
+    :param log_path: photometry file path
+    :type log_path: pathlib.PosixPath
+    :return: array of background values
+    :rtype: numpy array 
+    """
+    df = pines_log_reader(phot_path)
+    sources = get_source_names(df)
+    if sources[0]+' Background' in df.keys():
+        files = np.array(df['Filename'])
+        bg = np.array(df[sources[0]+' Background'], dtype=float)
+        files = np.array(files[np.where(~np.isnan(bg))])
+        bg = np.array(bg[np.where(~np.isnan(bg))], dtype=float)
+        
+        if len(files) != len(bg):
+            return
+        
+        #Get exptimes 
+        exptimes = np.zeros(len(files))
+        bands = np.zeros(len(files), dtype='object')
+        for i in range(len(files)):
+            path = phot_path.parent.parent/('reduced/'+files[i])
+            hdr = fits.open(path)[0].header
+            exptimes[i] = hdr['EXPTIME']
+            bands[i] = hdr['FILTNME2']
+
+        return bg, exptimes, bands
 
 def bad_shift_identifier(target, date, bad_shift_threshold=200.):
     """Identifies bad shift values in PINES observing logs. 
@@ -220,7 +438,7 @@ def log_out_of_order_fixer(log_path, sftp):
     return
 
 
-def log_updater(date, sftp, shift_tolerance=30., upload=False):
+def log_updater(date, sftp, shift_tolerance=30., upload=False, force_output_path=''):
     """Updates x_shift and y_shift measurements from a PINES log. These shifts are measured using *full* resolution images, while at the telescope,
         we use *half* resolution images (to save time between exposures). By measuring on full-res images, we get more accurate shifts, which allows 
         us to determine centroids more easily.
@@ -233,6 +451,8 @@ def log_updater(date, sftp, shift_tolerance=30., upload=False):
     :type shift_tolerance: float, optional
     :param upload: [description], whether or not to push the updated log to the PINES server
     :type upload: bool, optional
+    :param force_output_path: user-chosen path if you do not want to use the default ~/Documents/PINES_analysis_toolkit/ directory for analysis, defaults to ''
+    :type force_output_path: str, optional
     """
 
     def tie_sigma(model):
@@ -269,7 +489,11 @@ def log_updater(date, sftp, shift_tolerance=30., upload=False):
         y_seeing = fwhm_y * 0.579
         return(x_seeing, y_seeing)
 
-    pines_path = pines_dir_check()
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pines_dir_check()
+    
     log_path = pines_path/('Logs/'+date+'_log.txt')
 
     # Begin by checking filenames, making sure they're in sequential order, and that there is only one entry for each.
@@ -295,7 +519,7 @@ def log_updater(date, sftp, shift_tolerance=30., upload=False):
 
             # Measure the shifts and get positions of targets.
             (measured_x_shift, measured_y_shift, source_x, source_y,
-             check_image) = shift_measurer(target, filename, sftp)
+             check_image) = shift_measurer(target, filename, force_output_path=pines_path)
 
             if (abs(measured_x_shift) > shift_tolerance) or (abs(measured_y_shift) > shift_tolerance):
                 print('Shift greater than {} pixels measured for {} in {}.'.format(
@@ -885,37 +1109,22 @@ def pines_logging(filename, date, target_name, filter_name, exptime, airmass, x_
     return log_text
 
 
-def shift_measurer(target, image_name, sftp, num_sources=15, closeness_tolerance=10.):
+def shift_measurer(target, image_name, num_sources=15, closeness_tolerance=10., force_output_path=''):
     """Measure shifts between an image and the master synthetic image for a target. 
 
     :param target: target's full 2MASS name 
     :type target: str
     :param image_name: name of the image whose shifts you want to measure
     :type image_name: str
-    :param sftp: sftp connection to the PINES server
-    :type sftp: pysftp.connection
     :param num_sources: number of sources to use for measuring shift, defaults to 15
     :type num_sources: int, optional
     :param closeness_tolerance: closest targets can be in pixels and still be considered for correlation sources, defaults to 10.
     :type closeness_tolerance: float, optional
+    :param force_output_path: user-chosen path if you do not want to use the default ~/Documents/PINES_analysis_toolkit/ directory for analysis, defaults to ''
+    :type force_output_path: str, optional
     :return: x/y shift, source x/y, check_image
     :rtype: [type]
     """
-    '''Authors:
-            Patrick Tamburo, Boston University, June 2020
-        Purpose:
-            Measures shifts between a particular image (a "check" image) and the master image for the field.
-        Inputs:
-            target (str): The target's full 2MASS name
-            image_name (str): The name of the reduced image whose shift you want to measure. 
-            num_sources (int): The maximum number of sources you would like to use to measure shifts. 
-            closeness_tolerance (float): The closest two identified sources can be in pixels before one is thrown out. 
-        Outputs:
-
-        TODO:
-            Grab logs automatically? 
-            Flag bad centroids?
-    '''
 
     def corr_shift_determination(corr):
         # Measure shift between the check and master images by fitting a 2D gaussian to corr. This gives sub-pixel accuracy.
@@ -936,22 +1145,34 @@ def shift_measurer(target, image_name, sftp, num_sources=15, closeness_tolerance
 
     #image_name = '20201005.354_red.fits'
 
-    pines_path = pines_dir_check()
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pines_dir_check()    
+    
     short_name = short_name_creator(target)
     synthetic_filename = target.replace(' ', '')+'_master_synthetic.fits'
     synthetic_path = pines_path / \
         ('Calibrations/Master Synthetic Images/'+synthetic_filename)
-
+    
     image_path = pines_path/('Objects/'+short_name+'/reduced/'+image_name)
     # Check for the appropriate master synthetic image on disk. If it's not there, get from PINES server.
     if not synthetic_path.exists():
+        print('No master image in {} for {}.'.format(pines_path, short_name))
+        print('Download from PINES server.')
+        sftp = pines_login()
         get_master_synthetic_image(sftp, target)
 
     master_synthetic_image = fits.open(synthetic_path)[0].data
-
+    
     # If the reduced image doesn't exist, download raw from PINES server and reduce it.
     if not image_path.exists():
         missing_filename = image_path.name.split('_')[0]+'.fits'
+        try:
+            sftp
+        except NameError:
+            print('Connect to PINES server to download missing image')
+            sftp = pines_login()
         sftp.chdir('/data/raw/mimir/')
         runs = sftp.listdir()
         run_guess = missing_filename[0:6]
@@ -1050,7 +1271,7 @@ def shift_measurer(target, image_name, sftp, num_sources=15, closeness_tolerance
     return (x_shift, -y_shift, source_x, source_y, check_image)
 
 
-def synthetic_image_maker(x_centroids, y_centroids, fwhm=float):
+def synthetic_image_maker(x_centroids, y_centroids, fwhm=2.5):
     """Construct a synthetic image from centroid data
 
     :param x_centroids: array of x positions
