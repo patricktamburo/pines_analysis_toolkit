@@ -76,7 +76,7 @@ def bpm_chooser(bpm_path, header):
     return master_bpm, master_bpm_name
 
 
-def bpm_maker(flat_date, dark_date, exptime, band, upload=False, sftp=''):
+def bpm_maker(flat_date, dark_date, exptime, band, upload=False, sftp='', force_output_path=''):
     """Creates a combined bad pixel mask from Kokopelli, variable, hot, and dead pixel masks.
 
     :param flat_date: date of the master flat used to reduce the image
@@ -92,7 +92,10 @@ def bpm_maker(flat_date, dark_date, exptime, band, upload=False, sftp=''):
     :param sftp: sftp connection to the PINES server, only needed if upload == True, defaults to ''
     :type sftp: str, optional
     """
-    pines_path = pines_dir_check()
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pines_dir_check()
 
     # Load in the different masks.
     kokopelli_path = pines_path / \
@@ -152,7 +155,7 @@ def bpm_maker(flat_date, dark_date, exptime, band, upload=False, sftp=''):
         print('Uploaded {} to pines.bu.edu:data/calibrations/Bad Pixel Masks/!'.format(upload_name))
 
 
-def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=False, sftp=''):
+def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=False, sftp='', force_output_path=''):
     """ Creates a master dark image for a given date and exposure time, and uploads to the PINES calibrations folder
 
     :param date: date on which dark files were taken (YYYYMMDD)
@@ -172,7 +175,12 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
     :raises RuntimeError: breaks if no dark files are found
     """
     clip_lvl = 3  # The value to use for sigma clipping.
-    pines_path = pines_dir_check()
+    
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pines_dir_check()
+
     # Suppress some warnings we don't care about in median combining.
     np.seterr(invalid='ignore')
     exptime = float(exptime)
@@ -209,19 +217,13 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
                 for i in range(len(dark_filenums)):
                     file_num = dark_filenums[i]
                     # Generate the filename.
-                    if file_num < 10:
-                        file_name = date+'.00'+str(file_num)+'.fits'
-                    elif (file_num >= 10) and (file_num < 100):
-                        file_name = date+'.0'+str(file_num)+'.fits'
-                    else:
-                        file_name = date+'.'+str(file_num)+'.fits'
+                    file_name = date+'.'+str(file_num).zfill(3)+'.fits'
                     # Check if the file name is in the directory, and if so, append it to the list of flat files.
                     if file_name in files_in_dir:
                         dark_files.append(file_name)
                     else:
                         print(
                             '{} not found in directory, skipping.'.format(file_name))
-                breakpoint()
             else:
                 # Otherwise, find the files automatically using the night's log.
                 log_path = pines_path/'Logs'
@@ -262,10 +264,9 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
         dark_files = []
         for file in all_dark_files:
             if fits.open(file)[0].header['EXPTIME'] == exptime:
-                dark_files.append(file)
+                dark_files.append(file.name)
 
     num_images = len(dark_files)
-
     if num_images == 0:
         raise RuntimeError(
             'No raw dark files found on disk with date '+date+'!')
@@ -300,24 +301,12 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
     print('......')
 
     pbar = ProgressBar()
-    # For each pixel, calculate the mean, median, and standard deviation "through the stack" of darks.
     for x in pbar(range(cube_shape[1])):
         for y in range(cube_shape[2]):
-            through_stack = dark_cube_raw[:, y, x]
-            through_stack_median = np.nanmedian(through_stack)
-            through_stack_stddev = np.nanstd(through_stack)
-
-            # Flag values that are > clip_lvl-sigma discrepant from the median.
-            good_inds = np.where(
-                (abs(through_stack - through_stack_median) / through_stack_stddev <= clip_lvl))[0]
-
-            # Calculate the sigma-clipped mean and sigma-clipped stddev using good_inds.
-            s_c_mean = np.nanmean(through_stack[good_inds])
-            s_c_stddev = np.nanstd(through_stack[good_inds])
-
-            # Store the sigma-clipped mean as the master dark value for this pixel.
-            master_dark[y, x] = s_c_mean
-            master_dark_stddev[y, x] = s_c_stddev
+            through_stack = dark_cube_raw[:,y,x]
+            v,l,h = sigmaclip(through_stack, clip_lvl, clip_lvl)
+            master_dark[y,x] = np.mean(v)
+            master_dark_stddev[y,x] = np.std(v)
 
     # Turn invalid warnings back on, in case it would permanently turn it off otherwise.
     np.seterr(invalid='warn')
@@ -426,7 +415,7 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
     print('Done!')
 
 
-def dead_pixels(date, band, upload=False, sftp=''):
+def dead_pixels(date, band, upload=False, sftp='', force_output_path=''):
     """Creates a dead pixel mask from a master flat image. 
 
     :param date: date of the master flat (YYYYMMDD)
@@ -438,7 +427,11 @@ def dead_pixels(date, band, upload=False, sftp=''):
     :param sftp: sftp connection to the PINES server, defaults to ''
     :type sftp: str, optional
     """
-    pines_path = pines_dir_check()
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pines_dir_check()
+
     flat_path = pines_path / \
         ('Calibrations/Flats/Domeflats/'+band+'/Master Flats/')
     flat_file = natsorted(list(flat_path.rglob('*'+date+'.fits')))[0]
@@ -492,15 +485,12 @@ def dead_pixels(date, band, upload=False, sftp=''):
                     # Only check pixels that aren't already flagged.
                     if (not np.isnan(master_flat[yy, xx])):
                         # 2d cutout surrounding the target pixel.
-                        box_2d = master_flat[yy-box_minus:yy +
-                                             box_plus, xx-box_minus:xx+box_plus]
+                        box_2d = master_flat[yy-box_minus:yy+box_plus, xx-box_minus:xx+box_plus]
                         # Unraveled box, ignoring any NaNs.
                         box_1d = box_2d[~np.isnan(box_2d)].ravel()
                         # Remove the target pixel from the 1d array.
                         neighbor_vals = np.delete(box_1d, targ_pix_ind)
-
-                        # neighbor_vals = sigmaclip(n, low=3.5, high=3.5)[0] #Clip away other bad pixels in the box to avoid biasing the mean/standard deviation.
-                        # Flag pixel as hot if it is more than clip_lvl sigma higher than the mean of its neighbors.
+                        # Flag pixel as hot if it is more than clip_lvl sigma lower than the mean of its neighbors
                         if master_flat[yy, xx] < (np.mean(neighbor_vals) - clip_lvl*np.std(neighbor_vals)):
                             dead_pixel_mask[yy, xx] = 1
                             # Set this pixel to a NaN so that it's ignored on subsequent iterations.
@@ -563,7 +553,7 @@ def dead_pixels(date, band, upload=False, sftp=''):
         print('Uploaded {} to pines.bu.edu:data/calibrations/Dead Pixel Masks/!'.format(upload_name))
 
 
-def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_start=0, lights_off_stop=0, upload=False, delete_raw=False, sftp=''):
+def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_start=0, lights_off_stop=0, upload=False, delete_raw=False, sftp='', force_output_path=''):
     """Creates a master dome flat field for a given date and band. 
 
     :param date: date of flat images (YYYYMMDD)
@@ -591,7 +581,11 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
     # Suppress some warnings we don't care about in median combining.
     np.seterr(invalid='ignore')
     plt.ion()  # Turn on interactive plotting.
-    pines_path = pines_dir_check()
+
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pines_dir_check()
 
     t1 = time.time()
     # If an sftp connection to the PINES server was passed, download the flat data.
@@ -615,10 +609,9 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
             print(
                 'ERROR: {} not found in any run on pines.bu.edu:data/raw/mimir/.'.format(date))
             return
-
         else:
             # If the file start/stop numbers are specfied, grab those files.
-            if (lights_on_stop != 0) or (lights_off_stop != 0):
+            if (lights_on_stop != 0):
                 files_in_dir = sftp.listdir()
                 on_flat_filenums = np.arange(
                     lights_on_start, lights_on_stop+1, step=1)
@@ -702,8 +695,7 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
                 lights_on_files = []
                 lights_off_files = []
                 for j in range(len(flat_files)):
-                    header = fits.open(dome_flat_raw_path /
-                                       flat_files[j])[0].header
+                    header = fits.open(dome_flat_raw_path / flat_files[j])[0].header
                     if header['FILTNME2'] != band:
                         print(
                             'ERROR: {} taken in filter other than {}. Double check your date, try specifying start/stop file numbers, etc.'.format(flat_files[j], band))
@@ -716,30 +708,59 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
                         print(
                             "ERROR: header['OBJECT'] for {} is not 'dome_lamp_on' or 'dome_lamp_off. Double check your date, try specifying start/stop file numbers, etc.".format(flat_files[j]))
     else:
-        dome_flat_raw_path = pines_path / \
-            ('Calibrations/Flats/Domeflats/'+band+'/Raw')
-        flat_files = natsorted(
-            list(Path(dome_flat_raw_path).rglob(date+'*.fits')))
+        dome_flat_raw_path = pines_path / ('Calibrations/Flats/Domeflats/'+band+'/Raw')
+        flat_files = natsorted( list(Path(dome_flat_raw_path).rglob(date+'*.fits')))
         # Find the lights-on and lights-off flat files.
         lights_on_files = []
         lights_off_files = []
-        for j in range(len(flat_files)):
-            header = fits.open(dome_flat_raw_path/flat_files[j])[0].header
-            if header['FILTNME2'] != band:
-                print(
-                    'ERROR: {} taken in filter other than {}. Double check your date, try specifying start/stop file numbers, etc.'.format(flat_files[j], band))
-                return
-            if header['OBJECT'] == 'dome_lamp_on':
-                lights_on_files.append(flat_files[j])
-            elif header['OBJECT'] == 'dome_lamp_off':
-                lights_off_files.append(flat_files[j])
-            else:
-                print(
-                    "ERROR: header['OBJECT'] for {} is not 'dome_lamp_on' or 'dome_lamp_off. Double check your date, try specifying start/stop file numbers, etc.".format(flat_files[j]))
 
-    if len(lights_on_files) == 0 or len(lights_off_files) == 0:
-        raise RuntimeError(
-            'No raw lights on/off flat files found with date '+date+' in '+band+' band!')
+        if lights_on_stop != 0:
+            files_in_dir = os.listdir(dome_flat_raw_path)
+            on_flat_filenums = np.arange(
+                lights_on_start, lights_on_stop+1, step=1)
+            off_flat_filenums = np.arange(
+                lights_off_start, lights_off_stop+1, step=1)
+            flat_files = []
+            lights_on_files = []
+            lights_off_files = []
+
+            # Add the lights-on flats to the file list.
+            for i in range(len(on_flat_filenums)):
+                file_num = on_flat_filenums[i]
+                file_name = date+'.'+str(file_num).zfill(3)+'.fits'
+                # Check if the file name is in the directory, and if so, append it to the list of flat files.
+                if file_name in files_in_dir:
+                    flat_files.append(file_name)
+                    lights_on_files.append(file_name)
+                else:
+                    print(
+                        '{} not found in directory, skipping.'.format(file_name))
+
+            # Do the same for the lights-off files.
+            for i in range(len(off_flat_filenums)):
+                file_num = off_flat_filenums[i]
+                file_name = date+'.'+str(file_num).zfill(3)+'.fits'
+                # Check if the file name is in the directory, and if so, append it to the list of flat files.
+                if file_name in files_in_dir:
+                    flat_files.append(file_name)
+                    lights_off_files.append(file_name)
+
+        else:
+            files_in_dir = np.array([Path(i) for i in natsorted(glob.glob(str(dome_flat_raw_path)+'/*.fits'))])
+            for i in range(len(files_in_dir)):
+                header = fits.open(files_in_dir[i])[0].header
+                if (header['OBJECT'] == 'dome_lamp_on') and (header['FILTNME2'] == band):
+                    flat_files.append(files_in_dir[i].name)
+                    lights_on_files.append(files_in_dir[i].name)
+                if (header['OBJECT'] == 'dome_lamp_off') and (header['FILTNME2'] == band):
+                    flat_files.append(files_in_dir[i].name)
+                    lights_off_files.append(files_in_dir[i].name)
+
+    if len(lights_on_files) == 0:
+        raise RuntimeError('No raw lights on/off flat files found with date '+date+' in '+band+' band!')
+    if len(lights_off_files) == 0:
+        print('WARNING: No lights-off files were found with date '+date+' in '+band+' band, making a flat with lights-on images only.')
+        time.sleep(2)
 
     print('Found {} lights-on flat files.'.format(len(lights_on_files)))
     print('Found {} lights-off flat files.'.format(len(lights_off_files)))
@@ -796,86 +817,68 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
     pbar = ProgressBar()
     for x in pbar(range(lights_on_cube_shape[1])):
         for y in range(lights_on_cube_shape[2]):
-            through_stack = flat_lights_on_cube_raw[:, y, x]
-            through_stack_median = np.nanmedian(through_stack)
-            through_stack_stddev = np.nanstd(through_stack)
+            through_stack = flat_lights_on_cube_raw[:,y,x]
+            v,l,h = sigmaclip(through_stack, clip_lvl, clip_lvl)
+            master_flat_lights_on[y,x] = np.mean(v)
+            master_flat_lights_on_stddev[y,x] = np.std(v)
 
-            # Flag values that are > clip_lvl-sigma discrepant from the median.
-            good_inds = np.where(
-                (abs(through_stack - through_stack_median) / through_stack_stddev <= clip_lvl))[0]
+    if len(lights_off_files) == 0:
+        master_flat_lights_off  = np.zeros((1024, 1024))
+        master_flat_lights_off_stddev = np.zeros((1024, 1024))
+    else:
+        # Make cube of the lights-off images
+        num_images = len(lights_off_files)
+        print('Reading in ', num_images, ' lights-off flat images.')
+        flat_lights_off_cube_raw = np.zeros([len(lights_off_files), 1024, 1024])
+        lights_off_std_devs = np.zeros(num_images)
+        print('')
+        print('Flat frame information')
+        print('-------------------------------------------------')
+        print('ID   Mean               Stddev         Max    Min')
+        print('-------------------------------------------------')
+        for j in range(len(lights_off_files)):
+            image_data = fits.open(
+                dome_flat_raw_path/lights_off_files[j])[0].data[0:1024, :]
+            header = fits.open(dome_flat_raw_path/lights_off_files[j])[0].header
+            if header['FILTNME2'] != band:
+                print('ERROR: {} taken in filter other than {}. Double check your date, try specifying start/stop file numbers, etc.'.format(
+                    lights_off_files[j], band))
+                return
+            # This line trims off the top two rows of the image, which are overscan.
+            flat_lights_off_cube_raw[j, :, :] = image_data
+            # Save standard deviation of flat images to identify flats with "ski jump" horizontal bars issue.
+            lights_off_std_devs[j] = np.std(image_data)
+            print(str(j+1)+'    '+str(np.mean(image_data))+'    '+str(np.std(image_data)
+                                                                    )+'    ' + str(np.std(image_data))+'    '+str(np.amin(image_data)))
 
-            # Calculate the sigma-clipped mean and sigma-clipped stddev using good_inds.
-            s_c_mean = np.nanmean(through_stack[good_inds])
-            s_c_stddev = np.nanstd(through_stack[good_inds])
+        # Identify bad lights-on flat images (usually have bright horizontal bands at the top/bottom of images.)
+        vals, lo, hi = sigmaclip(lights_off_std_devs)
+        bad_locs = np.where((lights_off_std_devs < lo) |
+                            (lights_off_std_devs > hi))[0]
+        good_locs = np.where((lights_off_std_devs > lo) &
+                            (lights_off_std_devs < hi))[0]
+        if len(bad_locs > 0):
+            print('Found {} bad lights-off flats: {}.\nExcluding from combination step.\n'.format(
+                len(bad_locs), np.array(lights_off_files)[bad_locs]))
+            time.sleep(2)
+        flat_lights_off_cube_raw = flat_lights_off_cube_raw[good_locs]
 
-            # Store the sigma-clipped mean as the master dark value for this pixel.
-            master_flat_lights_on[y, x] = s_c_mean
-            master_flat_lights_on_stddev[y, x] = s_c_stddev
-
-    # Make cube of the lights-off images
-    num_images = len(lights_off_files)
-    print('Reading in ', num_images, ' lights-off flat images.')
-    flat_lights_off_cube_raw = np.zeros([len(lights_off_files), 1024, 1024])
-    lights_off_std_devs = np.zeros(num_images)
-    print('')
-    print('Flat frame information')
-    print('-------------------------------------------------')
-    print('ID   Mean               Stddev         Max    Min')
-    print('-------------------------------------------------')
-    for j in range(len(lights_off_files)):
-        image_data = fits.open(
-            dome_flat_raw_path/lights_off_files[j])[0].data[0:1024, :]
-        header = fits.open(dome_flat_raw_path/lights_off_files[j])[0].header
-        if header['FILTNME2'] != band:
-            print('ERROR: {} taken in filter other than {}. Double check your date, try specifying start/stop file numbers, etc.'.format(
-                lights_off_files[j], band))
-            return
-        # This line trims off the top two rows of the image, which are overscan.
-        flat_lights_off_cube_raw[j, :, :] = image_data
-        # Save standard deviation of flat images to identify flats with "ski jump" horizontal bars issue.
-        lights_off_std_devs[j] = np.std(image_data)
-        print(str(j+1)+'    '+str(np.mean(image_data))+'    '+str(np.std(image_data)
-                                                                  )+'    ' + str(np.std(image_data))+'    '+str(np.amin(image_data)))
-
-    # Identify bad lights-on flat images (usually have bright horizontal bands at the top/bottom of images.)
-    vals, lo, hi = sigmaclip(lights_off_std_devs)
-    bad_locs = np.where((lights_off_std_devs < lo) |
-                        (lights_off_std_devs > hi))[0]
-    good_locs = np.where((lights_off_std_devs > lo) &
-                         (lights_off_std_devs < hi))[0]
-    if len(bad_locs > 0):
-        print('Found {} bad lights-off flats: {}.\nExcluding from combination step.\n'.format(
-            len(bad_locs), np.array(lights_off_files)[bad_locs]))
-        time.sleep(2)
-    flat_lights_off_cube_raw = flat_lights_off_cube_raw[good_locs]
-
-    # For each pixel, calculate the mean, median, and standard deviation "through the stack" of lights off flat images.
-    lights_off_cube_shape = np.shape(flat_lights_off_cube_raw)
-    master_flat_lights_off = np.zeros(
-        (lights_off_cube_shape[1], lights_off_cube_shape[2]), dtype='float32')
-    master_flat_lights_off_stddev = np.zeros(
-        (lights_off_cube_shape[1], lights_off_cube_shape[2]), dtype='float32')
-    print('')
-    print('Combining the lights-off flats.')
-    print('......')
-    pbar = ProgressBar()
-    for x in pbar(range(lights_off_cube_shape[1])):
-        for y in range(lights_off_cube_shape[2]):
-            through_stack = flat_lights_off_cube_raw[:, y, x]
-            through_stack_median = np.nanmedian(through_stack)
-            through_stack_stddev = np.nanstd(through_stack)
-
-            # Flag values that are > clip_lvl-sigma discrepant from the median.
-            good_inds = np.where(
-                (abs(through_stack - through_stack_median) / through_stack_stddev <= clip_lvl))[0]
-
-            # Calculate the sigma-clipped mean and sigma-clipped stddev using good_inds.
-            s_c_mean = np.nanmean(through_stack[good_inds])
-            s_c_stddev = np.nanstd(through_stack[good_inds])
-
-            # Store the sigma-clipped mean as the master dark value for this pixel.
-            master_flat_lights_off[y, x] = s_c_mean
-            master_flat_lights_off_stddev[y, x] = s_c_stddev
+        # For each pixel, calculate the mean, median, and standard deviation "through the stack" of lights off flat images.
+        lights_off_cube_shape = np.shape(flat_lights_off_cube_raw)
+        master_flat_lights_off = np.zeros(
+            (lights_off_cube_shape[1], lights_off_cube_shape[2]), dtype='float32')
+        master_flat_lights_off_stddev = np.zeros(
+            (lights_off_cube_shape[1], lights_off_cube_shape[2]), dtype='float32')
+        print('')
+        print('Combining the lights-off flats.')
+        print('......')
+        pbar = ProgressBar()
+        for x in pbar(range(lights_off_cube_shape[1])):
+            for y in range(lights_off_cube_shape[2]):
+                through_stack = flat_lights_off_cube_raw[:,y,x]
+                v,l,h = sigmaclip(through_stack, clip_lvl, clip_lvl)
+                master_flat_lights_off[y,x] = np.mean(v)
+                master_flat_lights_off_stddev[y,x] = np.std(v)
 
     # Create the master flat
     master_flat = master_flat_lights_on - master_flat_lights_off
@@ -1277,7 +1280,7 @@ def get_reduced_science_files(sftp, target_name):
     print('Done!')
 
 
-def hot_pixels(date, exptime, saturation=4000., upload=False, sftp=''):
+def hot_pixels(date, exptime, saturation=4000., upload=False, sftp='', force_output_path=''):
     """Creates a hot pixel mask from master dark. Flags pixels as hot if they exceed clip_lvl * the standard deviation of neighboring pixels in 
             a box of dimensions box_l x box_l surrounding the target pixel. Iterates through the master dark multiple times until no new bad pixels
             are found. 
@@ -1296,8 +1299,11 @@ def hot_pixels(date, exptime, saturation=4000., upload=False, sftp=''):
     :type sftp: str, optional
     :raises RuntimeError: if no dark stddev files are found on disk
     """
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pines_dir_check()
 
-    pines_path = pines_dir_check()
     darks_path = pines_path/('Calibrations/Darks/Master Darks/')
     all_dark_stddev_files = natsorted(
         list(Path(darks_path).rglob('*'+date+'.fits')))
@@ -1337,7 +1343,7 @@ def hot_pixels(date, exptime, saturation=4000., upload=False, sftp=''):
     clip_lvls = [10, 10, 10, 9, 8]
     box_ls = [13, 11, 9, 7, 5]
 
-    iteration = 1
+    iteration = 0
     for i in range(len(box_ls)):
         box_l = box_ls[i]
         clip_lvl = clip_lvls[i]
@@ -1358,19 +1364,17 @@ def hot_pixels(date, exptime, saturation=4000., upload=False, sftp=''):
                 for yy in range(int(box_l/2), shape[1]-int(box_l/2)):
                     if (not np.isnan(master_dark[yy, xx])):
                         # 2d cutout surrounding the target pixel.
-                        box_2d = master_dark[yy-box_minus:yy +
-                                             box_plus, xx-box_minus:xx+box_plus]
+                        box_2d = master_dark[yy-box_minus:yy+box_plus, xx-box_minus:xx+box_plus]
                         # Unraveled box, ignoring any NaNs.
                         box_1d = box_2d[~np.isnan(box_2d)].ravel()
                         try:
                             # Remove the target pixel from the 1d array.
                             neighbor_vals = np.delete(box_1d, targ_pix_ind)
-                            # neighbor_vals = sigmaclip(n, low=3.5, high=3.5)[0] #Clip away other bad pixels in the box to avoid biasing the mean/standard deviation.
-                            # Flag pixel as hot if it is more than clip_lvl sigma higher than the mean of its neighbors.
-                            if master_dark[yy, xx] > np.median(neighbor_vals) + clip_lvl*np.std(neighbor_vals):
-                                hot_pixel_mask[yy, xx] = 1
-                                # Set this pixel to a NaN so that it's ignored on subsequent iterations.
-                                master_dark[yy, xx] = np.nan
+                            #Sigma clip the neighbor values 
+                            v, l, h = sigmaclip(neighbor_vals, 3, clip_lvl)
+                            if master_dark[yy,xx] > h: 
+                                hot_pixel_mask[yy,xx] = 1
+                                master_dark[yy,xx] = np.nan
                                 num_flagged += 1
                         except:
                             continue
@@ -1435,7 +1439,7 @@ def hot_pixels(date, exptime, saturation=4000., upload=False, sftp=''):
 
 def make_calibrations(sftp, exptimes, bands, dark_dates, flat_dates, dark_starts=[], dark_stops=[], lights_on_starts=[],
                       lights_on_stops=[], lights_off_starts=[], lights_off_stops=[], dark=True, flat=True, variable_pixels=True,
-                      hot_pixels=True, dead_pixels=True, bpm=True):
+                      hot_pixels=True, dead_pixels=True, bpm=True, upload=True, force_output_path=''):
     """Makes all calibration files for a target. 
 
     :param sftp: sftp connection to the PINES server
@@ -1472,9 +1476,17 @@ def make_calibrations(sftp, exptimes, bands, dark_dates, flat_dates, dark_starts
     :type dead_pixels: bool, optional
     :param bpm: Whether or not to make the bad pixel masks, defaults to True
     :type bpm: bool, optional
+    :param upload: Whether or not to upload files to the PINES server, defaults to True
+    :type upload: bool, optional
+    :param force_output_path: user-chosen directory to use in place of the default ~/Documents/PINES_analysis_toolkit directory for analysis, defaults to ''
+    :type force_output_path: str, optional
     """
 
-    pines_path = pat.utils.pines_dir_check()
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pines_dir_check()
+        
     calibration_path = pines_path/('Calibrations/')
 
     assert len(bands) == len(
@@ -1503,8 +1515,8 @@ def make_calibrations(sftp, exptimes, bands, dark_dates, flat_dates, dark_starts
                 else:
                     dark_start = dark_starts[i]
                     dark_stop = dark_stops[i]
-                pat.data.dark(dark_date, exptime, upload=True, delete_raw=True,
-                              sftp=sftp, dark_start=dark_start, dark_stop=dark_stop)
+                pat.data.dark(dark_date, exptime, upload=upload, delete_raw=True,
+                              sftp=sftp, dark_start=dark_start, dark_stop=dark_stop, force_output_path=force_output_path)
 
     print('')
 
@@ -1530,11 +1542,17 @@ def make_calibrations(sftp, exptimes, bands, dark_dates, flat_dates, dark_starts
                 else:
                     lights_on_start = lights_on_starts[i]
                     lights_on_stop = lights_on_stops[i]
-                    lights_off_start = lights_off_starts[i]
-                    lights_off_stop = lights_off_stops[i]
 
-                pat.data.dome_flat_field(flat_date, band, sftp=sftp, upload=True, delete_raw=True, lights_on_start=lights_on_start,
-                                         lights_on_stop=lights_on_stop, lights_off_start=lights_off_start, lights_off_stop=lights_off_stop)
+                    #Allow the user to make flats without lights off images.
+                    if len(lights_off_starts) != 0:
+                        lights_off_start = lights_off_starts[i]
+                        lights_off_stop = lights_off_stops[i]
+                    else:
+                        lights_off_start = 0 
+                        lights_off_stop = 0
+
+                pat.data.dome_flat_field(flat_date, band, sftp=sftp, upload=upload, delete_raw=True, lights_on_start=lights_on_start,
+                                         lights_on_stop=lights_on_stop, lights_off_start=lights_off_start, lights_off_stop=lights_off_stop, force_output_path=force_output_path)
 
     print('')
 
@@ -1552,8 +1570,7 @@ def make_calibrations(sftp, exptimes, bands, dark_dates, flat_dates, dark_starts
                 print(
                     'Making variable pixel mask for {}-s exposure time on {}.'.format(exptime, dark_date))
                 pat.data.variable_pixels(
-                    dark_date, exptime, upload=True, sftp=sftp)
-
+                    dark_date, exptime, upload=upload, sftp=sftp, force_output_path=force_output_path)
     print('')
 
     # Hot pixel masks.
@@ -1569,7 +1586,7 @@ def make_calibrations(sftp, exptimes, bands, dark_dates, flat_dates, dark_starts
             else:
                 print(
                     'Making hot pixel mask for {}-s exposure time on {}.'.format(exptime, dark_date))
-                pat.data.hot_pixels(dark_date, exptime, upload=True, sftp=sftp)
+                pat.data.hot_pixels(dark_date, exptime, upload=upload, sftp=sftp, force_output_path=force_output_path)
 
     print('')
 
@@ -1586,7 +1603,7 @@ def make_calibrations(sftp, exptimes, bands, dark_dates, flat_dates, dark_starts
             else:
                 print(
                     'Making dead pixel mask for {}-band exposure time on {}.'.format(band, dark_date))
-                pat.data.dead_pixels(flat_date, band, upload=True, sftp=sftp)
+                pat.data.dead_pixels(flat_date, band, upload=upload, sftp=sftp, force_output_path=force_output_path)
 
     print('')
 
@@ -1608,7 +1625,7 @@ def make_calibrations(sftp, exptimes, bands, dark_dates, flat_dates, dark_starts
                     print(
                         'Making dead pixel mask for {}-band, {}-s exposure time on {}.'.format(band, exptime, flat_date))
                     pat.data.bpm_maker(flat_date, dark_date,
-                                       exptime, band, upload=True, sftp=sftp)
+                                       exptime, band, upload=upload, sftp=sftp, force_output_path=force_output_path)
     return
 
 
@@ -1969,7 +1986,7 @@ def upload_reduced_data(sftp, short_name):
         sftp.chdir('..')
 
 
-def variable_pixels(date, exptime, clip_lvl=5., upload=False, sftp=''):
+def variable_pixels(date, exptime, clip_lvl=5., upload=False, sftp='', force_output_path=''):
     """Creates a map of variable pixels using a dark stddev image
 
     :param date: UT date during which the dome flat field data was obtained (YYYYMMDD)
@@ -1984,7 +2001,11 @@ def variable_pixels(date, exptime, clip_lvl=5., upload=False, sftp=''):
     :type sftp: pysftp connection, optional
     :raises RuntimeError: if no dark stddev files are found on disk
     """
-    pines_path = pines_dir_check()
+    if force_output_path != '':
+        pines_path = force_output_path
+    else:
+        pines_path = pines_dir_check()
+
     dark_stddev_path = pines_path/('Calibrations/Darks/Master Darks Stddev/')
     all_dark_stddev_files = natsorted(
         list(Path(dark_stddev_path).rglob('*'+date+'.fits')))

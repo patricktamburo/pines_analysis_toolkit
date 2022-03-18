@@ -690,7 +690,7 @@ def los_pwv_data_generator(short_name, ut_dates, centroided_sources, interp_type
 def readBT(file, R=None, npix=3.0, samp=2.5E7, waverange=None, air=False, DF=0.0,
            verbose=False, wave=None, flam=None):
     """
-    Returns wavelength in Angstroms and flux in erg s^-1 cm^-2 A^-1
+    Returns wavelength in microns and flux in erg s^-1 cm^-2 A^-1
     
     Arguments
     file - name of file to read from, ignored if wave and flam are set
@@ -748,11 +748,10 @@ def readBT(file, R=None, npix=3.0, samp=2.5E7, waverange=None, air=False, DF=0.0
             if waverange[0] < float(line[0])/1e4 < waverange[1]:
                 wave.append(float(line[0]))
                 flam.append(float(line[1]))
-            
+        
         wave = np.array(wave)
         #flam = 10.0**(np.array(flam) + DF)
         flam = np.array(flam)
-        
         wave, uwave = np.unique(wave, return_index=True)
         flam = flam[uwave]
 

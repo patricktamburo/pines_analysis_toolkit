@@ -21,7 +21,10 @@ from scipy.stats import pearsonr, sigmaclip
 from scipy.interpolate import CubicSpline
 from scipy.optimize import minimize
 import warnings 
+from astropy.utils.exceptions import AstropyUserWarning
 warnings.simplefilter("ignore", category=RuntimeWarning)
+warnings.simplefilter("ignore", category=np.VisibleDeprecationWarning)
+warnings.simplefilter("ignore", category=AstropyUserWarning)
 
 import matplotlib.pyplot as plt
 plt.ioff()
@@ -360,7 +363,7 @@ def alc_plot(weighted_lc_path, mode='night', force_output_path='', bin_mins=0):
     plt.savefig(output_path, dpi=300)
 
 
-def corr_target_plot(weighted_lc_path, mode='night', bin_mins=0.0, force_y_lim=(0.,0.), transit_dict={}, sigma_clipping=False, force_output_path=''):
+def corr_target_plot(weighted_lc_path, mode='night', bin_mins=0.0, force_y_lim=(0.,0.), transit_dict={}, sigma_clipping=False, force_output_path='', time_threshold=0.10):
     """Creates a plot of the target light curve using output from weighted_lightcurve.
 
     :param weighted_lc_path: path to weighted light curve csv
@@ -459,7 +462,7 @@ def corr_target_plot(weighted_lc_path, mode='night', bin_mins=0.0, force_y_lim=(
             times_plot = times_plot[clip_inds]
             corr_targ_flux_plot = corr_targ_flux_plot[clip_inds]
             
-        binned_times, binned_flux, binned_errs = block_binner(times_plot, corr_targ_flux_plot, time_threshold=0.15, bin_mins=bin_mins)
+        binned_times, binned_flux, binned_errs = block_binner(times_plot, corr_targ_flux_plot, time_threshold=time_threshold, bin_mins=bin_mins)
 
         ax.grid(alpha=0.2)
         # Plot the corrected target and corrected binned target flux.
@@ -1397,6 +1400,10 @@ def regression(flux, regressors, corr_significance=1e-2, verbose=False):
         #print('No regressors used.')
         corrected_flux = flux
 
+    # #For a referee response    
+    # if verbose and 'intrapixel' in use_keys:
+    #     breakpoint()
+
     return corrected_flux
 
 
@@ -1557,7 +1564,7 @@ def simple_lightcurve(short_name, phot_type='aper'):
     return
 
 
-def weighted_lightcurve(short_name, phot_type='aper', convergence_threshold=1e-9, mode='night', n_sig_refs=5, sigma_clip_threshold=4., max_iterations=200, use_pwv=False, red_stars_only=False, blue_stars_only=False, high_correlation_refs=False, force_output_path='', bin_mins=0.0, linear_baseline=False, quadratic_baseline=False, transit_start=0.0, transit_end=0.0):
+def weighted_lightcurve(short_name, phot_type='aper', convergence_threshold=1e-9, mode='night', n_sig_refs=5, sigma_clip_threshold=4., max_iterations=200, use_pwv=False, red_stars_only=False, blue_stars_only=False, high_correlation_refs=False, force_output_path='', bin_mins=0.0, linear_baseline=False, quadratic_baseline=False, transit_start=0.0, transit_end=0.0, time_threshold=0.1, distance_weight_alpha=0.0):
     """Creates a corrected light curve for the target using a weighted mean of reference star fluxes. 
 
     :param short_name: short name of the target
@@ -1594,6 +1601,11 @@ def weighted_lightcurve(short_name, phot_type='aper', convergence_threshold=1e-9
     :type transit_start: float, optional
     :param transit_end: user-specified end time of a known or suspected transit, defaults to 0.0
     :type transit_end: float, optional
+    :param time_threshold: the gradient value that gets passed to the binning program to figure out block edges, defaults to 0.1
+    :type time_threshold: float, optional
+    :param distance_weight_alpha: alpha value for the distance weighting, defaults to 0.0 (no distance weighting)
+    :type distance_weight_alpha: float, optional
+    
     """
     print('\nRunning weighted_lightcurve() in {} normalization mode.'.format(mode))
 
@@ -1647,8 +1659,8 @@ def weighted_lightcurve(short_name, phot_type='aper', convergence_threshold=1e-9
                 inds = all_nights_block_inds[i][j]
                 block_flux = all_nights_corr_targ_flux[i][inds]
                 block_flux = block_flux[~np.isnan(block_flux)]
-                stds[j] = np.std(block_flux)
-            all_night_stds.append(np.mean(stds))
+                stds[j] = np.nanstd(block_flux)
+            all_night_stds.append(np.nanmean(stds))
         
         return np.mean(all_night_stds)
 
@@ -1764,7 +1776,17 @@ def weighted_lightcurve(short_name, phot_type='aper', convergence_threshold=1e-9
         centroid_df[source_names[0]+' Image X'], dtype='float')
     full_centroid_y = np.array(
         centroid_df[source_names[0]+' Image Y'], dtype='float')
-    full_seeing = np.array(centroid_df['Seeing'], dtype='float')
+    
+    #Get seeing for regression. From seeing.csv if it exists, from the log otherwise. 
+    if os.path.exists(pines_path/('Objects/'+short_name+'/sources/seeing.csv')):
+        full_seeing_df = pd.read_csv(pines_path/('Objects/'+short_name+'/sources/seeing.csv'))
+        full_seeing = np.array(full_seeing_df['Seeing'])
+        #If for some reason the length of the seeing.csv file is not equal to the number of centroids, just restore seeing form log.
+        if len(full_seeing) != len(full_centroid_x):
+            full_seeing = np.array(centroid_df['Seeing'], dtype='float')
+    else:
+        #If seeing.csv does not exist, restore from log. 
+        full_seeing = np.array(centroid_df['Seeing'], dtype='float')
 
     if use_pwv:
         # Get PWV for regression.
@@ -1853,6 +1875,8 @@ def weighted_lightcurve(short_name, phot_type='aper', convergence_threshold=1e-9
         # Loop over each night in the dataset.
         for j in range(num_nights):
             inds = np.array(night_inds[j])
+
+            #Set up regressors. 
             airmass = full_airmass[inds]
             centroid_x = full_centroid_x[inds]
             centroid_y = full_centroid_y[inds]
@@ -1860,6 +1884,7 @@ def weighted_lightcurve(short_name, phot_type='aper', convergence_threshold=1e-9
             seeing = full_seeing[inds]
             if use_pwv:
                 pwv = full_pwv[inds]
+
 
             times = np.array(full_times[inds])
             all_nights_times.append(times)
@@ -1877,6 +1902,11 @@ def weighted_lightcurve(short_name, phot_type='aper', convergence_threshold=1e-9
             seeing = seeing[nan_inds]
             if use_pwv:
                 pwv = pwv[nan_inds]
+
+            #Calculate intrapixel location of the target. 
+            intrapixel_x = centroid_x-np.array([int(i) for i in centroid_x]) - 0.5
+            intrapixel_y = centroid_y-np.array([int(i) for i in centroid_y]) - 0.5
+            intrapixel = np.sqrt(intrapixel_x**2 + intrapixel_y**2)
 
             file_list_save.extend(full_file_list[inds[nan_inds]])
             time_save.extend(full_times[inds[nan_inds]])
@@ -1927,7 +1957,7 @@ def weighted_lightcurve(short_name, phot_type='aper', convergence_threshold=1e-9
             norm_err = np.zeros((num_frames, num_refs))
 
             # Get indices of each block for binning/plotting purposes.
-            block_inds = block_splitter(times, bin_mins=bin_mins)
+            block_inds = block_splitter(times, bin_mins=bin_mins, time_threshold=time_threshold)
             all_nights_block_inds.append(block_inds)
 
             files = np.array(full_file_list[inds])
@@ -2011,13 +2041,6 @@ def weighted_lightcurve(short_name, phot_type='aper', convergence_threshold=1e-9
                 num_refs = len(norm_flux[0, :])
                 ref_names = ref_names[best_ref_inds]
 
-            # cm = plt.get_cmap('viridis')
-            # plt.ion()
-            # plt.figure()
-            # for i in range(num_refs):
-            #     plt.plot(times, norm_flux[:,i], ls='', marker='o', color=cm(int(i*255/(num_refs-1))), alpha=0.7)
-            # plt.plot(times, targ_flux_norm, ls='', marker='o', color='tab:orange')
-            # breakpoint()
 
             # Define some more arrays.
             # special ALC to remove atm veriation, unitless, near 1.0
@@ -2058,15 +2081,14 @@ def weighted_lightcurve(short_name, phot_type='aper', convergence_threshold=1e-9
                     other_ref_y = ref_source_y[indices]
                     distances = np.sqrt((target_ref_x-other_ref_x)**2+(target_ref_y-other_ref_y)**2)
                     max_distance = np.max(distances)
-                    a = 1.2
-                    distance_weights = 1/(1+(a*distances/max_distance)**2)
+                    distance_weights = 1/(1+(distance_weight_alpha*distances/max_distance)**2)
                     distance_weights = distance_weights/np.sum(distance_weights) #Normalize
 
                     flux_weights = np.nanmean(1/norm_err_without_k**2, axis=0)/np.nansum(np.nanmean(1/norm_err_without_k**2, axis=0))
                     total_weights = distance_weights * flux_weights
                     total_weights = total_weights / np.sum(total_weights)
 
-                    alc_flux[:,k] = np.nansum(norm_flux_without_k/total_weights, axis=1)/np.nansum(1/total_weights)
+                    alc_flux[:,k] = np.nansum(norm_flux_without_k*total_weights, axis=1)/np.nansum(total_weights)
 
                     #norm_flux_without_k = norm_flux_without_k * distance_weights
                     # ALC = weighted mean of norm flux, weights = 1/norm_err**2
@@ -2085,9 +2107,9 @@ def weighted_lightcurve(short_name, phot_type='aper', convergence_threshold=1e-9
 
                     # Perform a regression of the corrected flux against various parameters.
                     if use_pwv:
-                        regression_dict = {'airmass': airmass, 'centroid_x': centroid_x, 'centroid_y': centroid_y, 'pwv': pwv, 'seeing':seeing}
+                        regression_dict = {'airmass': airmass, 'centroid_x': centroid_x, 'centroid_y': centroid_y, 'pwv': pwv, 'seeing':seeing, 'intrapixel':intrapixel}
                     else:
-                        regression_dict = {'airmass': airmass, 'centroid_x': centroid_x, 'centroid_y': centroid_y, 'seeing':seeing}
+                        regression_dict = {'airmass': airmass, 'centroid_x': centroid_x, 'centroid_y': centroid_y, 'seeing':seeing, 'intrapixel':intrapixel}
 
                     regressed_corr_flux[:, k] = regression(corr_flux[:, k], regression_dict)
 
@@ -2120,13 +2142,12 @@ def weighted_lightcurve(short_name, phot_type='aper', convergence_threshold=1e-9
                 if len(outlier_inds) > 0:
                     for l in outlier_inds:
                         ref_flux_flags[k,l] = 0 
-                        # plt.plot(times[k], norm_flux[k,l], 'rx')
+                        plt.plot(times[k], norm_flux[k,l], 'rx')
 
             #Get distance weights for the target. 
             distances = np.sqrt((target_source_x-ref_source_x)**2+(target_source_y-ref_source_y)**2)
             max_distance = np.max(distances)
-            a = 1.2
-            distance_weights = 1/(1+(a*distances/max_distance)**2)
+            distance_weights = 1/(1+(distance_weight_alpha*distances/max_distance)**2)
             distance_weights = distance_weights/np.sum(distance_weights) #Normalize
 
             flux_weights = np.mean(1/norm_err**2, axis=0)/np.sum(np.mean(1/norm_err**2, axis=0))
@@ -2136,7 +2157,7 @@ def weighted_lightcurve(short_name, phot_type='aper', convergence_threshold=1e-9
                 total_weights = distance_weights * flux_weights * ref_flux_flags[k]
                 total_weights = total_weights / np.sum(total_weights)
                 use_ref_inds = np.where(ref_flux_flags[k] != 0)[0]
-                alc_final_flux[k] = np.sum(norm_flux[k][use_ref_inds]/total_weights[use_ref_inds])/np.sum(1/total_weights[use_ref_inds])
+                alc_final_flux[k] = np.sum(norm_flux[k][use_ref_inds]*total_weights[use_ref_inds])/np.sum(total_weights[use_ref_inds])
                 alc_final_err[k] = np.sqrt(1 / np.sum(1/(norm_err[k][use_ref_inds]**2)))
 
             # plt.plot(times, alc_final_flux, marker='o', lw=2, label='ALC', ms=10)
@@ -2156,10 +2177,10 @@ def weighted_lightcurve(short_name, phot_type='aper', convergence_threshold=1e-9
 
             if use_pwv:
                 regression_dict = {
-                    'airmass': airmass, 'centroid_x': centroid_x, 'centroid_y': centroid_y, 'pwv': pwv, 'seeing':seeing}
+                    'airmass': airmass, 'centroid_x': centroid_x, 'centroid_y': centroid_y, 'pwv': pwv, 'seeing':seeing, 'intrapixel':intrapixel}
             else:
                 regression_dict = {
-                    'airmass': airmass, 'centroid_x': centroid_x, 'centroid_y': centroid_y, 'seeing':seeing}
+                    'airmass': airmass, 'centroid_x': centroid_x, 'centroid_y': centroid_y, 'seeing':seeing, 'intrapixel':intrapixel}
 
             regressed_targ_flux_corr = regression(targ_flux_corr, regression_dict, corr_significance=1e-2, verbose=True)
 
@@ -2308,7 +2329,7 @@ def weighted_lightcurve(short_name, phot_type='aper', convergence_threshold=1e-9
     time.sleep(2)
     return
 
-def gp_planet_search(weighted_lc_path, mode='night', significance_threshold=4, output_plots=False):
+def gp_planet_search(weighted_lc_path, mode='night', significance_threshold=6, output_plots=False):
     plt.ioff()
     cm = plt.get_cmap('viridis')
 
@@ -2354,6 +2375,7 @@ def gp_planet_search(weighted_lc_path, mode='night', significance_threshold=4, o
         
         if output_plots:
             fig, ax = plt.subplots(n_blocks, 1, figsize=(12,20), sharex=True, sharey=True)
+            ax[0].set_title(target+' Night {}'.format(i+1))
             plt.subplots_adjust(right=0.80)
 
         for j in range(n_blocks):
@@ -2464,13 +2486,53 @@ def gp_planet_search(weighted_lc_path, mode='night', significance_threshold=4, o
                 ax[j].grid(alpha=0.3)
                 ax[j].set_ylabel('Flux', fontsize=16)
                 ax[j].tick_params(labelsize=12)
+                ax[j].axhline(1, lw=1.5, color='tab:blue', zorder=0)
                 if j == n_blocks-1:
                     ax[j].set_xlabel('Time (BJD$_{TDB}$)', fontsize=16)
+                if transit_snr[j] >= significance_threshold: 
+                    ax[j].spines['bottom'].set_color('red')
+                    ax[j].spines['top'].set_color('red') 
+                    ax[j].spines['right'].set_color('red')
+                    ax[j].spines['left'].set_color('red')
+                    ax[j].tick_params(axis='x', colors='red')
+                    ax[j].tick_params(axis='y', colors='red')
+                    ax[j].set_ylabel('Flux', fontsize=16, color='red')
+                    breakpoint()
         
         transit_snrs.extend(transit_snr)
         if output_plots:
+            output_dir = weighted_lc_path.parent.parent.parent/('transit_search/')
+            if not output_dir.exists():
+                os.mkdir(output_dir)
+            output_path = output_dir/(target+'_night_{}_transit_search.png'.format(i+1))
             plt.tight_layout()
-            output_path = '/Users/tamburo/Documents/papers/in_prep/2022_01_poi_1/figures/'+str(i)+'.png'
             plt.savefig(output_path, dpi=300)
 
+    print('')
     return np.array(transit_snrs)
+
+def get_avg_block_stddev(lc_df):
+    """Calculates the average standard deviation of a target's ALC-corrected flux evaluated over observing blocks. 
+
+    :param lc_df: dataframe output from weighted_lightcurve(). 
+    :type lc_df: Pandas DataFrame
+    """
+
+    sources = get_source_names(lc_df)
+    times = np.array(lc_df['Time BJD TDB'], dtype='float')
+    target_flux = np.array(lc_df[sources[0]+' Corrected Flux'], dtype='float')
+
+    times = times[~np.isnan(target_flux)]
+    target_flux = target_flux[~np.isnan(target_flux)]
+
+    night_inds = night_splitter(times)
+    block_stds = []
+    for i in range(len(night_inds)):
+        night_times = times[night_inds[i]]
+        night_flux = target_flux[night_inds[i]]
+        block_inds = block_splitter(night_times)
+        for j in range(len(block_inds)):
+            block_flux = night_flux[block_inds[j]]
+            block_stds.append(np.std(block_flux))
+    block_stds = np.array(block_stds)
+    return np.mean(block_stds)

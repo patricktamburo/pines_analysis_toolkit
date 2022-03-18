@@ -27,6 +27,8 @@ from photutils.background import MMMBackground
 from scipy.stats import sigmaclip, mode as scipy_mode
 from scipy import optimize
 from scipy import interpolate
+from scipy.optimize import least_squares
+
 
 import numpy as np
 from natsort import natsorted
@@ -135,6 +137,17 @@ def iraf_style_photometry(phot_apertures, bg_apertures, data, dark_std_data, hea
     # Create a list to hold the flux for each source.
     aperture_sum = []
     interpolation_flags = np.zeros(len(phot_apertures.positions), dtype='bool')
+    
+    #TESTING, REMOVE LATER!!!
+    target_pixel = (421, 864)
+    save_val = data[target_pixel[1], target_pixel[0]]
+
+    
+    # #NEW!! Joint PSF fitting approach
+    # #Create an array of all source cutouts for this frame
+    # cutout_array = cutout_array_creator(data, phot_apertures.positions[:,0], phot_apertures.positions[:,1], cutout_w=11)
+    # #Pass the cutout array to the joint psf fitter
+    # joint_fit_params, xs, ys = joint_psf_fitter(cutout_array)
 
     for i in range(len(phot_apertures.positions)):
         pos = phot_apertures.positions[i]
@@ -142,11 +155,33 @@ def iraf_style_photometry(phot_apertures, bg_apertures, data, dark_std_data, hea
         cutout_w = 30
         x_pos = pos[0]
         y_pos = pos[1]
-        cutout = data[int((y_pos-cutout_w)):int(y_pos+cutout_w)+1,
-                      int(x_pos-cutout_w):int(x_pos+cutout_w)+1]
+        cutout = data[int((y_pos-cutout_w)):int(y_pos+cutout_w)+1, int(x_pos-cutout_w):int(x_pos+cutout_w)+1]
+
+
+
         x_cutout = x_pos - np.floor(x_pos - cutout_w)
         y_cutout = y_pos - np.floor(y_pos - cutout_w)
         ap = CircularAperture((x_cutout, y_cutout), r=phot_apertures.r)
+
+        if i == 3:
+            
+            an = CircularAnnulus((x_cutout, y_cutout), r_in=12, r_out=30)
+            mask = an.to_mask(method='center')
+            mask_pix = mask.multiply(cutout)
+            an_pix = mask_pix[mask_pix != 0]
+            an_pix = an_pix[~np.isnan(an_pix)]
+            v, l, h = sigmaclip(an_pix)
+            sky = np.mean(v)
+            star = save_val - sky
+            noise_estimate = np.sqrt(star + sky + (22.65/exptime) + (26.6**2))
+
+
+            #Change the target pixel's value using random noise estimate.  
+            data[target_pixel[1], target_pixel[0]] = np.random.normal(data[target_pixel[1], target_pixel[0]], noise_estimate)
+
+            #Rebuild the cutout. 
+            cutout = data[int((y_pos-cutout_w)):int(y_pos+cutout_w)+1, int(x_pos-cutout_w):int(x_pos+cutout_w)+1]
+
 
         # Cut out the pixels JUST inside the aperture, and check if there are NaNs there. If so, interpolate over NaNs in the cutout.
         ap_mask = ap.to_mask(method='exact')
@@ -156,39 +191,57 @@ def iraf_style_photometry(phot_apertures, bg_apertures, data, dark_std_data, hea
             bad_sum = np.sum(np.isnan(ap_cut))
         except:
             breakpoint
-
-        if bad_sum > 0:
-            bads = np.where(np.isnan(cutout))
-            bad_dists = np.sqrt((bads[0] - y_cutout)
-                                ** 2 + (bads[1] - x_cutout)**2)
-
-            # Check if any bad pixels fall within the aperture. If so, set the interpolation flag to True for this source.
-            if np.sum(bad_dists < phot_apertures.r+1):
-
-                # 2D gaussian fitting approach
-                # Set up a 2D Gaussian model to interpolate the bad pixel values in the cutout.
-                model_init = models.Const2D(amplitude=np.nanmedian(cutout))+models.Gaussian2D(
-                    amplitude=np.nanmax(cutout), x_mean=x_cutout, y_mean=y_cutout, x_stddev=seeing, y_stddev=seeing)
-                # 2D grids of x and y coordinates
-                xx, yy = np.indices(cutout.shape)
-                # Find locations where the cutout has *good* values (i.e. not NaNs).
-                mask = ~np.isnan(cutout)
-                x = xx[mask]  # Only use coordinates at these good values.
-                y = yy[mask]
-                # Make a 1D cutout using only the good values.
-                cutout_1d = cutout[mask]
-                fitter = fitting.LevMarLSQFitter()
-                # Fit the model to the 1d cutout.
-                model_fit = fitter(model_init, x, y, cutout_1d)
-
-                # Interpolate the pixels in the cutout using the 2D Gaussian fit.
-                cutout[~mask] = model_fit(xx, yy)[~mask]
-
-                interpolation_flags[i] = True
-
+        
+        # #NEW!! Joint PSF fitting approach
+        # if bad_sum > 0:
+        #     bads = np.where(np.isnan(cutout))
+            
+        #     joint_psf_cutout_offset = int(cutout_w - np.shape(cutout_array)[1]/2)
+        #     bad_pixels_in_joint_psf =  np.where((bads[0]-joint_psf_cutout_offset >= 0) & (bads[0]-joint_psf_cutout_offset < np.shape(cutout_array)[1]) & (bads[1]-joint_psf_cutout_offset >= 0) & (bads[1]-joint_psf_cutout_offset < np.shape(cutout_array)[1]))[0]
+            
+        #     bad_dists = np.sqrt((bads[0] - y_cutout)** 2 + (bads[1] - x_cutout)**2)
+        #     if np.sum(bad_dists < phot_apertures.r+1):
                 
-                # #Gaussian convolution approach.
-                # cutout = interpolate_replace_nans(cutout, kernel=Gaussian2DKernel(x_stddev=0.5))
+        #         #Generate a model using the joint fit
+        #         model = twoD_Gaussian(xs[i,:,:], ys[i,:,:], joint_fit_params['sigma_x'], joint_fit_params['sigma_y'], joint_fit_params['rho'], joint_fit_params['xcens'][i], joint_fit_params['ycens'][i], joint_fit_params['amplitudes'][i], joint_fit_params['offsets'][i])
+                
+        #         #Replace the bad pixels that are within the joint psf cutout array with their values from the model
+        #         #cutout[bads] = model[bads]
+        #         if i == 3:
+        #             print(save_val, model[bads[0][bad_pixels_in_joint_psf]-joint_psf_cutout_offset, bads[1][bad_pixels_in_joint_psf]-joint_psf_cutout_offset])
+        #         cutout[bads[0][bad_pixels_in_joint_psf], bads[1][bad_pixels_in_joint_psf]] = model[bads[0][bad_pixels_in_joint_psf]-joint_psf_cutout_offset, bads[1][bad_pixels_in_joint_psf]-joint_psf_cutout_offset]
+            
+       #OLD!! 2D Gaussian approach
+        if bad_sum > 0:
+           bads = np.where(np.isnan(cutout))
+           bad_dists = np.sqrt((bads[0] - y_cutout)** 2 + (bads[1] - x_cutout)**2)
+
+           # Check if any bad pixels fall within the aperture. If so, set the interpolation flag to True for this source.
+           if np.sum(bad_dists < phot_apertures.r+1):
+
+               # 2D gaussian fitting approach
+               # Set up a 2D Gaussian model to interpolate the bad pixel values in the cutout.
+               model_init = models.Const2D(amplitude=np.nanmedian(cutout))+models.Gaussian2D(
+                   amplitude=np.nanmax(cutout), x_mean=x_cutout, y_mean=y_cutout, x_stddev=seeing, y_stddev=seeing)
+               # 2D grids of x and y coordinates
+               xx, yy = np.indices(cutout.shape)
+               # Find locations where the cutout has *good* values (i.e. not NaNs).
+               mask = ~np.isnan(cutout)
+               x = xx[mask]  # Only use coordinates at these good values.
+               y = yy[mask]
+               # Make a 1D cutout using only the good values.
+               cutout_1d = cutout[mask]
+               fitter = fitting.LevMarLSQFitter()
+               # Fit the model to the 1d cutout.
+               model_fit = fitter(model_init, x, y, cutout_1d)
+
+               # Interpolate the pixels in the cutout using the 2D Gaussian fit.
+               cutout[~mask] = model_fit(xx, yy)[~mask]
+
+               interpolation_flags[i] = True
+
+               # #Gaussian convolution approach.
+               # cutout = interpolate_replace_nans(cutout, kernel=Gaussian2DKernel(x_stddev=0.5))
         
         phot_source = aperture_photometry(cutout, ap)
         # if np.isnan(phot_source['aperture_sum'][0]):
@@ -298,8 +351,7 @@ def aperture_stats_tbl(data, apertures, method='center', sigma_clip=True):
     masks = apertures.to_mask(method=method)
 
     # Compute the stats of pixels within the masks
-    aperture_stats = [calc_aperture_mmm(
-        data, mask, sigma_clip) for mask in masks]
+    aperture_stats = [calc_aperture_mmm(data, mask, sigma_clip) for mask in masks]
 
     aperture_stats = np.array(aperture_stats)
 
@@ -333,6 +385,7 @@ def calc_aperture_mmm(data, mask, sigma_clip):
         std = np.nanstd(values)
         mode = 3 * median - 2 * mean
         actual_area = (~np.isnan(values)).sum()
+
         return (mean, median, mode, std, actual_area)
 
 
@@ -514,8 +567,8 @@ def fixed_aper_phot(short_name, centroided_sources, ap_radii, an_in=12., an_out=
         print('')
     return
 
-def variable_aper_phot(short_name, centroided_sources, multiplicative_factors, an_in=12., an_out=30., plots=False, gain=8.21, qe=0.9, plate_scale=0.579, force_output_path='', smoothing_size=5, bin_mins=0.0):
-    plt.ion()
+def variable_aper_phot(short_name, centroided_sources, multiplicative_factors, an_in=12., an_out=30., plots=False, gain=8.21, qe=0.9, plate_scale=0.579, force_output_path='', smoothing_size=5, bin_mins=0.0, time_threshold=0.1):
+    plt.ioff()
 
     if force_output_path != '':
         pines_path = force_output_path
@@ -576,7 +629,7 @@ def variable_aper_phot(short_name, centroided_sources, multiplicative_factors, a
     seeing[np.isnan(seeing)] = np.nanmedian(seeing)
 
     #Get block indices for setting up smoothed seeing. 
-    block_inds = block_splitter(centroided_sources['Time BJD TDB'], bin_mins=bin_mins)
+    block_inds = block_splitter(centroided_sources['Time BJD TDB'], bin_mins=bin_mins, time_threshold=time_threshold)
     #Get running average of seeing. 
     #Force the size to be odd. 
     if smoothing_size % 2 == 0:
@@ -620,6 +673,9 @@ def variable_aper_phot(short_name, centroided_sources, multiplicative_factors, a
 
         var_df = pd.DataFrame(index=range(len(reduced_files)), columns=columns)
         output_filename = pines_path/('Objects/'+short_name+'/aper_phot/' + short_name+'_variable_aper_phot_{:1.2f}_seeing_factor.csv'.format(fact))
+
+        # plt.figure(figsize=(10,10))
+        # plt.ioff() 
 
         # Loop over all images.
         pbar = ProgressBar()
@@ -686,6 +742,16 @@ def variable_aper_phot(short_name, centroided_sources, multiplicative_factors, a
 
             photometry_tbl = iraf_style_photometry(
                 apertures, annuli, data*gain, master_dark_stddev*gain, header, var_df['Seeing'][j])
+            
+            # plt.imshow(data, origin='lower', norm=ImageNormalize(data[330:430, 650:750], interval=ZScaleInterval(), stretch=SquaredStretch()))
+            # plt.xlim(650, 750)
+            # plt.ylim(330, 430)
+            # plt.plot(positions[0][0], positions[0][1], 'rx')
+            # apertures[0].plot(color='r', lw=2)
+            # annuli[0].plot(color='m', lw=2)
+            # plt.tight_layout()
+            # plt.savefig(output_filename.parent/('save_images/'+str(j).zfill(3)+'.png'), dpi=200)
+            # plt.clf()
 
             for k in range(len(photometry_tbl)):
                 var_df[source_names[k]+' Flux'][j] = photometry_tbl['flux'][k]
@@ -994,7 +1060,7 @@ def basic_psf_phot(short_name, centroided_sources, plots=False):
     return
 
 
-def centroider(short_name, sources, output_plots=False, restore=False, box_w=16, force_output_path='', bin_mins=0.0, shift_tolerance=2.0):
+def centroider(short_name, sources, output_plots=False, restore=False, box_w=16, force_output_path='', bin_mins=0.0, shift_tolerance=2.0, time_threshold=0.10):
     """Measures pixel positions of sources in a set of reduced images.
 
     :param short_name: the target's short name
@@ -1136,7 +1202,7 @@ def centroider(short_name, sources, output_plots=False, restore=False, box_w=16,
     # On each night...
     for k in range(len(night_inds)):
         # Generate block indices...
-        block_inds = block_splitter(centroid_df['Time BJD TDB'][night_inds[k]], bin_mins=bin_mins)
+        block_inds = block_splitter(centroid_df['Time BJD TDB'][night_inds[k]], bin_mins=bin_mins, time_threshold=time_threshold)
         # Convert them to block numbers...
         night_block_numbers = [
             np.zeros(len(block_inds[i]), dtype='int')+i+1 for i in range(len(block_inds))]
@@ -1587,12 +1653,7 @@ def epsf_phot(target, centroided_sources, plots=False):
         if len(date_obs.split(':')[-1].split('.')[0]) == 3:
             date_obs = date_obs.split(
                 ':')[0] + ':' + date_obs.split(':')[1] + ':' + date_obs.split(':')[-1][1:]
-        # Keep a try/except clause here in case other unknown DATE-OBS formats pop up.
-        try:
-            date = datetime.datetime.strptime(date_obs, '%Y-%m-%dT%H:%M:%S.%f')
-        except:
-            print('Header DATE-OBS format does not match the format code in strptime! Inspect/correct the DATE-OBS value.')
-            pdb.set_trace()
+        date = datetime.datetime.strptime(date_obs, '%Y-%m-%dT%H:%M:%S.%f')
 
         days = date.day + \
             hmsm_to_days(date.hour, date.minute, date.second, date.microsecond)
@@ -2053,3 +2114,143 @@ def target_finder(sources, guess_position):
                         ** 2 + (guess_position[1] - sources['ycenter'])**2)
     target_id = np.where(distances == np.min(distances))[0][0]
     return target_id
+
+def twoD_Gaussian(x, y, sigma_x, sigma_y, rho, x_cen, y_cen, amplitude, offset):
+        
+    covar = np.zeros((2,2))
+    covar[0,0] = sigma_x**2
+    covar[1,1] = sigma_y**2
+    covar[0,1] = rho*sigma_x*sigma_y
+    covar[1,0] = covar[0,1]
+    inv_covar = np.linalg.inv(covar)
+
+    ln_Gaussian = (x - x_cen)**2 * inv_covar[0,0] + 2*(x - x_cen)*(y - y_cen)*inv_covar[0,1] + (y - y_cen)**2 * inv_covar[1,1]
+    
+    return offset + amplitude * np.exp(-ln_Gaussian/2.0)
+
+def joint_psf_fitter(cutouts, gain=8.21, plate_scale=0.579):
+    '''Does a 2D gaussian fit jointly to a set of image cutouts (n_stars x nxpix x nypix)
+    '''
+    #Inner fit fits a single star with sigma and rho fixed
+    def inner_min_function(inner_params,x,y,cutout,err,sigma_x,sigma_y,rho):
+        x_cen=inner_params[0]
+        y_cen=inner_params[1]
+        amplitude=inner_params[2]
+        offset=inner_params[3]
+        model = twoD_Gaussian(x, y, sigma_x, sigma_y, rho, x_cen, y_cen, amplitude, offset)
+        good = np.isfinite(cutout.flatten())
+        return (cutout.flatten()[good]-model.flatten()[good])/err.flatten()[good]
+
+    #Outer fit does sigma_x, sigma_y and rho, calling inner_fit for each star
+    def outer_min_function(outer_params,xs,ys,nstars,cutouts,errs):
+        sigma_x = outer_params[0]
+        sigma_y = outer_params[1]
+        rho = outer_params[2]
+        inner_ini_guess = np.zeros(4)
+        for i in np.arange(nstars):
+            inner_ini_guess[0] = np.mean(xs[i,:,:])
+            inner_ini_guess[1] = np.mean(ys[i,:,:])
+            inner_ini_guess[2] = np.nanmax(cutouts[i,:,:]) - np.nanmin(cutouts[i,:,:])
+            inner_ini_guess[3] = np.nanmin(cutouts[i,:,:])
+            inner_res_lsq = least_squares(inner_min_function,
+                                        inner_ini_guess,
+                                        args=(xs[i,:,:],
+                                        ys[i,:,:],
+                                        cutouts[i,:,:],
+                                        errs[i,:,:],
+                                        sigma_x,
+                                        sigma_y,
+                                        rho))
+            if i==0:
+                residuals = np.array(inner_res_lsq['fun']).flatten()
+            else:
+                residuals = np.concatenate((residuals,np.array(inner_res_lsq['fun']).flatten()))
+
+        return residuals
+
+    def joint_PSF_fit(cutouts, errs, xs, ys, plate_scale):
+        
+        nstars = cutouts.shape[0]
+
+        outer_ini_guess = np.zeros(3)
+        lower_bounds = np.zeros(3)
+        upper_bounds = np.zeros(3)
+
+        #x and y sigma guesses and bounds
+        outer_ini_guess[0:2] = 3/plate_scale/2.355 #sigma corresponds to 2.5" seeing
+        lower_bounds[0:2] = 0.5/plate_scale/2.355 #0.5 arcseconds bounds on seeing
+        upper_bounds[0:2] = 10/plate_scale/2.355 #10 arcseconds boudsn on seeing
+
+        #rho guess and bounds
+        outer_ini_guess[2] = 0.1#assume no rotation to the Gaussian yet (rho=0)
+        lower_bounds[2] = -0.99999999
+        upper_bounds[2] = 0.99999999
+
+        #make the bounds a "2 tuple" so least_squares is happy
+        bounds = (lower_bounds,upper_bounds)
+
+        #do the fit for sigmas and rho
+        res_lsq = least_squares(outer_min_function, outer_ini_guess, args=(xs, ys, nstars, cutouts, errs), diff_step=0.001, verbose=0)
+
+        #now, re-run fit for each star to get the individual params
+        sigma_x=res_lsq.x[0]
+        sigma_y=res_lsq.x[1]
+        rho = res_lsq.x[2]
+        xcens = np.zeros(nstars)
+        ycens = np.zeros(nstars)
+        offsets = np.zeros(nstars)
+        amplitudes = np.zeros(nstars)
+
+        inner_ini_guess = np.zeros(4)
+
+        for i in np.arange(nstars):
+            inner_ini_guess[0] = np.mean(xs[i,:,:])
+            inner_ini_guess[1] = np.mean(ys[i,:,:])
+            inner_ini_guess[2] = np.nanmax(cutouts[i,:,:]) - np.nanmin(cutouts[i,:,:])
+            inner_ini_guess[3] = np.nanmin(cutouts[i,:,:])
+            res_lsq = least_squares(inner_min_function,
+                                    inner_ini_guess,
+                                    args=(xs[i,:,:],
+                                        ys[i,:,:],
+                                        cutouts[i,:,:],
+                                        errs[i,:,:],
+                                        sigma_x,
+                                        sigma_y,
+                                        rho),
+                                    verbose=0)
+            xcens[i] = res_lsq.x[0]
+            ycens[i] = res_lsq.x[1]
+            amplitudes[i] = res_lsq.x[2]
+            offsets[i] = res_lsq.x[3]
+
+        return sigma_x,sigma_y,rho,xcens,ycens,amplitudes,offsets
+
+    #Make an error matrix to match cutouts. Assume ph noise:
+    errs = np.sqrt(cutouts*gain)/gain
+
+
+    #Get sizes
+    nxpix = cutouts.shape[1]
+    nypix = cutouts.shape[2]
+
+    #No xs and ys provided, so just them all on the the same grid
+    x = np.resize(np.arange(nxpix),(nxpix,nypix))
+    y = np.transpose(np.resize(np.arange(nypix),(nypix,nxpix)))
+
+    #resize to make a 3d array that matches cutouts
+    xs = np.resize(x,cutouts.shape)
+    ys = np.resize(y,cutouts.shape)
+
+    #run the code
+    sigma_x,sigma_y,rho,xcens,ycens,amplitudes,offsets = joint_PSF_fit(cutouts, errs, xs, ys, plate_scale)
+
+    fit_params = {'sigma_x':sigma_x, 'sigma_y':sigma_y, 'rho':rho, 'xcens':xcens, 'ycens':ycens, 'amplitudes':amplitudes, 'offsets':offsets}
+
+    return fit_params, xs, ys
+
+def cutout_array_creator(image, x_c, y_c, cutout_w=11):
+    cutout_array = np.zeros((len(x_c), 2*cutout_w, 2*cutout_w))
+    for i in range(len(x_c)):
+        cutout = image[int(y_c[i]-cutout_w):int(y_c[i]+cutout_w), int(x_c[i]-cutout_w):int(x_c[i]+cutout_w)]
+        cutout_array[i] = cutout
+    return cutout_array

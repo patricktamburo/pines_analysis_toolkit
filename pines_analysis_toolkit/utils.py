@@ -21,6 +21,7 @@ import numpy as np
 from pathlib import Path
 from scipy.stats import sigmaclip
 from datetime import datetime
+import imageio
 
 def bjd_tdb_to_jd_utc(bjd_tdb, ra, dec, location='lowell'):
     """Converts a Barycentric Julian Date in TDB timescale to Julian Date in UTC timescale.
@@ -378,7 +379,7 @@ def short_name_creator(long_name):
 
     if '2MASS' in name:
         # If the user already passed a 2MASS short name (i.e., 2MASS XXXX+YYYY), just return it.
-        if len(name) == 14 or len(name) == 16:
+        if len(name) == 14 or len(name) == 16 or len(name) == 17: #TODO: Fix this, stupid. 
             short_name = long_name
 
         # Otherwise, create the short name.

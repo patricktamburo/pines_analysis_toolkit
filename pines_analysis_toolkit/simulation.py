@@ -162,6 +162,6 @@ def simulate_l_t(SpT):
 
 def calc_a(period,mStar):
     G = const.G.value
-    #Calculates a, the planet's semi-major axis, from its orbital period P
+    #Calculates a, the planet's semi-major axis, from its orbital period P in days and the host mass in kg. 
     a = (G*mStar*(period*86400)**2/(4*np.pi**2))**(1/3)
     return a
