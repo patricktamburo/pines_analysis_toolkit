@@ -231,8 +231,10 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
                 # Download from the /data/logs/ directory on PINES.
                 if not (log_path/(date+'_log.txt')).exists():
                     print('Downloading {}_log.txt to {}\n'.format(date, log_path))
-                    sftp.get('/data/logs/'+date+'_log.txt',
-                             log_path/(date+'_log.txt'))
+                    try:
+                        sftp.get('/data/logs/'+date+'_log.txt', log_path/(date+'_log.txt'))
+                    except:
+                        print('Log download failed. Make sure there is a copy in data/logs/ on the PINES server, or download a local copy.')
 
                 # Read in the log from this date.
                 log = pines_log_reader(log_path/(date+'_log.txt'))
@@ -297,8 +299,7 @@ def dark(date, exptime, dark_start=0, dark_stop=0, upload=False, delete_raw=Fals
         (cube_shape[1], cube_shape[2]), dtype='float32')
 
     print('')
-    print('Combining the darks')
-    print('......')
+    print('Combining the darks.')
 
     pbar = ProgressBar()
     for x in pbar(range(cube_shape[1])):
@@ -471,7 +472,6 @@ def dead_pixels(date, band, upload=False, sftp='', force_output_path=''):
         clip_lvl = clip_lvls[i]
         print('Box size = {} x {}.'.format(box_l, box_l))
         print('Sigma clipping level = {}.'.format(clip_lvl))
-        print('......')
         num_flagged = 999  # Initialize
         box_minus = int(box_l/2)
         box_plus = int(box_l/2) + 1
@@ -669,8 +669,7 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
                 log = pines_log_reader(log_path/(date+'_log.txt'))
 
                 # Identify flat files.
-                flat_inds = np.where((log['Target'] == 'Flat') & (
-                    log['Filename'] != 'test.fits') & (log['Filt.'] == band))[0]
+                flat_inds = np.where(((log['Target'] == 'Flat') | (log['Target'] == 'Flat_On') | (log['Target'] == 'Flat_Off')) & (log['Filename'] != 'test.fits') & (log['Filt.'] == band))[0]
                 # Set guarantees we only grab the unique files that have been identified as flats, in case the log bugged out.
                 flat_files = natsorted(list(set(log['Filename'][flat_inds])))
 
@@ -700,9 +699,9 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
                         print(
                             'ERROR: {} taken in filter other than {}. Double check your date, try specifying start/stop file numbers, etc.'.format(flat_files[j], band))
                         return
-                    if header['OBJECT'] == 'dome_lamp_on':
+                    if (header['OBJECT'] == 'dome_lamp_on') or (header['OBJECT'] == 'Flat_On'):
                         lights_on_files.append(flat_files[j])
-                    elif header['OBJECT'] == 'dome_lamp_off':
+                    elif (header['OBJECT'] == 'dome_lamp_off') or (header['OBJECT'] == 'Flat_Off'):
                         lights_off_files.append(flat_files[j])
                     else:
                         print(
@@ -749,10 +748,10 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
             files_in_dir = np.array([Path(i) for i in natsorted(glob.glob(str(dome_flat_raw_path)+'/*.fits'))])
             for i in range(len(files_in_dir)):
                 header = fits.open(files_in_dir[i])[0].header
-                if (header['OBJECT'] == 'dome_lamp_on') and (header['FILTNME2'] == band):
+                if ((header['OBJECT'] == 'dome_lamp_on') or (header['OBJECT'] == 'Flat_On')) and (header['FILTNME2'] == band):
                     flat_files.append(files_in_dir[i].name)
                     lights_on_files.append(files_in_dir[i].name)
-                if (header['OBJECT'] == 'dome_lamp_off') and (header['FILTNME2'] == band):
+                if ((header['OBJECT'] == 'dome_lamp_off') or (header['OBJECT'] == 'Flat_Off')) and (header['FILTNME2'] == band):
                     flat_files.append(files_in_dir[i].name)
                     lights_off_files.append(files_in_dir[i].name)
 
@@ -813,7 +812,6 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
         (lights_on_cube_shape[1], lights_on_cube_shape[2]), dtype='float32')
     print('')
     print('Combining the lights-on flats.')
-    print('......')
     pbar = ProgressBar()
     for x in pbar(range(lights_on_cube_shape[1])):
         for y in range(lights_on_cube_shape[2]):
@@ -871,7 +869,6 @@ def dome_flat_field(date, band, lights_on_start=0, lights_on_stop=0, lights_off_
             (lights_off_cube_shape[1], lights_off_cube_shape[2]), dtype='float32')
         print('')
         print('Combining the lights-off flats.')
-        print('......')
         pbar = ProgressBar()
         for x in pbar(range(lights_off_cube_shape[1])):
             for y in range(lights_off_cube_shape[2]):
@@ -1349,7 +1346,6 @@ def hot_pixels(date, exptime, saturation=4000., upload=False, sftp='', force_out
         clip_lvl = clip_lvls[i]
         print('Box size = {} x {}.'.format(box_l, box_l))
         print('Sigma clipping level = {}.'.format(clip_lvl))
-        print('......')
         # Initialize. Keep iterating until num_flagged = 1 or 0.
         num_flagged = 999
 
@@ -1763,8 +1759,7 @@ def reduce(short_name, upload=False, delete_raw=False, delete_reduced=False, sft
     # Paths
     raw_path = pines_path/('Objects/'+short_name+'/raw')
     # Natsort sorts things how you expect them to be sorted.
-    raw_files = [Path(i) for i in natsorted(
-        glob.glob(os.path.join(raw_path, '*.fits')))]
+    raw_files = [Path(i) for i in natsorted(glob.glob(os.path.join(raw_path, '*.fits')))]
     dark_path = pines_path/('Calibrations/Darks/')
     reduced_path = pines_path/('Objects/'+short_name+'/reduced')
     flats_path = pines_path/('Calibrations/Flats/Domeflats')

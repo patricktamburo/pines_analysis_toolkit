@@ -180,7 +180,11 @@ def pines_log_reader(path):
     :return: datframe of the log/csv file data
     :rtype: pandas DataFrame
     """
-    df = pd.read_csv(path)
+    try:
+        df = pd.read_csv(path)
+    except:
+        print('Something is wrong with {}, inspect!'.format(path.name))
+        breakpoint()
 
     # Remove trailing/leading spaces from column names
     df.columns = df.columns.str.lstrip()

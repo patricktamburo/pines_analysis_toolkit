@@ -19,6 +19,8 @@ from astropy.modeling import models, fitting
 from astropy.convolution import Gaussian2DKernel, interpolate_replace_nans
 from astropy.io import fits
 from astropy.visualization import ImageNormalize, ZScaleInterval, LinearStretch
+import astropy.units as u 
+from astropy.coordinates import SkyCoord
 
 from scipy import signal
 from scipy.spatial import ConvexHull, convex_hull_plot_2d
@@ -506,7 +508,7 @@ def log_updater(date, sftp, shift_tolerance=30., upload=False, force_output_path
 
     # Now loop over all files in the log, measure shifts in each file and update the line in the log.
     for i in range(len(log)):
-        if (log['Target'][i].lower() != 'flat') & (log['Target'][i].lower() != 'skyflat') & (log['Target'][i].lower() != 'supersky') & (log['Target'][i].lower() != 'dark') & (log['Target'][i].lower() != 'bias') & (log['Target'][i].lower() != 'dummy') & (log['Target'][i].lower() != 'linearity') & (log['Post-processing flag'][i] != 1):
+        if (log['Target'][i].lower() != 'flat') & (log['Target'][i].lower() != 'skyflat') & (log['Target'][i].lower() != 'supersky') & (log['Target'][i].lower() != 'flat_on') & (log['Target'][i].lower() != 'flat_off') & (log['Target'][i].lower() != 'dark') & (log['Target'][i].lower() != 'bias') & (log['Target'][i].lower() != 'dummy') & (log['Target'][i].lower() != 'linearity') & (log['Post-processing flag'][i] != 1):
             filename = log['Filename'][i].split('.fits')[0]+'_red.fits'
             target = log['Target'][i]
             short_name = short_name_creator(target)
@@ -1198,10 +1200,9 @@ def shift_measurer(target, image_name, num_sources=15, closeness_tolerance=10., 
                           runs[jj]+'/'+nights[kk]+'/'+missing_filename))
                     found = True
                     # Download the file and grab relevant parameters from the header.
-                    sftp.get('/data/raw/mimir/'+runs[jj]+'/'+nights[kk]+'/'+missing_filename, pines_path/(
-                        'Objects/'+short_name+'/raw/'+missing_filename))
+                    sftp.get('/data/raw/mimir/'+runs[jj]+'/'+nights[kk]+'/'+missing_filename, pines_path/('Objects/'+short_name+'/raw/'+missing_filename))
                     break
-        reduce(target)
+        reduce(short_name)
 
     # Read in the check image and interpolate/background subtract to make source detection easier.
     check_image = fits.open(image_path)[0].data
@@ -1294,3 +1295,29 @@ def synthetic_image_maker(x_centroids, y_centroids, fwhm=2.5):
         synthetic_image[y_cut,
                         x_cut] += np.exp(-((dist)**2/(2*sigma**2)+((dist)**2/(2*sigma**2))))
     return(synthetic_image)
+
+def group_separation_measurer(group_id):
+    """Calculates the separation between group members in degrees.
+
+    :param group_id: The group ID from the PINES sample
+    :type group_id: float
+    """
+
+    pines_path = pines_dir_check()
+    sample_path = pines_path/('Misc/PINES Sample.csv')
+    if not os.path.exists(sample_path):
+        print('Download a csv of the PINES sample from Google Drive.')
+        return 
+    
+    sample_df = pd.read_csv(sample_path, converters={'RA (h:m:s)':str, 'Dec (d:m:s)':str})
+    group_inds = np.where((sample_df['Group ID'] == group_id) & (sample_df['Good'] == 1))[0]
+    n_targs = len(group_inds)
+    ra_array = np.array(sample_df['RA (h:m:s)'][group_inds])
+    dec_array = np.array(sample_df['Dec (d:m:s)'][group_inds])
+
+    for i in range(len(group_inds)):
+        s1 = SkyCoord(ra_array[i]+' '+dec_array[i], unit=(u.hourangle, u.deg))
+        s2 = SkyCoord(ra_array[(i+1)%n_targs]+' '+dec_array[(i+1)%n_targs], unit=(u.hourangle, u.deg))
+        sep = s1.separation(s2)
+        print('Object {} separated from object {} by {:1.1f}.'.format(i+1, (i+2)%(n_targs+1), sep))
+    return

@@ -17,11 +17,12 @@ from astropy.nddata import NDData
 from astropy.utils.exceptions import AstropyUserWarning
 from astropy.coordinates import SkyCoord, Angle
 
-from photutils import CircularAperture, CircularAnnulus, aperture_photometry, make_source_mask, centroid_2dg, centroid_1dg, centroid_com, EPSFBuilder, aperture_photometry, EPSFFitter
+from photutils import CircularAperture, CircularAnnulus, aperture_photometry, make_source_mask,  EPSFBuilder, aperture_photometry, EPSFFitter
+
 from photutils.psf import BasicPSFPhotometry, IntegratedGaussianPRF, DAOGroup, extract_stars, IterativelySubtractedPSFPhotometry
 from photutils.utils import calc_total_error
 from photutils.detection import IRAFStarFinder, DAOStarFinder
-from photutils.centroids import centroid_sources
+from photutils.centroids import centroid_sources, centroid_2dg, centroid_1dg, centroid_com
 from photutils.background import MMMBackground
 
 from scipy.stats import sigmaclip, mode as scipy_mode
@@ -1530,8 +1531,8 @@ def detect_sources(image_path, seeing_fwhm, edge_tolerance, thresh=6.0, plot=Fal
     initial_sources.remove_rows(bad_512)
 
     # Cut sources near the top and bottom edges to avoid issues with the Mimir "ski jump" feature that can sometimes occur.
-    bad_ski_jump = np.where((initial_sources['ycentroid'] < 100) | (
-        initial_sources['ycentroid'] > 924))
+    bad_ski_jump = np.where((initial_sources['ycentroid'] < 50) | (
+        initial_sources['ycentroid'] > 974))
     initial_sources.remove_rows(bad_ski_jump)
 
     # Do quick photometry on the remaining sources.
