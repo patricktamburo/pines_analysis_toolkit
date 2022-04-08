@@ -8,7 +8,7 @@ setuptools.setup(
     version='1.0.0',
     author='Patrick Tamburo',
     author_email='tamburop@bu.edu',
-    description='Testing installation of Package',
+    description='Analysis pipeline for PINES.',
     long_description=long_description,
     long_description_content_type="text/markdown",
     url='https://github.com/patricktamburo/pines_analysis_toolkit',
