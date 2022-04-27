@@ -307,8 +307,11 @@ def compute_phot_error(flux, bg_phot, bg_method, ap_area, exptime, dark_std_data
     for i in range(len(phot_apertures)):
         ap = phot_apertures[i]
         dark_rn_ap = ap.to_mask().multiply(dark_std_data)
-        dark_rn_ap = dark_rn_ap[dark_rn_ap != 0]
-        dark_rn_term[i] = ap_area * (np.median(dark_rn_ap)**2)
+        try:
+            dark_rn_ap = dark_rn_ap[dark_rn_ap != 0]
+            dark_rn_term[i] = ap_area * (np.median(dark_rn_ap)**2)
+        except:
+            dark_rn_term[i] = 0
 
     variance = flux_variance_term + bg_variance_term_1 + \
         bg_variance_term_2 + dark_rn_term
@@ -390,7 +393,7 @@ def calc_aperture_mmm(data, mask, sigma_clip):
         return (mean, median, mode, std, actual_area)
 
 
-def fixed_aper_phot(short_name, centroided_sources, ap_radii, an_in=12., an_out=30., gain=8.21, qe=0.9, force_output_path=''):
+def fixed_aper_phot(short_name, ap_radii, filter, an_in=12., an_out=30., gain=8.21, qe=0.9, force_output_path=''):
     '''Authors:
                 Patrick Tamburo, Boston University, June 2020
         Purpose:
@@ -398,9 +401,9 @@ def fixed_aper_phot(short_name, centroided_sources, ap_radii, an_in=12., an_out=
         The iraf_style_photometry, compute_phot_error, perture_stats_tbl, and calc_aperture_mmm routines are from Varun Bajaj on github:
             https://github.com/spacetelescope/wfc3_photometry/blob/master/photometry_tools/photometry_with_errors.py. 
         Inputs:
-        target (str): The target's full 2MASS name.
-        sources (pandas dataframe): List of source names, x and y positions in every image. 
+        short_name (str): The target's short name.
         ap_radii (list of floats): List of aperture radii in pixels for which aperture photometry wil be performed. 
+        filter (str): The filter whose data want to perform photometry on
         an_in (float, optional): The inner radius of the annulus used to estimate background, in pixels. 
         an_out (float, optional): The outer radius of the annulus used to estimate background, in pixels. 
         gain (float, optional): The gain of the detector in e-/ADU.
@@ -416,22 +419,23 @@ def fixed_aper_phot(short_name, centroided_sources, ap_radii, an_in=12., an_out=
     else:
         pines_path = pines_dir_check()
 
-    # Remove any leading/trailing spaces in the column names.
-    centroided_sources.columns = centroided_sources.columns.str.lstrip()
-    centroided_sources.columns = centroided_sources.columns.str.rstrip()
+    centroid_path = pines_path/('Objects/'+short_name+'/sources/'+filter+'/target_and_references_centroids.csv')
+    centroided_sources = pines_log_reader(centroid_path)
 
     # Get list of reduced files for target.
-    reduced_path = pines_path/('Objects/'+short_name+'/reduced')
-    reduced_filenames = natsorted(
-        [x.name for x in reduced_path.glob('*red.fits')])
+    reduced_path = pines_path/('Objects/'+short_name+'/reduced/'+filter)
+    reduced_filenames = natsorted([x.name for x in reduced_path.glob('*red.fits')])
     reduced_files = np.array([reduced_path/i for i in reduced_filenames])
 
     source_names = get_source_names(centroided_sources)
 
-    
+    aper_phot_path = pines_path/('Objects/'+short_name+'/aper_phot/'+filter)
+    if not os.path.exists(aper_phot_path):
+        os.mkdir(aper_phot_path)
+        
      # Declare a new dataframe to hold the information for all targets for this aperture.
     columns = ['Filename', 'Time UT', 'Time JD UTC', 'Time BJD TDB',
-                'Night Number', 'Block Number', 'Airmass', 'Seeing']
+                'Night Number', 'Block Number', 'Filter', 'Airmass', 'Seeing']
     for i in range(0, len(source_names)):
         columns.append(source_names[i]+' Flux')
         columns.append(source_names[i]+' Flux Error')
@@ -471,6 +475,7 @@ def fixed_aper_phot(short_name, centroided_sources, ap_radii, an_in=12., an_out=
         night_number = centroided_sources['Night Number'][j]
         block_number = centroided_sources['Block Number'][j]
         airmass = header['AIRMASS']
+        filter = header['FILTNME2']
         seeing = log['X seeing'][log_ind]
         for i in range(len(ap_radii)):
             ap_df = ap_dfs[i] 
@@ -481,6 +486,7 @@ def fixed_aper_phot(short_name, centroided_sources, ap_radii, an_in=12., an_out=
             ap_df['Time BJD TDB'][j] = time_bjd
             ap_df['Night Number'][j] = night_number
             ap_df['Block Number'][j] = block_number
+            ap_df['Filter'][j] = filter
             ap_df['Airmass'][j] = airmass
             ap_df['Seeing'][j] = seeing
 
@@ -511,7 +517,7 @@ def fixed_aper_phot(short_name, centroided_sources, ap_radii, an_in=12., an_out=
     for i in range(len(ap_radii)):
         ap_df = ap_dfs[i]
         ap = ap_radii[i] 
-        output_filename = pines_path/('Objects/'+short_name+'/aper_phot/' + short_name+'_fixed_aper_phot_{:1.1f}_pix_radius.csv'.format(float(ap)))
+        output_filename = pines_path/('Objects/'+short_name+'/aper_phot/'+filter+'/'+ short_name+'_fixed_aper_phot_{:1.1f}_pix_radius.csv'.format(float(ap)))
 
         # Write output to file.
         print('Saving ap = {:1.1f} aperture photometry output to {}.'.format(
@@ -521,8 +527,8 @@ def fixed_aper_phot(short_name, centroided_sources, ap_radii, an_in=12., an_out=
             for j in range(len(ap_df)):
                 # Write in the header.
                 if j == 0:
-                    f.write('{:>21s}, {:>22s}, {:>17s}, {:>17s}, {:>17s}, {:>17s}, {:>7s}, {:>7s}, '.format(
-                        'Filename', 'Time UT', 'Time JD UTC', 'Time BJD TDB', 'Night Number', 'Block Number', 'Airmass', 'Seeing'))
+                    f.write('{:>21s}, {:>22s}, {:>17s}, {:>17s}, {:>17s}, {:>17s}, {:>7s}, {:>7s}, {:>7s}, '.format(
+                        'Filename', 'Time UT', 'Time JD UTC', 'Time BJD TDB', 'Night Number', 'Block Number', 'Filter', 'Airmass', 'Seeing'))
                     for i in range(len(source_names)):
                         if i != len(source_names) - 1:
                             f.write('{:>22s}, {:>28s}, {:>28s}, {:>34s}, '.format(
@@ -532,7 +538,7 @@ def fixed_aper_phot(short_name, centroided_sources, ap_radii, an_in=12., an_out=
                                 source_names[i]+' Flux', source_names[i]+' Flux Error', source_names[i]+' Background', source_names[i]+' Interpolation Flag'))
 
                 # Write in Filename, Time UT, Time JD, Airmass, Seeing values.
-                format_string = '{:21s}, {:22s}, {:17.9f}, {:17.9f}, {:17d}, {:17d}, {:7.2f}, {:7.1f}, '
+                format_string = '{:21s}, {:22s}, {:17.9f}, {:17.9f}, {:17d}, {:17d}, {:>7s}, {:7.2f}, {:7.1f}, '
                 # If the seeing value for this image is 'nan' (a string), convert it to a float.
                 # TODO: Not sure why it's being read in as a string, fix that.
                 if type(ap_df['Seeing'][j]) == str:
@@ -541,7 +547,7 @@ def fixed_aper_phot(short_name, centroided_sources, ap_radii, an_in=12., an_out=
                 # Do a try/except clause for writeout, in case it breaks in the future.
                 try:
                     f.write(format_string.format(ap_df['Filename'][j], ap_df['Time UT'][j], ap_df['Time JD UTC'][j], ap_df['Time BJD TDB']
-                            [j], ap_df['Night Number'][j], ap_df['Block Number'][j], ap_df['Airmass'][j], ap_df['Seeing'][j]))
+                            [j], ap_df['Night Number'][j], ap_df['Block Number'][j], ap_df['Filter'][j], ap_df['Airmass'][j], ap_df['Seeing'][j]))
                 except:
                     print(
                         'Writeout failed! Inspect quantities you are trying to write out.')
@@ -564,11 +570,11 @@ def fixed_aper_phot(short_name, centroided_sources, ap_radii, an_in=12., an_out=
                         f.write(format_string.format(ap_df[source_names[i]+' Flux'][j], ap_df[source_names[i]+' Flux Error']
                                 [j], ap_df[source_names[i]+' Background'][j], ap_df[source_names[i]+' Interpolation Flag'][j]))
 
-        raw_flux_plot(output_filename, mode='night')
+        #raw_flux_plot(output_filename, mode='night')
         print('')
     return
 
-def variable_aper_phot(short_name, centroided_sources, multiplicative_factors, an_in=12., an_out=30., plots=False, gain=8.21, qe=0.9, plate_scale=0.579, force_output_path='', smoothing_size=5, bin_mins=0.0, time_threshold=0.1):
+def variable_aper_phot(short_name, multiplicative_factors, filter, an_in=12., an_out=30., plots=False, gain=8.21, qe=0.9, plate_scale=0.579, force_output_path='', smoothing_size=5, bin_mins=0.0, time_threshold=0.1):
     plt.ioff()
 
     if force_output_path != '':
@@ -576,14 +582,12 @@ def variable_aper_phot(short_name, centroided_sources, multiplicative_factors, a
     else:
         pines_path = pines_dir_check()
 
-    # Remove any leading/trailing spaces in the column names.
-    centroided_sources.columns = centroided_sources.columns.str.lstrip()
-    centroided_sources.columns = centroided_sources.columns.str.rstrip()
+    centroid_path = pines_path/('Objects/'+short_name+'/sources/'+filter+'/target_and_references_centroids.csv')
+    centroided_sources = pines_log_reader(centroid_path)
 
     # Get list of reduced files for target.
-    reduced_path = pines_path/('Objects/'+short_name+'/reduced')
-    reduced_filenames = natsorted(
-        [x.name for x in reduced_path.glob('*red.fits')])
+    reduced_path = pines_path/('Objects/'+short_name+'/reduced/'+filter)
+    reduced_filenames = natsorted([x.name for x in reduced_path.glob('*red.fits')])
     reduced_files = np.array([reduced_path/i for i in reduced_filenames])
 
     # Get source names.
@@ -665,7 +669,7 @@ def variable_aper_phot(short_name, centroided_sources, multiplicative_factors, a
 
         # Declare a new dataframe to hold the information for all targets for this aperture.
         columns = ['Filename', 'Time UT', 'Time JD UTC', 'Time BJD TDB',
-                   'Night Number', 'Block Number', 'Airmass', 'Seeing']
+                   'Night Number', 'Block Number', 'Filter', 'Airmass', 'Seeing']
         for j in range(0, len(source_names)):
             columns.append(source_names[j]+' Flux')
             columns.append(source_names[j]+' Flux Error')
@@ -673,7 +677,7 @@ def variable_aper_phot(short_name, centroided_sources, multiplicative_factors, a
             columns.append(source_names[j]+' Interpolation Flag')
 
         var_df = pd.DataFrame(index=range(len(reduced_files)), columns=columns)
-        output_filename = pines_path/('Objects/'+short_name+'/aper_phot/' + short_name+'_variable_aper_phot_{:1.2f}_seeing_factor.csv'.format(fact))
+        output_filename = pines_path/('Objects/'+short_name+'/aper_phot/'+filter+'/'+ short_name+'_variable_aper_phot_{:1.2f}_seeing_factor.csv'.format(fact))
 
         # plt.figure(figsize=(10,10))
         # plt.ioff() 
@@ -721,6 +725,7 @@ def variable_aper_phot(short_name, centroided_sources, multiplicative_factors, a
                 jd, header['TELRA'], header['TELDEC'])
             var_df['Night Number'][j] = centroided_sources['Night Number'][j]
             var_df['Block Number'][j] = centroided_sources['Block Number'][j]
+            var_df['Filter'][j] = header['FILTNME2']
             var_df['Airmass'][j] = header['AIRMASS']
             var_df['Seeing'][j] = log['X seeing'][np.where(
                 log['Filename'] == reduced_files[j].name.split('_')[0]+'.fits')[0][0]]
@@ -771,8 +776,8 @@ def variable_aper_phot(short_name, centroided_sources, multiplicative_factors, a
             for j in range(len(var_df)):
                 # Write in the header.
                 if j == 0:
-                    f.write('{:>21s}, {:>22s}, {:>17s}, {:>17s}, {:>17s}, {:>17s}, {:>7s}, {:>7s}, '.format(
-                        'Filename', 'Time UT', 'Time JD UTC', 'Time BJD TDB', 'Night Number', 'Block Number', 'Airmass', 'Seeing'))
+                    f.write('{:>21s}, {:>22s}, {:>17s}, {:>17s}, {:>17s}, {:>17s}, {:>7s}, {:>7s}, {:>7s}, '.format(
+                        'Filename', 'Time UT', 'Time JD UTC', 'Time BJD TDB', 'Night Number', 'Block Number', 'Filter', 'Airmass', 'Seeing'))
                     for k in range(len(source_names)):
                         if k != len(source_names) - 1:
                             f.write('{:>22s}, {:>28s}, {:>28s}, {:>34s}, '.format(
@@ -782,7 +787,7 @@ def variable_aper_phot(short_name, centroided_sources, multiplicative_factors, a
                                 source_names[k]+' Flux', source_names[k]+' Flux Error', source_names[k]+' Background', source_names[k]+' Interpolation Flag'))
 
                 # Write in Filename, Time UT, Time JD, Airmass, Seeing values.
-                format_string = '{:21s}, {:22s}, {:17.9f}, {:17.9f}, {:17d}, {:17d},{:7.2f}, {:7.1f}, '
+                format_string = '{:21s}, {:22s}, {:17.9f}, {:17.9f}, {:17d}, {:17d}, {:>7s}, {:7.2f}, {:7.1f}, '
                 # If the seeing value for this image is 'nan' (a string), convert it to a float.
                 # TODO: Not sure why it's being read in as a string, fix that.
                 if type(var_df['Seeing'][j]) == str:
@@ -791,7 +796,7 @@ def variable_aper_phot(short_name, centroided_sources, multiplicative_factors, a
                 # Do a try/except clause for writeout, in case it breaks in the future.
                 try:
                     f.write(format_string.format(var_df['Filename'][j], var_df['Time UT'][j], var_df['Time JD UTC'][j], var_df['Time BJD TDB']
-                            [j], var_df['Night Number'][j], var_df['Block Number'][j], var_df['Airmass'][j], var_df['Seeing'][j]))
+                            [j], var_df['Night Number'][j], var_df['Block Number'][j], var_df['Filter'][j], var_df['Airmass'][j], var_df['Seeing'][j]))
                 except:
                     print(
                         'Writeout failed! Inspect quantities you are trying to write out.')
@@ -813,7 +818,7 @@ def variable_aper_phot(short_name, centroided_sources, multiplicative_factors, a
                             format_string = '{:22.5f}, {:28.5f}, {:28.5f}, {:34f}\n'
                         f.write(format_string.format(var_df[source_names[i]+' Flux'][j], var_df[source_names[i]+' Flux Error']
                                 [j], var_df[source_names[i]+' Background'][j], var_df[source_names[i]+' Interpolation Flag'][j]))
-        raw_flux_plot(output_filename, mode='night')
+        #raw_flux_plot(output_filename, mode='night')
         print('')
     return
 
@@ -1061,13 +1066,15 @@ def basic_psf_phot(short_name, centroided_sources, plots=False):
     return
 
 
-def centroider(short_name, sources, output_plots=False, restore=False, box_w=16, force_output_path='', bin_mins=0.0, shift_tolerance=2.0, time_threshold=0.10):
+def centroider(short_name, sources, filter='', output_plots=False, restore=False, box_w=16, force_output_path='', bin_mins=0.0, shift_tolerance=2.0, time_threshold=0.10):
     """Measures pixel positions of sources in a set of reduced images.
 
     :param short_name: the target's short name
     :type short_name: str
     :param sources: dataframe of source names and pixel positions, output from ref_star_chooser
     :type sources: pandas DataFrame
+    :param filter: the filter you want to get centroids for. Use '' to get centroids for all data. 
+    :type filter: str
     :param output_plots: whether or not to save cutouts of the measured pixel positions, defaults to False
     :type output_plots: bool, optional
     :param restore: whether or not to restore centroid output from a previous run, defaults to False
@@ -1099,34 +1106,36 @@ def centroider(short_name, sources, output_plots=False, restore=False, box_w=16,
         pines_path = pines_dir_check()
 
     kernel = Gaussian2DKernel(x_stddev=1)  # For fixing nans in cutouts.
-
+    
+    reduced_path = pines_path/('Objects/'+short_name+'/reduced/'+filter)
+    sources_path = pines_path/('Objects/'+short_name+'/sources/'+filter)
+    if not os.path.exists(sources_path):
+        os.mkdir(sources_path)
+    
     # If restore == True, read in existing output and return.
     if restore:
-        centroid_df = pd.read_csv(pines_path/('Objects/'+short_name+'/sources/target_and_references_centroids.csv'),
+        centroid_df = pd.read_csv(pines_path/('Objects/'+short_name+'/sources/'+filter+'/target_and_references_centroids.csv'),
                                   converters={'X Centroids': eval, 'Y Centroids': eval})
         print('Restoring centroider output from {}.'.format(
-            pines_path/('Objects/'+short_name+'/sources/target_and_references_centroids.csv')))
+            pines_path/('Objects/'+short_name+'/sources/'+filter+'/target_and_references_centroids.csv')))
         print('')
         return centroid_df
 
     # Create subdirectories in sources folder to contain output plots.
     if output_plots:
-        subdirs = glob(str(pines_path/('Objects/'+short_name+'/sources'))+'/*/')
+        subdirs = glob(str(pines_path/('Objects/'+short_name+'/sources/'+filter))+'/*/')
         # Delete any source directories that are already there.
         for name in subdirs:
             shutil.rmtree(name)
 
         # Create new source directories.
         for name in sources['Name']:
-            source_path = (
-                pines_path/('Objects/'+short_name+'/sources/'+name+'/'))
+            source_path = (pines_path/('Objects/'+short_name+'/sources/'+filter+'/'+name+'/'))
             os.mkdir(source_path)
 
     # Read in extra shifts, in case the master image wasn't used for source detection.
-    extra_shift_path = pines_path / \
-        ('Objects/'+short_name+'/sources/extra_shifts.txt')
-    extra_shifts = pd.read_csv(extra_shift_path, delimiter=' ', names=[
-                               'Extra X shift', 'Extra Y shift'])
+    extra_shift_path = pines_path / ('Objects/'+short_name+'/sources/extra_shifts.txt')
+    extra_shifts = pd.read_csv(extra_shift_path, delimiter=' ', names=['Extra X shift', 'Extra Y shift'])
     extra_x_shift = extra_shifts['Extra X shift'][0]
     extra_y_shift = extra_shifts['Extra Y shift'][0]
 
@@ -1134,20 +1143,11 @@ def centroider(short_name, sources, output_plots=False, restore=False, box_w=16,
     np.seterr(divide='ignore', invalid='ignore')
 
     # Get list of reduced files for target.
-    reduced_path = pines_path/('Objects/'+short_name+'/reduced')
-    reduced_filenames = natsorted(
-        [x.name for x in reduced_path.glob('*red.fits')])
+    reduced_filenames = natsorted([x.name for x in reduced_path.glob('*red.fits')])
     reduced_files = np.array([reduced_path/i for i in reduced_filenames])
 
     # Declare a new dataframe to hold the centroid information for all sources we want to track.
-    columns = []
-    columns.append('Filename')
-    columns.append('Time JD UTC')
-    columns.append('Time BJD TDB')
-    columns.append('Night Number')
-    columns.append('Block Number')
-    columns.append('Seeing')
-    columns.append('Airmass')
+    columns = ['Filename', 'Time JD UTC', 'Time BJD TDB', 'Night Number', 'Block Number', 'Filter', 'Seeing', 'Airmass']
 
     # Add x/y positions and cenroid flags for every tracked source
     for i in range(0, len(sources)):
@@ -1157,12 +1157,10 @@ def centroider(short_name, sources, output_plots=False, restore=False, box_w=16,
         columns.append(sources['Name'][i]+' Cutout Y')
         columns.append(sources['Name'][i]+' Centroid Warning')
 
-    centroid_df = pd.DataFrame(index=range(
-        len(reduced_files)), columns=columns)
+    centroid_df = pd.DataFrame(index=range(len(reduced_files)), columns=columns)
 
     log_path = pines_path/('Logs/')
-    log_dates = np.array(
-        natsorted([x.name.split('_')[0] for x in log_path.glob('*.txt')]))
+    log_dates = np.array(natsorted([x.name.split('_')[0] for x in log_path.glob('*.txt')]))
 
     # Make sure we have logs for all the nights of these data. Need them to account for image shifts.
     nights = list(set([i.name.split('.')[0] for i in reduced_files]))
@@ -1232,10 +1230,8 @@ def centroider(short_name, sources, output_plots=False, restore=False, box_w=16,
             header = fits.open(file)[0].header
 
             # Get the measured image shift for this image.
-            log = pines_log_reader(
-                log_path/(file.name.split('.')[0]+'_log.txt'))
-            log_ind = np.where(log['Filename'] ==
-                            file.name.split('_')[0]+'.fits')[0][0]
+            log = pines_log_reader(log_path/(file.name.split('.')[0]+'_log.txt'))
+            log_ind = np.where(log['Filename'] == file.name.split('_')[0]+'.fits')[0][0]
 
             x_shift = float(log['X shift'][log_ind])
             y_shift = float(log['Y shift'][log_ind])
@@ -1245,6 +1241,7 @@ def centroider(short_name, sources, output_plots=False, restore=False, box_w=16,
                 centroid_df['Filename'][j] = file.name.split('_')[0]+'.fits'
                 centroid_df['Seeing'][j] = log['X seeing'][log_ind]
                 centroid_df['Airmass'][j] = log['Airmass'][log_ind]
+                centroid_df['Filter'][j] = log['Filt.'][log_ind]
 
             # Flag indicating if you should not trust the log's shifts. Set to true if x_shift/y_shift are 'nan' or > 30 pixels.
             nan_flag = False
@@ -1404,9 +1401,7 @@ def centroider(short_name, sources, output_plots=False, restore=False, box_w=16,
                             pad_inches=0, dpi=150)
                 plt.close()
 
-    output_filename = pines_path / \
-        ('Objects/'+short_name+'/sources/target_and_references_centroids.csv')
-    # centroid_df.to_csv(pines_path/('Objects/'+short_name+'/sources/target_and_references_centroids.csv'))
+    output_filename = pines_path / ('Objects/'+short_name+'/sources/'+filter+'/target_and_references_centroids.csv')
 
     print('Saving centroiding output to {}.'.format(output_filename))
     with open(output_filename, 'w') as f:
@@ -1418,6 +1413,7 @@ def centroider(short_name, sources, output_plots=False, restore=False, box_w=16,
                 f.write('{:<15s}, '.format('Time BJD TDB'))
                 f.write('{:<15s}, '.format('Night Number'))
                 f.write('{:<15s}, '.format('Block Number'))
+                f.write('{:<6s}, '.format('Filter'))
                 f.write('{:<6s}, '.format('Seeing'))
                 f.write('{:<7s}, '.format('Airmass'))
                 for i in range(len(sources['Name'])):
@@ -1436,6 +1432,7 @@ def centroider(short_name, sources, output_plots=False, restore=False, box_w=16,
                 f.write('{:<15.7f}, '.format(centroid_df['Time BJD TDB'][j]))
                 f.write('{:<15d}, '.format(centroid_df['Night Number'][j]))
                 f.write('{:<15d}, '.format(centroid_df['Block Number'][j]))
+                f.write('{:<6s}, '.format(centroid_df['Filter'][j]))
                 f.write('{:<6.1f}, '.format(float(centroid_df['Seeing'][j])))
                 f.write('{:<7.2f}, '.format(centroid_df['Airmass'][j]))
             except:
@@ -1826,34 +1823,13 @@ def epsf_phot(target, centroided_sources, plots=False):
     print('')
     return
 
-def ref_star_chooser(short_name, source_detect_image, guess_position=(700., 382.), radius_check=6., non_linear_limit=3300.,
-                     dimness_tolerance=0.5, brightness_tolerance=10., closeness_tolerance=12., distance_from_target=900., edge_tolerance=50., exclude_lower_left=False, restore=False,
-                     source_detect_plot=False, force_output_path=''):
+def ref_star_chooser(short_name, profile_data, restore=False, source_detect_plot=False, force_output_path=''):
     """Chooses suitable reference stars for a target in a specified source_detect_image.
 
     :param short_name: the short name for the target
     :type short_name: str
-    :param source_detect_image: name of the reduced image in which you want to find reference stars
-    :type source_detect_image: str
-    :param guess_position: guess position for the target in the source_detect_image, defaults to (700.,382.)
-    :type guess_position: tuple, optional
-    :param radius_check: the radius in pixels used to perform photometry to compare target and reference brightnesses, defaults to 6.
-    :type radius_check: float, optional
-    :param non_linear_limit: ADU value above which references are considered to be in the non-linear limit of the detecto, defaults to 3300.
-    :type non_linear_limit: float, optional
-    :param dimness_tolerance: minimum multiple of the target's measured brightness that a reference is allowed to have, defaults to 0.5
-    :type dimness_tolerance: float, optional
-    :param brightness_tolerance: maximum multiple of the target's measured brightness that a reference is allowed to have, defaults to 10.
-    :type brightness_tolerance: float, optional
-    :param closeness_tolerance: the closest distance in pixels that a reference star can be to another detected source and still be considered as a reference, defaults to 12.
-    :type closeness_tolerance: float, optional
-    :param distance_from_target: the furthest distance in pixels that a reference star can be from the target and still be considered, defaults to 900.
-    :type distance_from_target: float, optional
-    :param edge_tolerance: the closest distance in pixels that a reference can be to the edge of the detector and still be considered, defaults to 50.
-    :type edge_tolerance: float, optional
-    :param exclude_lower_left: whether or not to exclude reference stars from the lower left quadrant (due to occasional Mimir 'bars' issue), defaults to False
-    :type exclude_lower_left: bool, optional
-    :param restore: whether or not to restore references from previous output, defaults to False
+    :param profile_data: dictionary containing parameters for source_detection output from utils.profile_reader()
+    :type profile_data: dict
     :type restore: bool, optional
     :param source_detect_plot: whenther or not to plot all detected sources, defaults to False
     :type source_detect_plot: bool, optional
@@ -1864,8 +1840,18 @@ def ref_star_chooser(short_name, source_detect_image, guess_position=(700., 382.
     :return: Saves a plot of the target/detected reference stars to the object's 'sources' directory. Saves .csv of target/reference pixel positions in the object's 'sources' directory.
     :rtype: plot/csv
     """
-
     plt.ion()
+
+    source_detect_image = profile_data['source_detect_image']
+    source_detect_filter = profile_data['source_detect_filter']
+    guess_position=(profile_data['guess_position_x'],profile_data['guess_position_y'])
+    exclude_lower_left=profile_data['exclude_lower_left']
+    dimness_tolerance=profile_data['dimness_tolerance']
+    brightness_tolerance=profile_data['brightness_tolerance']
+    distance_from_target=profile_data['distance_from_target']
+    non_linear_limit=profile_data['non_linear_limit']
+    edge_tolerance=profile_data['edge_tolerance']
+
     # Get your local PINES directory
     if force_output_path != '':
         pines_path = force_output_path
@@ -1879,23 +1865,14 @@ def ref_star_chooser(short_name, source_detect_image, guess_position=(700., 382.
         print('Restoring ref_star_chooser output from {}.'.format(
             pines_path/('Objects/'+short_name+'/sources/target_and_references_source_detection.csv')))
         print('')
+        plt.ioff()
         return output_df
-
-    # Find reduced files in the directory.
-    data_dir = pines_path/('Objects/'+short_name+'/reduced/')
-    reduced_files = np.array(natsorted([x for x in data_dir.glob('*.fits')]))
-
-    # If the directory doesn't exist, or there are no reduced files, return nothing.
-    if (not data_dir.exists()) or (len(reduced_files) == 0):
-        print('ERROR: No reduced images exist for {}.'.format(short_name))
-        return
+    
+    source_detect_image_path = pines_path/('Objects/'+short_name+'/reduced/'+source_detect_filter+'/'+source_detect_image)
 
     # Set path to source directory.
     source_dir = pines_path/('Objects/'+short_name+'/sources/')
 
-    source_detect_image_ind = np.where(
-        [i.name == source_detect_image for i in reduced_files])[0][0]
-    source_detect_image_path = reduced_files[source_detect_image_ind]
     source_frame = source_detect_image_path.name.split('_')[0]+'.fits'
     log_name = source_frame.split('.')[0]+'_log.txt'
     log = pines_log_reader(pines_path/('Logs/'+log_name))
@@ -1906,18 +1883,15 @@ def ref_star_chooser(short_name, source_detect_image, guess_position=(700., 382.
 
     # Make sure the seeing value isn't a NaN.
     if np.isnan(source_detect_seeing):
-        raise ValueError(
-            'Seeing value = NaN in log. Try a different source_detect_image_ind in call to ref_star_chooser.')
+        raise RuntimeError('Seeing value = NaN in log. Try a different source_detect_image in {}.profile.'.format(short_name.lower().replace(' ','')))
 
     if (float(extra_x_shift) > 20) or (float(extra_y_shift) > 20):
-        raise ValueError(
-            'Measured x or y shift > 20 pixels. Try a different source_detect_image_ind in call to ref_star_chooser.')
+        raise RuntimeError('Measured x or y shift > 20 pixels. Try a different source_detect_image in {}.profile.'.format(short_name.lower().replace(' ','')))
 
     extra_shift_path = (source_dir/'extra_shifts.txt')
     with open(extra_shift_path, 'w') as file:
         file.write(str(extra_x_shift)+' '+str(extra_y_shift))
 
-    #source_detect_seeing = 3.5
 
     # Detect sources in the image.
     sources = detect_sources(source_detect_image_path, source_detect_seeing,
@@ -1937,7 +1911,7 @@ def ref_star_chooser(short_name, source_detect_image, guess_position=(700., 382.
     bad_ref_ids = [target_id]
     # Get a value for the brightness of the target with a radius_check aperture. We don't want reference stars dimmer than dimness_tolerance * targ_flux_estimates.
     target_ap = CircularAperture(
-        (sources['xcenter'][target_id], sources['ycenter'][target_id]), r=radius_check)
+        (sources['xcenter'][target_id], sources['ycenter'][target_id]), r=7)
     target_an = CircularAnnulus(
         (sources['xcenter'][target_id], sources['ycenter'][target_id]), r_in=12, r_out=30)
     mask = target_an.to_mask(method='center')
@@ -1951,7 +1925,7 @@ def ref_star_chooser(short_name, source_detect_image, guess_position=(700., 382.
     for i in range(len(sources)):
         if i != target_id:
             potential_ref_loc = (sources['xcenter'][i], sources['ycenter'][i])
-            ap = CircularAperture(potential_ref_loc, r=radius_check)
+            ap = CircularAperture(potential_ref_loc, r=7)
             an = CircularAnnulus(potential_ref_loc, r_in=12, r_out=30)
             mask = an.to_mask(method='center')
             an_data = mask.multiply(image)
@@ -1976,8 +1950,8 @@ def ref_star_chooser(short_name, source_detect_image, guess_position=(700., 382.
                             'aperture_sum'] - bg_estimate * ap.area) > dimness_tolerance*targ_flux_estimate)[0]
             brightness_flag = ((aperture_photometry(image, ap)[
                                'aperture_sum'] - bg_estimate * ap.area) < brightness_tolerance*targ_flux_estimate)[0]
-            closeness_flag = (
-                len(np.where(dists[np.where(dists != 0)] < closeness_tolerance)[0]) == 0)
+            #Cut sources that are too close to another
+            closeness_flag = (len(np.where(dists[np.where(dists != 0)] < 15)[0]) == 0)
             proximity_flag = (np.sqrt((sources['xcenter'][target_id]-sources['xcenter'][i])**2+(
                 sources['ycenter'][target_id]-sources['ycenter'][i])**2) < distance_from_target)
             if exclude_lower_left:
@@ -1999,6 +1973,7 @@ def ref_star_chooser(short_name, source_detect_image, guess_position=(700., 382.
 
     if len(suitable_ref_ids) < 2:
         print('Not enough reference stars found. Try loosening reference star criteria.')
+        plt.ioff()
         return
 
     target = sources.iloc[[target_id]].reset_index(
@@ -2006,13 +1981,19 @@ def ref_star_chooser(short_name, source_detect_image, guess_position=(700., 382.
     suitable_refs = sources.drop(bad_ref_ids).reset_index(
         drop=True).drop(columns=['id'])
 
-    output_df = pd.DataFrame(
-        columns=['Name', 'Source Detect X', 'Source Detect Y'])
-    output_df = output_df.append(
-        {'Name': short_name, 'Source Detect X': sources['xcenter'][target_id], 'Source Detect Y': sources['ycenter'][target_id]}, ignore_index=True)
+
+    output_dict = {'Name':[], 'Source Detect X':[], 'Source Detect Y':[]}
+    output_dict['Name'].append(short_name)
+    output_dict['Source Detect X'].append(sources['xcenter'][target_id])
+    output_dict['Source Detect Y'].append(sources['ycenter'][target_id])
+
+
     for i in range(len(suitable_refs)):
-        output_df = output_df.append({'Name': 'Reference '+str(
-            i+1), 'Source Detect X': sources['xcenter'][suitable_ref_ids[i]], 'Source Detect Y': sources['ycenter'][suitable_ref_ids[i]]}, ignore_index=True)
+        output_dict['Name'].append('Reference '+str(i+1))
+        output_dict['Source Detect X'].append(sources['xcenter'][suitable_ref_ids[i]])
+        output_dict['Source Detect Y'].append(sources['ycenter'][suitable_ref_ids[i]])
+
+    output_df = pd.DataFrame(output_dict)
 
     stats = sigma_clipped_stats(image)
     fig, ax = plt.subplots(figsize=(10, 9))
@@ -2093,12 +2074,16 @@ def ref_star_chooser(short_name, source_detect_image, guess_position=(700., 382.
         print('Saving target and references image to {}.'.format(
             source_dir/('target_and_refs.png')))
         plt.savefig(source_dir/('target_and_refs.png'))
+        plt.ioff()
         plt.close('all')
+
         return output_df
     elif ans == 'n':
+        plt.ioff()
         raise ValueError(
             'Try changing arguments of ref_star_chooser or detect_sources and try again.')
     else:
+        plt.ioff()
         return
 
 def target_finder(sources, guess_position):
