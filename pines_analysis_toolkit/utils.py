@@ -1,3 +1,4 @@
+from functools import reduce
 import pines_analysis_toolkit as pat
 
 from astropy.time import Time
@@ -64,7 +65,7 @@ def get_source_names(df):
     source_names = []
     for i in range(len(df_keys)):
         df_key = df_keys[i]
-        if (df_key != 'Filename') and (df_key != 'Night Number') and (df_key != 'Block Number') and (df_key != 'Seeing') and (df_key != 'Airmass') and (df_key != 'Time BJD TDB') and (df_key != 'Time (JD UTC)') and (df_key != 'Time UT') and (df_key != 'Time JD UTC') and (df_key != 'Sigma Clip Flag') and (df_key != 'Block Number') and (df_key != 'ALC') and (df_key not in source_names):
+        if (df_key != 'Filename') and (df_key != 'Night Number') and (df_key != 'Block Number') and (df_key != 'Filter') and (df_key != 'Seeing') and (df_key != 'Airmass') and (df_key != 'Time BJD TDB') and (df_key != 'Time (JD UTC)') and (df_key != 'Time UT') and (df_key != 'Time JD UTC') and (df_key != 'Sigma Clip Flag') and (df_key != 'Block Number') and (df_key != 'ALC') and (df_key not in source_names):
             source_names.append(df_key)
     return source_names
 
@@ -148,7 +149,7 @@ def object_directory_creator(pines_path, short_name):
     os.mkdir(pines_path/('Objects/'+short_name+'/analysis/aper_phot_analysis'))
     os.mkdir(pines_path/('Objects/'+short_name+'/aper_phot'))
     os.mkdir(pines_path/('Objects/'+short_name+'/output'))
-    os.mkdir(pines_path/('Objects/'+short_name+'/psf_phot'))
+    #os.mkdir(pines_path/('Objects/'+short_name+'/psf_phot'))
     os.mkdir(pines_path/('Objects/'+short_name+'/pwv'))
     os.mkdir(pines_path/('Objects/'+short_name+'/sources'))
     os.mkdir(pines_path/('Objects/'+short_name+'/raw'))
@@ -276,14 +277,39 @@ def profile_reader(short_name, force_output_path=''):
 
     profile_path = pines_path/('Objects/'+short_name+'/'+short_name.replace(' ', '').lower()+'.profile')
 
+    reduced_top_level_path = profile_path.parent/'reduced'
+    reduced_sub_dirs = [Path(i) for i in glob(str(reduced_top_level_path)+'/*')]
+    reduced_filters = [i.name for i in reduced_sub_dirs]
 
     if not os.path.exists(profile_path):
         print('{} does not exist, creating profile file with default params!'.format(
             profile_path.name))
         pines_path = pat.utils.pines_dir_check()
-        red_path = pines_path/('Objects/'+str(profile_path).split('/')[-2]+'/reduced/')
-        red_images = np.array(natsorted(glob(str(red_path)+'/*.fits')))
+
+        #Best SNR in J, so try that first. 
+        if 'J' in reduced_filters:
+            ind = np.where(np.array(reduced_filters) == 'J')[0][0]
+            red_path = reduced_sub_dirs[ind]
+            red_images = np.array(natsorted(glob(str(red_path)+'/*.fits')))
+            use_filter = 'J'
+        #Second-best SNR in Ks.  
+        elif 'Ks' in reduced_filters:
+            ind = np.where(np.array(reduced_filters) == 'Ks')[0][0]
+            red_path = reduced_sub_dirs[ind]
+            red_images = np.array(natsorted(glob(str(red_path)+'/*.fits')))
+            use_filter = 'Ks'
+        #Worst SNR in H
+        elif 'H' in reduced_filters:
+            ind = np.where(np.array(reduced_filters) == 'H')[0][0]
+            red_path = reduced_sub_dirs[ind]
+            red_images = np.array(natsorted(glob(str(red_path)+'/*.fits')))
+            use_filter = 'H'
+        else:
+            raise RuntimeError('Your images are in filters that the toolkit was not designed to handle.\nMake profile file manually.')
+
+
         source_detect_image = red_images[40].split('/')[-1]
+        source_detect_filter = use_filter
         exclude_lower_left = 'False'
         dimness_tolerance = '0.40'
         brightness_tolerance = '3.0'
@@ -293,8 +319,8 @@ def profile_reader(short_name, force_output_path=''):
         guess_position_x = '700'
         guess_position_y = '382'
 
-        line = 'source_detect_image  = {}\nexclude_lower_left   = {}\ndimness_tolerance    = {}\nbrightness_tolerance = {}\ndistance_from_target = {}\nnon_linear_limit     = {}\nedge_tolerance       = {}\nguess_position_x     = {}\nguess_position_y     = {}'.format(
-            source_detect_image, exclude_lower_left, dimness_tolerance, brightness_tolerance, distance_from_target, non_linear_limit, edge_tolerance, guess_position_x, guess_position_y)
+        line = 'source_detect_image  = {}\nsource_detect_filter = {}\nexclude_lower_left   = {}\ndimness_tolerance    = {}\nbrightness_tolerance = {}\ndistance_from_target = {}\nnon_linear_limit     = {}\nedge_tolerance       = {}\nguess_position_x     = {}\nguess_position_y     = {}'.format(
+            source_detect_image, source_detect_filter, exclude_lower_left, dimness_tolerance, brightness_tolerance, distance_from_target, non_linear_limit, edge_tolerance, guess_position_x, guess_position_y)
 
         f = open(profile_path, 'x')
         with open(profile_path, 'w') as f:
@@ -307,6 +333,7 @@ def profile_reader(short_name, force_output_path=''):
     df.columns = df.columns.str.strip()
 
     output_dict = {'source_detect_image': df['source_detect_image'].iloc[0].strip(),
+                   'source_detect_filter': df['source_detect_filter'].iloc[0].strip(),
                    'exclude_lower_left': bool(distutils.util.strtobool(df['exclude_lower_left'].iloc[0].strip())),
                    'dimness_tolerance': float(df['dimness_tolerance'].iloc[0]),
                    'brightness_tolerance': float(df['brightness_tolerance'].iloc[0]),
@@ -417,3 +444,19 @@ def update_header(file_path, header_key, new_value):
     """
 
     fits.setval(file_path, header_key, value=new_value)
+
+def light_curve_time_coverage_calculator(times):
+    """Calculates the continuous time coverage (in days) of a PINES light curve. 
+
+    :param times: array of times of a PINES light curve for which you want to calculate the time extent
+    :type times: numpy ndarray
+    """
+
+    block_inds = pat.analysis.block_splitter(times)
+    time_coverage = 0 
+    for i in range(len(block_inds)):
+        block_times = times[block_inds[i]]
+        block_duration = block_times[-1]-block_times[0]
+        time_coverage += block_duration
+
+    return time_coverage

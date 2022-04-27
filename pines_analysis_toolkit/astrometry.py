@@ -537,7 +537,7 @@ def pines_astrometry(target, api_key, download_data=False):
             print('')
 
 
-def source_detect_astrometry(short_name, api_key, filename, force_output_path=''):
+def source_detect_astrometry(short_name, api_key, filename, filter, force_output_path=''):
     """ Uploads a single reduced image for a target to astrometry.net, downloads solution image, and updates the image header with the astrometry.net wcs. 
     
     :param short_name: the short name of the target
@@ -555,7 +555,7 @@ def source_detect_astrometry(short_name, api_key, filename, force_output_path=''
     else:
         pines_path = pat.utils.pines_dir_check()
     
-    image_path = pines_path/('Objects/'+short_name+'/reduced/'+filename)
+    image_path = pines_path/('Objects/'+short_name+'/reduced/'+filter+'/'+filename)
     
     kernel = Gaussian2DKernel(x_stddev=0.5)
 
@@ -606,7 +606,7 @@ def source_detect_astrometry(short_name, api_key, filename, force_output_path=''
         print('')
 
 
-def source_pixels_to_world(short_name, wcs_filename, force_output_path=''):
+def source_pixels_to_world(short_name, wcs_filename, filter, force_output_path=''):
     """Gets world coordinates of tracked sources (target + references) in the source_detect_image. 
 
     :param short_name: short name for the target
@@ -629,7 +629,7 @@ def source_pixels_to_world(short_name, wcs_filename, force_output_path=''):
     sources_df = pd.read_csv(sources_csv_path)
 
     # Get the WCS information.
-    source_detect_image_path = pines_path/('Objects/'+short_name+'/reduced/'+wcs_filename)
+    source_detect_image_path = pines_path/('Objects/'+short_name+'/reduced/'+filter+'/'+wcs_filename)
     source_detect_image = fits.open(source_detect_image_path)
     w = WCS(source_detect_image[0].header)
 
@@ -697,5 +697,6 @@ def upload_file(apikey, filename, header):
 
     url = 'http://nova.astrometry.net/new_fits_file/' + str(job_id)
 
+    breakpoint()
     r = requests.get(url, allow_redirects=True)
     open(outfile, 'wb').write(r.content)

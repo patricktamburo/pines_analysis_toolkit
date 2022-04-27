@@ -620,6 +620,7 @@ def block_binner(raw_times, raw_flux, time_threshold=0.1, bin_mins=0.0):
     bin_times = np.zeros(n_blocks)
     bin_flux = np.zeros(n_blocks)
     bin_flux_err = np.zeros(n_blocks)
+    
     #Get the binned time, flux, and flux error for each block ONLY at locations that are not NaNs!
     for i in range(n_blocks):
         inds = np.array(block_inds[i])
@@ -642,15 +643,27 @@ def block_splitter(times, time_threshold=0.05, bin_mins=0.0):
     :rtype: list
     """
     times = np.array(times)
+    if len(times) == 1:
+        return [np.arange(len(times))]
+    
+    
     # Staring observations. TODO: This will not work if there is a mix of staring/hopping observations on a single night!
-
     if bin_mins != 0.0:
         time_bin = bin_mins  # Minutes over which to bin.
         block_boundaries = np.where(np.gradient(((times - times[0]) * (24*60)) % time_bin) < 0.2)[0]
     else:
-        block_boundaries = np.where(np.gradient(times) > time_threshold/24)[0]
+        try:
+            block_boundaries = np.where(np.gradient(times) > time_threshold/24)[0]
+        except:
+            print('ValueError: Shape of array too small to calculate a numerical gradient, at least (edge_order + 1) elements are required.')
+            breakpoint()
+
+
 
     num_blocks = int(1 + len(block_boundaries) / 2)
+    if num_blocks == 1:
+        return [np.arange(len(times))]
+    
     block_inds = [[] for x in range(num_blocks)]
 
     for j in range(num_blocks):
@@ -1564,11 +1577,13 @@ def simple_lightcurve(short_name, phot_type='aper'):
     return
 
 
-def weighted_lightcurve(short_name, phot_type='aper', convergence_threshold=1e-9, mode='night', n_sig_refs=5, sigma_clip_threshold=4., max_iterations=200, use_pwv=False, red_stars_only=False, blue_stars_only=False, high_correlation_refs=False, force_output_path='', bin_mins=0.0, linear_baseline=False, quadratic_baseline=False, transit_start=0.0, transit_end=0.0, time_threshold=0.1, distance_weight_alpha=0.0):
+def weighted_lightcurve(short_name, filter='J', phot_type='aper', convergence_threshold=1e-9, mode='night', n_sig_refs=5, sigma_clip_threshold=4., max_iterations=200, use_pwv=False, red_stars_only=False, blue_stars_only=False, high_correlation_refs=False, force_output_path='', bin_mins=0.0, linear_baseline=False, quadratic_baseline=False, transit_start=0.0, transit_end=0.0, time_threshold=0.1, distance_weight_alpha=0.0):
     """Creates a corrected light curve for the target using a weighted mean of reference star fluxes. 
 
     :param short_name: short name of the target
     :type short_name: str
+    :param filter: the filter your observations were taken in 
+    :type filter: str
     :param phot_type: photometry type, 'aper' or 'psf', defaults to 'aper'
     :type phot_type: str, optional
     :param convergence_threshold: threshold in reference star weighting loop to consider weights converged, defaults to 1e-9
@@ -1664,44 +1679,28 @@ def weighted_lightcurve(short_name, phot_type='aper', convergence_threshold=1e-9
         
         return np.mean(all_night_stds)
 
-        # all_ref_bin_avg_std = [[] for x in range(
-        #     len(all_nights_corr_ref_flux[0][0]))]
-        
-        # breakpoint()
-        
-        # for kk in range(num_nights):
-        #     for jj in range(num_refs):
-        #         all_ref_bin_avg_std[jj].extend(
-        #             [np.nanmean(np.nanstd(all_nights_binned_corr_ref_flux[kk][:, jj]))])
 
-        # Use the average standard deviation of the binned data for the brightest n_sig_refs reference stars to determine the optimal aperture radius, fixed or variable.
-        # We use multiple reference stars (default = 5) to calculate this statistic, in case of any variability in the reference stars.
-        # We want to *minimize* binned_std to determine the best radius aperture.
-        #return np.mean(all_ref_bin_avg_std[0:n_sig_refs])
+    def output_filename_generator(analysis_path, ap_rad, mode, filter):
+        if not os.path.exists(analysis_path/(ap_rad)):
+            os.mkdir(analysis_path/(ap_rad))
 
-    def output_filename_generator(analysis_path, ap_rad, mode):
         if phot_type == 'aper':
-            if not os.path.exists(analysis_path/('aper_phot_analysis/'+ap_rad)):
-                os.mkdir(analysis_path/('aper_phot_analysis/'+ap_rad))
             if 'fixed' in ap_rad:
                 rad = ap_rad.split('_')[0]
                 if mode == 'night':
-                    output_filename = analysis_path/('aper_phot_analysis/'+ap_rad+'/'+short_name.replace(
-                        ' ', '')+'_fixed_aper_phot_r='+rad+'_nightly_weighted_lc.csv')
+                    output_filename = analysis_path/(ap_rad+'/'+short_name.replace(' ', '')+'_fixed_aper_phot_r='+rad+'_nightly_weighted_lc.csv')
                 elif mode == 'global':
-                    output_filename = analysis_path/('aper_phot_analysis/'+ap_rad+'/'+short_name.replace(
-                        ' ', '')+'_fixed_aper_phot_r='+rad+'_global_weighted_lc.csv')
+                    output_filename = analysis_path/(ap_rad+'/'+short_name.replace(' ', '')+'_fixed_aper_phot_r='+rad+'_global_weighted_lc.csv')
 
             elif 'variable' in ap_rad:
                 factor = ap_rad.split('_')[0]
                 if mode == 'night':
-                    output_filename = analysis_path/('aper_phot_analysis/'+ap_rad+'/'+short_name.replace(
-                        ' ', '')+'_variable_aper_phot_f='+factor+'_nightly_weighted_lc.csv')
+                    output_filename = analysis_path/(ap_rad+'/'+short_name.replace(' ', '')+'_variable_aper_phot_f='+factor+'_nightly_weighted_lc.csv')
                 elif mode == 'global':
-                    output_filename = analysis_path/('aper_phot_analysis/'+ap_rad+'/'+short_name.replace(
-                        ' ', '')+'_variable_aper_phot_f='+factor+'_global_weighted_lc.csv')
+                    output_filename = analysis_path/(ap_rad+'/'+short_name.replace(' ', '')+'_variable_aper_phot_f='+factor+'_global_weighted_lc_.csv')
         else:
             raise RuntimeError('Need to implement PSF photometry!')
+    
         return output_filename
 
     np.seterr(divide='ignore')  # Ignore divide-by-zero errors.
@@ -1715,13 +1714,15 @@ def weighted_lightcurve(short_name, phot_type='aper', convergence_threshold=1e-9
     else:
         pines_path = pines_dir_check()
 
-    phot_path = pines_path/('Objects/'+short_name+'/'+phot_type+'_phot/')
-    phot_files = natsorted(glob(str(phot_path/'*.csv')))
-    analysis_path = pines_path/('Objects/'+short_name+'/analysis/')
+    phot_path = pines_path/('Objects/'+short_name+'/'+phot_type+'_phot/'+filter+'/')
+    phot_files = np.array(natsorted(glob(str(phot_path/'*.csv'))))
+    analysis_path = pines_path/('Objects/'+short_name+'/analysis/'+filter)
+    if not os.path.exists(analysis_path):
+        os.mkdir(analysis_path)
+    reduced_path = pines_path/('Objects/'+short_name+'/reduced/'+filter)
 
     # Get source names for this observation.
-    source_detection_file = pines_path / \
-        ('Objects/'+short_name+'/sources/target_and_references_source_detection.csv')
+    source_detection_file = pines_path / ('Objects/'+short_name+'/sources/target_and_references_source_detection.csv')
     source_df = pd.read_csv(source_detection_file)
 
     #Get source positions
@@ -1769,13 +1770,10 @@ def weighted_lightcurve(short_name, phot_type='aper', convergence_threshold=1e-9
     num_refs = len(ref_names)
 
     # Get centroids for regression.
-    centroid_path = pines_path / \
-        ('Objects/'+short_name+'/sources/target_and_references_centroids.csv')
+    centroid_path = pines_path / ('Objects/'+short_name+'/sources/'+filter+'/target_and_references_centroids.csv')
     centroid_df = pines_log_reader(centroid_path)
-    full_centroid_x = np.array(
-        centroid_df[source_names[0]+' Image X'], dtype='float')
-    full_centroid_y = np.array(
-        centroid_df[source_names[0]+' Image Y'], dtype='float')
+    full_centroid_x = np.array(centroid_df[source_names[0]+' Image X'], dtype='float')
+    full_centroid_y = np.array(centroid_df[source_names[0]+' Image Y'], dtype='float')
     
     #Get seeing for regression. From seeing.csv if it exists, from the log otherwise. 
     if os.path.exists(pines_path/('Objects/'+short_name+'/sources/seeing.csv')):
@@ -1819,6 +1817,8 @@ def weighted_lightcurve(short_name, phot_type='aper', convergence_threshold=1e-9
         df = pd.read_csv(phot_file)
         df.columns = df.keys().str.strip()
 
+
+        #Restrict arrays to filter_inds
         full_times = np.array(df['Time BJD TDB'])
         full_file_list = np.array(df['Filename'])
         full_airmass = np.array(df['Airmass'])  # Get airmass for regression.
@@ -1885,11 +1885,9 @@ def weighted_lightcurve(short_name, phot_type='aper', convergence_threshold=1e-9
             if use_pwv:
                 pwv = full_pwv[inds]
 
-
             times = np.array(full_times[inds])
             all_nights_times.append(times)
             date = julian.from_jd(times[0])
-            date_str = 'UT '+date.strftime('%b %d, %Y')
 
             # Grab the target flux and error, excluding any NaN measurements. 
             nan_inds =  ~np.isnan(np.array(df[source_names[0]+' Flux'][inds], dtype='float'))
@@ -2286,8 +2284,7 @@ def weighted_lightcurve(short_name, phot_type='aper', convergence_threshold=1e-9
 
         # Convert to a dataframe
         output_df = pd.DataFrame(data=output_dict)
-        output_filename = output_filename_generator(
-            analysis_path, ap_rad, mode)
+        output_filename = output_filename_generator(analysis_path, ap_rad, mode, filter)
         print('Saving weighted_lightcurve output to {}.'.format(output_filename.name))
 
         # Write out to a csv file.
