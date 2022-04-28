@@ -13,8 +13,8 @@ INSTALLATION FOR GENERAL USE.
      
   2. Install the new version of the pipeline from github, using: 
   
-        pip (or pip3) install --upgrade git+git://github.com/patricktamburo/pines_analysis_toolkit.git
-  
+        pip (or pip3) install --upgrade git+https://github.com/patricktamburo/pines_analysis_toolkit.git 
+
   3. Launch python, and see if you can import pines_analysis_toolkit: 
   
         python (or python3)
