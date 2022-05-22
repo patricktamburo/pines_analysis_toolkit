@@ -511,13 +511,12 @@ def log_updater(date, sftp, shift_tolerance=30., upload=False, force_output_path
         if (log['Target'][i].lower() != 'flat') & (log['Target'][i].lower() != 'skyflat') & (log['Target'][i].lower() != 'supersky') & (log['Target'][i].lower() != 'flat_on') & (log['Target'][i].lower() != 'flat_off') & (log['Target'][i].lower() != 'dark') & (log['Target'][i].lower() != 'bias') & (log['Target'][i].lower() != 'dummy') & (log['Target'][i].lower() != 'linearity') & (log['Post-processing flag'][i] != 1):
             filename = log['Filename'][i].split('.fits')[0]+'_red.fits'
             target = log['Target'][i]
+            filter = log['Filt.'][i]
             short_name = short_name_creator(target)
-            image_path = pines_path / \
-                ('Objects/'+short_name+'/reduced/'+filename)
+            image_path = pines_path / ('Objects/'+short_name+'/reduced/'+filter+'/'+filename)
 
             # Figure out which file you're looking at and its position in the log.
-            log_ind = np.where(log['Filename'] ==
-                               filename.split('_')[0]+'.fits')[0][0]
+            log_ind = np.where(log['Filename'] == filename.split('_')[0]+'.fits')[0][0]
 
             # Measure the shifts and get positions of targets.
             (measured_x_shift, measured_y_shift, source_x, source_y,
@@ -1144,8 +1143,6 @@ def shift_measurer(target, image_name, num_sources=15, closeness_tolerance=10., 
         x_shift = fit_x - 1024
         y_shift = fit_y - 1024
         return(x_shift, y_shift)
-
-    #image_name = '20201005.354_red.fits'
 
     if force_output_path != '':
         pines_path = force_output_path
