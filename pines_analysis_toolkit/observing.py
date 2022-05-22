@@ -520,7 +520,7 @@ def log_updater(date, sftp, shift_tolerance=30., upload=False, force_output_path
 
             # Measure the shifts and get positions of targets.
             (measured_x_shift, measured_y_shift, source_x, source_y,
-             check_image) = shift_measurer(target, filename, force_output_path=pines_path)
+             check_image) = shift_measurer(target, image_path, force_output_path=pines_path)
 
             if (abs(measured_x_shift) > shift_tolerance) or (abs(measured_y_shift) > shift_tolerance):
                 print('Shift greater than {} pixels measured for {} in {}.'.format(
@@ -1110,13 +1110,13 @@ def pines_logging(filename, date, target_name, filter_name, exptime, airmass, x_
     return log_text
 
 
-def shift_measurer(target, image_name, num_sources=15, closeness_tolerance=10., force_output_path=''):
+def shift_measurer(target, image_path, num_sources=15, closeness_tolerance=10., force_output_path=''):
     """Measure shifts between an image and the master synthetic image for a target. 
 
     :param target: target's full 2MASS name 
     :type target: str
-    :param image_name: name of the image whose shifts you want to measure
-    :type image_name: str
+    :param image_path: path to the image whose shifts you want to measure
+    :type image_name: pathlib Path
     :param num_sources: number of sources to use for measuring shift, defaults to 15
     :type num_sources: int, optional
     :param closeness_tolerance: closest targets can be in pixels and still be considered for correlation sources, defaults to 10.
@@ -1154,7 +1154,9 @@ def shift_measurer(target, image_name, num_sources=15, closeness_tolerance=10., 
     synthetic_path = pines_path / \
         ('Calibrations/Master Synthetic Images/'+synthetic_filename)
     
-    image_path = pines_path/('Objects/'+short_name+'/reduced/'+image_name)
+    #image_path = pines_path/('Objects/'+short_name+'/reduced/'+image_name)
+
+
     # Check for the appropriate master synthetic image on disk. If it's not there, get from PINES server.
     if not synthetic_path.exists():
         print('No master image in {} for {}.'.format(pines_path, short_name))
@@ -1209,12 +1211,15 @@ def shift_measurer(target, image_name, num_sources=15, closeness_tolerance=10., 
     check_image = check_image - bg_2d.background
 
     # Read in the log and figure out what seeing FWHM to use.
-    date = image_name.split('.')[0]
+    #date = image_name.split('.')[0]
+    date = image_path.name.split('.')[0]
     log = pines_log_reader(pines_path/('Logs/'+date+'_log.txt'))
-    raw_filename = image_name.split('_')[0]+'.fits'
+    #raw_filename = image_name.split('_')[0]+'.fits'
+    raw_filename = image_path.name.split('_')[0]+'.fits'
     ind = np.where(log['Filename'] == raw_filename)[0][0]
     seeing = float(log['X seeing'][ind])
 
+    #TODO: Actually measure the seeing in each image. 
     if (seeing <= 1.0) or (seeing >= 7.0) or (np.isnan(seeing)):
         if ind >= 5:
             seeing = np.nanmedian(
