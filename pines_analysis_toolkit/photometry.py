@@ -316,6 +316,7 @@ def compute_phot_error(flux, bg_phot, bg_method, ap_area, exptime, dark_std_data
     variance = flux_variance_term + bg_variance_term_1 + \
         bg_variance_term_2 + dark_rn_term
     flux_error = variance ** .5
+
     return flux_error
 
 

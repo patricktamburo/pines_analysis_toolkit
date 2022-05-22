@@ -1290,10 +1290,14 @@ def night_splitter(times):
     :return: list of length n_nights, each entry containing the indices of data from a particular night of observations
     :rtype: list
     """
+    times = np.array(times)
+    if len(times) == 1:
+        return [np.arange(len(times))]
+
     night_boundaries = np.where(np.gradient(times) > 6/24)[0]
     num_nights = int(1 + len(night_boundaries) / 2)
     night_inds = [[] for x in range(num_nights)]
-        
+    
     if num_nights == 1:
         night_inds[0].extend(np.arange(0, len(times)))
     else:
@@ -1306,6 +1310,8 @@ def night_splitter(times):
             else:
                 night_inds[j].extend(
                     np.arange(night_boundaries[2*j-1], len(times)))
+
+
     return night_inds
 
 
@@ -1350,7 +1356,7 @@ def regression(flux, regressors, corr_significance=1e-2, verbose=False):
 
     keys = np.array(list(regressors.keys()))
     # Only perform the regression on non-NaN values.
-    good_locs = np.where(~np.isnan(flux))[0]
+    good_locs = np.where(~np.isnan(flux) & ~np.isinf(flux))[0]
 
     sigs = []
     if verbose:
@@ -1358,7 +1364,10 @@ def regression(flux, regressors, corr_significance=1e-2, verbose=False):
         print('{:<11s} | {:>11s}'.format('Regressor', 'Signficance'))
         print('-------------------------')
     for i in range(len(regressors)):
-        corr, sig = pearsonr(flux[good_locs], regressors[keys[i]][good_locs])
+        try:
+            corr, sig = pearsonr(flux[good_locs], regressors[keys[i]][good_locs])
+        except:
+            breakpoint()
         sigs.append(sig)
         if verbose:
             print('{:<11s} | {:>.2e}'.format(keys[i], sig))
@@ -1394,7 +1403,7 @@ def regression(flux, regressors, corr_significance=1e-2, verbose=False):
     y = df['flux']
 
     if np.shape(x)[1] > 0:
-        regr.fit(x[~np.isnan(y)], y[~np.isnan(y)])
+        regr.fit(x[np.isfinite(y)], y[np.isfinite(y)])
 
         # Now, define the model.
         linear_regression_model = regr.intercept_
@@ -1817,7 +1826,6 @@ def weighted_lightcurve(short_name, filter='J', phot_type='aper', convergence_th
         df = pd.read_csv(phot_file)
         df.columns = df.keys().str.strip()
 
-
         #Restrict arrays to filter_inds
         full_times = np.array(df['Time BJD TDB'])
         full_file_list = np.array(df['Filename'])
@@ -1890,7 +1898,9 @@ def weighted_lightcurve(short_name, filter='J', phot_type='aper', convergence_th
             date = julian.from_jd(times[0])
 
             # Grab the target flux and error, excluding any NaN measurements. 
-            nan_inds =  ~np.isnan(np.array(df[source_names[0]+' Flux'][inds], dtype='float'))
+            #nan_inds =  ~np.isnan(np.array(df[source_names[0]+' Flux'][inds], dtype='float'))
+            nan_inds =  np.isfinite(np.array(df[source_names[0]+' Flux'][inds], dtype='float'))
+
             num_frames = len(inds[nan_inds])
             times = times[nan_inds]
             airmass = airmass[nan_inds]
@@ -2002,6 +2012,7 @@ def weighted_lightcurve(short_name, filter='J', phot_type='aper', convergence_th
                 norm_flux[:, k] = raw_flux[:, k] / normalization
                 norm_err[:, k] = raw_err[:, k] / normalization
 
+
                 # plt.plot(times, norm_flux[:,k], marker='*', ls='', label='Ref. {}'.format(k+1), color=cm(int(k*255/(num_refs-1))), ms=8, mew=1.5, mfc='none')
             # plt.plot(times, targ_flux_norm, marker='o', color='tab:orange', lw=2, label='Target', ms=10)
 
@@ -2017,10 +2028,10 @@ def weighted_lightcurve(short_name, filter='J', phot_type='aper', convergence_th
                 # Measure the Pearson correlation coefficient of each reference normalized flux with the target's normalized flux.
                 correlations = np.zeros(num_refs)
                 for k in range(num_refs):
-                    non_nan_inds = np.where(
-                        ~np.isnan(norm_flux[:, k]) | ~np.isnan(targ_flux_norm))[0]
-                    corr, sig = pearsonr(
-                        targ_flux_norm[non_nan_inds], norm_flux[:, k][non_nan_inds])
+                    #non_nan_inds = np.where(~np.isnan(norm_flux[:, k]) | ~np.isnan(targ_flux_norm))[0]
+                    non_nan_inds = np.where(np.isfinite(norm_flux[:, k]) & np.isfinite(targ_flux_norm))[0]
+
+                    corr, sig = pearsonr(targ_flux_norm[non_nan_inds], norm_flux[:, k][non_nan_inds])
                     correlations[k] = corr
 
                 # Sort the references by those with the highest correlation with the target, and take the best handful of them.
@@ -2109,12 +2120,18 @@ def weighted_lightcurve(short_name, filter='J', phot_type='aper', convergence_th
                     else:
                         regression_dict = {'airmass': airmass, 'centroid_x': centroid_x, 'centroid_y': centroid_y, 'seeing':seeing, 'intrapixel':intrapixel}
 
+                    if sum(np.isnan(corr_flux[:,k])) == len(corr_flux[:,k]):
+                        breakpoint()
+
                     regressed_corr_flux[:, k] = regression(corr_flux[:, k], regression_dict)
 
                     # Calculate stddevs from the regressed corrected flux.
                     old_stddev[k] = new_stddev[k]
                     new_stddev[k] = np.nanstd(regressed_corr_flux[:, k])
 
+                    if not np.isfinite(new_stddev[k]):
+                        breakpoint()
+                        
                     # update normalized errors
                     norm_err[:, k] = new_stddev[k]
 
