@@ -79,7 +79,8 @@ def raw_flux_plot(phot_path, mode='night'):
     :type mode: str, optional
     """
 
-    analysis_path = phot_path.parent.parent/('analysis')
+    analysis_path = phot_path.parent.parent.parent/('analysis')
+    filter = phot_path.parent.name
     if 'aper' in phot_path.name:
         phot_type = 'aper'
     else:
@@ -164,9 +165,9 @@ def raw_flux_plot(phot_path, mode='night'):
 
     if phot_type == 'aper':
         filename = mode+'_raw_flux.png'
-        if not os.path.exists(analysis_path/('aper_phot_analysis/'+ap_rad)):
-            os.mkdir(analysis_path/('aper_phot_analysis/'+ap_rad))
-        output_path = analysis_path/('aper_phot_analysis/'+ap_rad+'/'+filename)
+        if not os.path.exists(analysis_path/(filter+'/'+ap_rad)):
+            os.mkdir(analysis_path/(filter+'/'+ap_rad))
+        output_path = analysis_path/(filter+'/'+ap_rad+'/'+filename)
         print('Saving {} raw flux plot to {}.'.format(mode, output_path))
         plt.savefig(output_path, dpi=300)
     else:
