@@ -156,7 +156,6 @@ def simulate_l_t(SpT):
 
     t_eff_ind = np.where(abs(t_eff - t_eff_arr) == np.min(abs(t_eff - t_eff_arr)))[0][0]
     
-    breakpoint()
     radius = b_radii[age_ind][t_eff_ind]
     mass = b_masses[age_ind][t_eff_ind]
     

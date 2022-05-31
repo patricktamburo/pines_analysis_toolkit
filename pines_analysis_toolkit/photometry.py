@@ -570,8 +570,8 @@ def fixed_aper_phot(short_name, ap_radii, filter, an_in=12., an_out=30., gain=8.
                             format_string = '{:22.5f}, {:28.5f}, {:28.5f}, {:34f}\n'
                         f.write(format_string.format(ap_df[source_names[i]+' Flux'][j], ap_df[source_names[i]+' Flux Error']
                                 [j], ap_df[source_names[i]+' Background'][j], ap_df[source_names[i]+' Interpolation Flag'][j]))
-
-        #raw_flux_plot(output_filename, mode='night')
+        
+        raw_flux_plot(output_filename, mode='night')
         print('')
     return
 
@@ -819,7 +819,7 @@ def variable_aper_phot(short_name, multiplicative_factors, filter, an_in=12., an
                             format_string = '{:22.5f}, {:28.5f}, {:28.5f}, {:34f}\n'
                         f.write(format_string.format(var_df[source_names[i]+' Flux'][j], var_df[source_names[i]+' Flux Error']
                                 [j], var_df[source_names[i]+' Background'][j], var_df[source_names[i]+' Interpolation Flag'][j]))
-        #raw_flux_plot(output_filename, mode='night')
+        raw_flux_plot(output_filename, mode='night')
         print('')
     return
 
