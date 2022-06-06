@@ -436,7 +436,7 @@ def fixed_aper_phot(short_name, ap_radii, filter, an_in=12., an_out=30., gain=8.
         
      # Declare a new dataframe to hold the information for all targets for this aperture.
     columns = ['Filename', 'Time UT', 'Time JD UTC', 'Time BJD TDB',
-                'Night Number', 'Block Number', 'Filter', 'Airmass', 'Seeing']
+                'Night Number', 'Block Number', 'Filter', 'Exptime', 'Airmass', 'Seeing']
     for i in range(0, len(source_names)):
         columns.append(source_names[i]+' Flux')
         columns.append(source_names[i]+' Flux Error')
@@ -475,6 +475,7 @@ def fixed_aper_phot(short_name, ap_radii, filter, an_in=12., an_out=30., gain=8.
         time_bjd = jd_utc_to_bjd_tdb(jd, header['TELRA'], header['TELDEC'])
         night_number = centroided_sources['Night Number'][j]
         block_number = centroided_sources['Block Number'][j]
+        exptime = header['EXPTIME']
         airmass = header['AIRMASS']
         filter = header['FILTNME2']
         seeing = log['X seeing'][log_ind]
@@ -488,6 +489,7 @@ def fixed_aper_phot(short_name, ap_radii, filter, an_in=12., an_out=30., gain=8.
             ap_df['Night Number'][j] = night_number
             ap_df['Block Number'][j] = block_number
             ap_df['Filter'][j] = filter
+            ap_df['Exptime'][j] = exptime
             ap_df['Airmass'][j] = airmass
             ap_df['Seeing'][j] = seeing
 
@@ -528,8 +530,8 @@ def fixed_aper_phot(short_name, ap_radii, filter, an_in=12., an_out=30., gain=8.
             for j in range(len(ap_df)):
                 # Write in the header.
                 if j == 0:
-                    f.write('{:>21s}, {:>22s}, {:>17s}, {:>17s}, {:>17s}, {:>17s}, {:>7s}, {:>7s}, {:>7s}, '.format(
-                        'Filename', 'Time UT', 'Time JD UTC', 'Time BJD TDB', 'Night Number', 'Block Number', 'Filter', 'Airmass', 'Seeing'))
+                    f.write('{:>21s}, {:>22s}, {:>17s}, {:>17s}, {:>17s}, {:>17s}, {:>7s}, {:>8s}, {:>7s}, {:>7s}, '.format(
+                        'Filename', 'Time UT', 'Time JD UTC', 'Time BJD TDB', 'Night Number', 'Block Number', 'Filter', 'Exptime', 'Airmass', 'Seeing'))
                     for i in range(len(source_names)):
                         if i != len(source_names) - 1:
                             f.write('{:>22s}, {:>28s}, {:>28s}, {:>34s}, '.format(
@@ -539,7 +541,7 @@ def fixed_aper_phot(short_name, ap_radii, filter, an_in=12., an_out=30., gain=8.
                                 source_names[i]+' Flux', source_names[i]+' Flux Error', source_names[i]+' Background', source_names[i]+' Interpolation Flag'))
 
                 # Write in Filename, Time UT, Time JD, Airmass, Seeing values.
-                format_string = '{:21s}, {:22s}, {:17.9f}, {:17.9f}, {:17d}, {:17d}, {:>7s}, {:7.2f}, {:7.1f}, '
+                format_string = '{:21s}, {:22s}, {:17.9f}, {:17.9f}, {:17d}, {:17d}, {:>7s}, {:8.1f}, {:7.2f}, {:7.1f}, '
                 # If the seeing value for this image is 'nan' (a string), convert it to a float.
                 # TODO: Not sure why it's being read in as a string, fix that.
                 if type(ap_df['Seeing'][j]) == str:
@@ -548,7 +550,7 @@ def fixed_aper_phot(short_name, ap_radii, filter, an_in=12., an_out=30., gain=8.
                 # Do a try/except clause for writeout, in case it breaks in the future.
                 try:
                     f.write(format_string.format(ap_df['Filename'][j], ap_df['Time UT'][j], ap_df['Time JD UTC'][j], ap_df['Time BJD TDB']
-                            [j], ap_df['Night Number'][j], ap_df['Block Number'][j], ap_df['Filter'][j], ap_df['Airmass'][j], ap_df['Seeing'][j]))
+                            [j], ap_df['Night Number'][j], ap_df['Block Number'][j], ap_df['Filter'][j], ap_df['Exptime'][j], ap_df['Airmass'][j], ap_df['Seeing'][j]))
                 except:
                     print(
                         'Writeout failed! Inspect quantities you are trying to write out.')
@@ -670,7 +672,7 @@ def variable_aper_phot(short_name, multiplicative_factors, filter, an_in=12., an
 
         # Declare a new dataframe to hold the information for all targets for this aperture.
         columns = ['Filename', 'Time UT', 'Time JD UTC', 'Time BJD TDB',
-                   'Night Number', 'Block Number', 'Filter', 'Airmass', 'Seeing']
+                   'Night Number', 'Block Number', 'Filter', 'Exptime', 'Airmass', 'Seeing']
         for j in range(0, len(source_names)):
             columns.append(source_names[j]+' Flux')
             columns.append(source_names[j]+' Flux Error')
@@ -727,6 +729,7 @@ def variable_aper_phot(short_name, multiplicative_factors, filter, an_in=12., an
             var_df['Night Number'][j] = centroided_sources['Night Number'][j]
             var_df['Block Number'][j] = centroided_sources['Block Number'][j]
             var_df['Filter'][j] = header['FILTNME2']
+            var_df['Exptime'][j] = header['EXPTIME']
             var_df['Airmass'][j] = header['AIRMASS']
             var_df['Seeing'][j] = log['X seeing'][np.where(
                 log['Filename'] == reduced_files[j].name.split('_')[0]+'.fits')[0][0]]
@@ -777,8 +780,8 @@ def variable_aper_phot(short_name, multiplicative_factors, filter, an_in=12., an
             for j in range(len(var_df)):
                 # Write in the header.
                 if j == 0:
-                    f.write('{:>21s}, {:>22s}, {:>17s}, {:>17s}, {:>17s}, {:>17s}, {:>7s}, {:>7s}, {:>7s}, '.format(
-                        'Filename', 'Time UT', 'Time JD UTC', 'Time BJD TDB', 'Night Number', 'Block Number', 'Filter', 'Airmass', 'Seeing'))
+                    f.write('{:>21s}, {:>22s}, {:>17s}, {:>17s}, {:>17s}, {:>17s}, {:>7s}, {:>8s}, {:>7s}, {:>7s}, '.format(
+                        'Filename', 'Time UT', 'Time JD UTC', 'Time BJD TDB', 'Night Number', 'Block Number', 'Filter', 'Exptime', 'Airmass', 'Seeing'))
                     for k in range(len(source_names)):
                         if k != len(source_names) - 1:
                             f.write('{:>22s}, {:>28s}, {:>28s}, {:>34s}, '.format(
@@ -788,7 +791,7 @@ def variable_aper_phot(short_name, multiplicative_factors, filter, an_in=12., an
                                 source_names[k]+' Flux', source_names[k]+' Flux Error', source_names[k]+' Background', source_names[k]+' Interpolation Flag'))
 
                 # Write in Filename, Time UT, Time JD, Airmass, Seeing values.
-                format_string = '{:21s}, {:22s}, {:17.9f}, {:17.9f}, {:17d}, {:17d}, {:>7s}, {:7.2f}, {:7.1f}, '
+                format_string = '{:21s}, {:22s}, {:17.9f}, {:17.9f}, {:17d}, {:17d}, {:>7s}, {:8.1f}, {:7.2f}, {:7.1f}, '
                 # If the seeing value for this image is 'nan' (a string), convert it to a float.
                 # TODO: Not sure why it's being read in as a string, fix that.
                 if type(var_df['Seeing'][j]) == str:
@@ -797,7 +800,7 @@ def variable_aper_phot(short_name, multiplicative_factors, filter, an_in=12., an
                 # Do a try/except clause for writeout, in case it breaks in the future.
                 try:
                     f.write(format_string.format(var_df['Filename'][j], var_df['Time UT'][j], var_df['Time JD UTC'][j], var_df['Time BJD TDB']
-                            [j], var_df['Night Number'][j], var_df['Block Number'][j], var_df['Filter'][j], var_df['Airmass'][j], var_df['Seeing'][j]))
+                            [j], var_df['Night Number'][j], var_df['Block Number'][j], var_df['Filter'][j], var_df['Exptime'][j], var_df['Airmass'][j], var_df['Seeing'][j]))
                 except:
                     print(
                         'Writeout failed! Inspect quantities you are trying to write out.')
@@ -1841,6 +1844,8 @@ def ref_star_chooser(short_name, profile_data, restore=False, source_detect_plot
     :return: Saves a plot of the target/detected reference stars to the object's 'sources' directory. Saves .csv of target/reference pixel positions in the object's 'sources' directory.
     :rtype: plot/csv
     """
+
+
     plt.ion()
 
     source_detect_image = profile_data['source_detect_image']
@@ -2024,8 +2029,7 @@ def ref_star_chooser(short_name, profile_data, restore=False, source_detect_plot
 
     # Sometimes, the source detection returns things that are clearly not reference stars.
     # Allow the user to remove them here.
-    ans = input(
-        'Enter IDs of references to remove, separated by commas (e.g.: 1,4,8,14).\nIf none to remove, hit enter:  ')
+    ans = input('Enter IDs of references to remove, separated by commas (e.g.: 1,4,8,14).\nIf none to remove, hit enter:  ')
     if ans != '':
         ans = ans.split(',')
         ref_ids_to_remove = []
