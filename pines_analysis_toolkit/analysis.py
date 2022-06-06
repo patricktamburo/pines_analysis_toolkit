@@ -1283,7 +1283,7 @@ def airmass_plot(short_name, bin_mins=0.0, force_output_path=''):
     return
 
 
-def night_splitter(times):
+def night_splitter(times, time_threshold=0.25):
     """Finds different nights of data given a 1D array of exposure times (in days), and returns their indices. 
 
     :param times: array of times (in units of days)
@@ -1295,7 +1295,7 @@ def night_splitter(times):
     if len(times) == 1:
         return [np.arange(len(times))]
 
-    night_boundaries = np.where(np.gradient(times) > 6/24)[0]
+    night_boundaries = np.where(np.gradient(times) > time_threshold)[0]
     num_nights = int(1 + len(night_boundaries) / 2)
     night_inds = [[] for x in range(num_nights)]
     

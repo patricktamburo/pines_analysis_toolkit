@@ -65,7 +65,7 @@ def get_source_names(df):
     source_names = []
     for i in range(len(df_keys)):
         df_key = df_keys[i]
-        if (df_key != 'Filename') and (df_key != 'Night Number') and (df_key != 'Block Number') and (df_key != 'Filter') and (df_key != 'Seeing') and (df_key != 'Airmass') and (df_key != 'Time BJD TDB') and (df_key != 'Time (JD UTC)') and (df_key != 'Time UT') and (df_key != 'Time JD UTC') and (df_key != 'Sigma Clip Flag') and (df_key != 'Block Number') and (df_key != 'ALC') and (df_key not in source_names):
+        if (df_key != 'Filename') and (df_key != 'Night Number') and (df_key != 'Block Number') and (df_key != 'Filter') and (df_key != 'Exptime') and (df_key != 'Seeing') and (df_key != 'Airmass') and (df_key != 'Time BJD TDB') and (df_key != 'Time (JD UTC)') and (df_key != 'Time UT') and (df_key != 'Time JD UTC') and (df_key != 'Sigma Clip Flag') and (df_key != 'Block Number') and (df_key != 'ALC') and (df_key not in source_names):
             source_names.append(df_key)
     return source_names
 
