@@ -1401,9 +1401,6 @@ def regression(flux, regressors, corr_significance=1e-2, verbose=False):
     x = df[keylist[0:len(keylist)-1]]
     y = df['flux']
 
-    if verbose:
-        breakpoint()
-
     if np.shape(x)[1] > 0:
         regr.fit(x[np.isfinite(y)], y[np.isfinite(y)])
 
