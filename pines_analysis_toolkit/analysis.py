@@ -1356,6 +1356,7 @@ def regression(flux, regressors, corr_significance=1e-2, verbose=False):
     """
 
     keys = np.array(list(regressors.keys()))
+    #keys = [str(i) for i in keys_]
     # Only perform the regression on non-NaN values.
     good_locs = np.where(~np.isnan(flux) & ~np.isinf(flux))[0]
 
@@ -1365,10 +1366,7 @@ def regression(flux, regressors, corr_significance=1e-2, verbose=False):
         print('{:<11s} | {:>11s}'.format('Regressor', 'Signficance'))
         print('-------------------------')
     for i in range(len(regressors)):
-        try:
-            corr, sig = pearsonr(flux[good_locs], regressors[keys[i]][good_locs])
-        except:
-            breakpoint()
+        corr, sig = pearsonr(flux[good_locs], regressors[keys[i]][good_locs])
         sigs.append(sig)
         if verbose:
             print('{:<11s} | {:>.2e}'.format(keys[i], sig))
@@ -1396,12 +1394,15 @@ def regression(flux, regressors, corr_significance=1e-2, verbose=False):
     # Get list of keys
     keylist = list()
     for i in regress_dict.keys():
-        keylist.append(i)
+        keylist.append(str(i))
 
     # Create data frame of regressors.
     df = pd.DataFrame(regress_dict, columns=keylist)
     x = df[keylist[0:len(keylist)-1]]
     y = df['flux']
+
+    if verbose:
+        breakpoint()
 
     if np.shape(x)[1] > 0:
         regr.fit(x[np.isfinite(y)], y[np.isfinite(y)])
@@ -2199,6 +2200,7 @@ def weighted_lightcurve(short_name, filter='J', phot_type='aper', convergence_th
                     'airmass': airmass, 'centroid_x': centroid_x, 'centroid_y': centroid_y, 'seeing':seeing, 'intrapixel':intrapixel}
 
             regressed_targ_flux_corr = regression(targ_flux_corr, regression_dict, corr_significance=1e-2, verbose=True)
+            breakpoint() 
 
             #Do some baselining.
             if linear_baseline or quadratic_baseline:

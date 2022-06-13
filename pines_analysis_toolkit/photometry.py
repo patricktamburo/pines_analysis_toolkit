@@ -1393,8 +1393,7 @@ def centroider(short_name, sources, filter='', output_plots=False, restore=False
                     j+1)+' of '+str(len(reduced_files))+')', fontsize=10)
                 plt.text(centroid_x_cutout, centroid_y_cutout+0.5, '('+str(np.round(centroid_x_cutout, 1)) +
                          ', '+str(np.round(centroid_y_cutout, 1))+')', color='r', ha='center')
-                plot_output_path = (pines_path/('Objects/'+short_name+'/sources/'+sources['Name'][i]+'/'+file.name.split('_')[
-                                    0]+'_night_'+str(centroid_df['Night Number'][j]).zfill(2)+'_block_'+str(centroid_df['Block Number'][j]).zfill(2)+'.jpg'))
+                plot_output_path = (pines_path/('Objects/'+short_name+'/sources/'+filter+'/'+sources['Name'][i]+'/'+file.name.split('_')[0]+'_night_'+str(centroid_df['Night Number'][j]).zfill(2)+'_block_'+str(centroid_df['Block Number'][j]).zfill(2)+'.jpg'))
                 plt.gca().set_axis_off()
                 plt.subplots_adjust(top=1, bottom=0, right=1,
                                     left=0, hspace=0, wspace=0)
