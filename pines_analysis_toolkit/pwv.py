@@ -186,7 +186,7 @@ def fyodor_pwv(short_name, directory, P_min, P_max, line_of_sight='target', RA=N
     #nc_filesM = glob.glob('*OR_ABI-L2-LVMPF*')
     nc_filesM = glob(str((directory/'*OR_ABI-L2-LVMP*.nc')))
     nc_filesM = sorted(nc_filesM)
-
+    
     # Open the first file to retrieve earth parameters
     Proj_info = Dataset(nc_filesT[0], 'r')
     proj_info = Proj_info.variables['goes_imager_projection']
@@ -236,8 +236,9 @@ def fyodor_pwv(short_name, directory, P_min, P_max, line_of_sight='target', RA=N
     output_path = pines_path / \
         ('Objects/'+short_name+'/pwv/PWV_los_{}.csv'.format(out_date))
     if os.path.exists(output_path):
-        print('PWV output already exists for {}, returning.'.format(out_date))
-        return
+        # print('PWV output already exists for {}, returning.'.format(out_date))
+        print('')
+        #return
 
     # Use astropy.time to keep format for target coordinates:
     times = Time(date, format='iso', scale='utc')
@@ -631,7 +632,9 @@ def los_pwv_data_generator(short_name, ut_dates, centroided_sources, interp_type
     #Find the coordinates of the target using the PINES sample excel file.
     pines_sample_path = pines_path/('Misc/PINES sample.xlsx')
     sample_df = pd.read_excel(pines_sample_path)
-    target_row = np.where(np.array(sample_df['Short Name']) == sources[0])[0][0]
+    boo_arr = [sources[0].split(' ')[1] in str(sample_df['Short Name'][i]) for i in range(len(sample_df))]
+    target_row = np.where(boo_arr)[0][0]
+    #target_row = np.where(np.array(sample_df['Short Name']) == sources[0])[0][0]
     target_ra = sample_df['RA (deg)'][target_row]
     target_dec = sample_df['Dec (deg)'][target_row]
 
@@ -673,8 +676,9 @@ def los_pwv_data_generator(short_name, ut_dates, centroided_sources, interp_type
 
     # Interpolate Fyodor full disk pwv data onto the PINES data grid.
     if interp_type == 'linear':
+        breakpoint()
         f1 = interpolate.interp1d(fyodor_times, pwv, kind='nearest')
-        pwv_interp = f1(pines_times)
+        pwv_interp = f1(pines_times[1:])
 
     elif interp_type == 'cubicspline':
         tck = interpolate.splrep(fyodor_times, pwv)

@@ -460,3 +460,21 @@ def light_curve_time_coverage_calculator(times):
         time_coverage += block_duration
 
     return time_coverage
+
+def shift_flagger(log_path, threshold=30):
+    log = pines_log_reader(log_path)
+    x_shifts = np.array(log['X shift'], dtype='float')
+    y_shifts = np.array(log['Y shift'], dtype='float')
+    bad_inds = np.where((abs(x_shifts) > threshold) | (abs(y_shifts) > threshold) | (np.isnan(x_shifts)) | (np.isnan(y_shifts)))[0]
+    log['Shift quality flag'][bad_inds] = 1
+
+    lines = []
+    lines.append('#Filename           , Date                , Target                        , Filt. , Exptime , Airmass , X shift , Y shift , X seeing , Y seeing , Post-processing flag, Shift quality flag\n')
+    for i in range(len(log)):
+        line = pat.observing.pines_logging(log['Filename'][i], log['Date'][i], log['Target'][i], log['Filt.'][i], log['Exptime'][i], log['Airmass'][i], log['X shift'][i], log['Y shift'][i], log['X seeing'][i], log['Y seeing'][i], log['Post-processing flag'][i], log['Shift quality flag'][i])
+        lines.append(line)
+    
+    with open(log_path, 'w') as f:
+        f.writelines(lines)
+    breakpoint()
+    return 
