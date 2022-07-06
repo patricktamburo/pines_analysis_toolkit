@@ -89,7 +89,7 @@ def raw_flux_plot(phot_path, mode='night'):
     if mode != 'night' and mode != 'global':
         raise ValueError("mode must be either 'night' or 'global'.")
 
-    ap_rad = phot_path.name.split('_')[4]+'_'+phot_path.name.split('_')[1]
+    ap_rad = phot_path.name.split('aper_phot_')[1].split('_')[0]+'_'+phot_path.name.split('_aper_phot')[0].split('_')[-1]
 
     phot_df = pines_log_reader(phot_path)
     times = np.array(phot_df['Time BJD TDB'])
@@ -192,7 +192,7 @@ def norm_raw_flux_plot(phot_path, mode='night'):
     if mode != 'night' and mode != 'global':
         raise ValueError("mode must be either 'night' or 'global'.")
 
-    ap_rad = phot_path.name.split('_')[4]+'_'+phot_path.name.split('_')[1]
+    ap_rad = phot_path.name.split('aper_phot_')[1].split('_')[0]+'_'+phot_path.name.split('_aper_phot')[0].split('_')[-1]
 
     phot_df = pines_log_reader(phot_path)
     times = np.array(phot_df['Time BJD TDB'])
@@ -258,7 +258,6 @@ def norm_raw_flux_plot(phot_path, mode='night'):
                     np.mean(times[inds])+standard_time_range/2)
         ax.grid(alpha=0.2)
 
-    breakpoint()
     plt.suptitle(sources[0]+' Normalized Nightly Raw Flux', fontsize=20)
     plt.subplots_adjust(left=0.07, wspace=0.05, top=0.92, bottom=0.17)
 
@@ -1421,10 +1420,6 @@ def regression(flux, regressors, corr_significance=1e-2, verbose=False):
         #print('No regressors used.')
         corrected_flux = flux
 
-    # #For a referee response    
-    # if verbose and 'intrapixel' in use_keys:
-    #     breakpoint()
-
     return corrected_flux
 
 
@@ -1899,7 +1894,6 @@ def weighted_lightcurve(short_name, filter='J', phot_type='aper', convergence_th
             # Grab the target flux and error, excluding any NaN measurements. 
             #nan_inds =  ~np.isnan(np.array(df[source_names[0]+' Flux'][inds], dtype='float'))
             nan_inds =  np.isfinite(np.array(df[source_names[0]+' Flux'][inds], dtype='float'))
-
             num_frames = len(inds[nan_inds])
             times = times[nan_inds]
             airmass = airmass[nan_inds]
@@ -1928,10 +1922,15 @@ def weighted_lightcurve(short_name, filter='J', phot_type='aper', convergence_th
 
             # Sigmaclip the normalized target flux, in order to toss any suspect measurements.
             good_frames = np.where(targ_flux_norm > 0.5)[0]
-            vals, lower, upper = sigmaclip(targ_flux_norm[good_frames], low=sigma_clip_threshold, high=sigma_clip_threshold)
+
+            #Need a manual check for two POI-1 follow-up observations with changing exptimes.
+            if (short_name == '2MASS 0835+1953_14') or (short_name == '2MASS 0835+1953_15'):
+                vals, lower, upper = sigmaclip(targ_flux_norm[good_frames], low=20, high=sigma_clip_threshold)
+            else:
+                vals, lower, upper = sigmaclip(targ_flux_norm[good_frames], low=sigma_clip_threshold, high=sigma_clip_threshold)
+            
             good_frames = np.where((targ_flux_norm > lower) & (targ_flux_norm < upper))[0]
             bad_frames = np.where((targ_flux_norm < lower) | (targ_flux_norm > upper))[0]
-            #breakpoint()
 
             #inds = inds[good_frames]
             bad_inds = inds[bad_frames]
@@ -2197,7 +2196,6 @@ def weighted_lightcurve(short_name, filter='J', phot_type='aper', convergence_th
                     'airmass': airmass, 'centroid_x': centroid_x, 'centroid_y': centroid_y, 'seeing':seeing, 'intrapixel':intrapixel}
 
             regressed_targ_flux_corr = regression(targ_flux_corr, regression_dict, corr_significance=1e-2, verbose=True)
-            breakpoint() 
 
             #Do some baselining.
             if linear_baseline or quadratic_baseline:
