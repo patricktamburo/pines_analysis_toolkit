@@ -26,7 +26,7 @@ progressbar==2.5
 pyOpenSSL @ file:///tmp/build/80754af9/pyopenssl_1605545627475/work
 pysftp==0.2.9
 PySocks @ file:///opt/concourse/worker/volumes/live/85a5b906-0e08-41d9-6f59-084cee4e9492/volume/pysocks_1594394636991/work
-reportlab==3.5.59
+reportlab==3.6.13
 scikit-image==0.18.1
 sklearn==0.0
 sphinx-rtd-theme==1.0.0
